@@ -1,34 +1,36 @@
-import React, { useState, useEffect } from 'react'
-import { useQuery } from '@tanstack/react-query'
-import { api } from '../lib/api'
-import { Search as SearchIcon } from 'lucide-react'
-import { Link, useSearchParams } from 'react-router-dom'
+import React, { useState, useEffect } from "react";
+import { useQuery } from "@tanstack/react-query";
+import { api } from "../lib/api";
+import { Search as SearchIcon } from "lucide-react";
+import { Link, useSearchParams } from "react-router-dom";
 
 export default function Search() {
-  const [searchParams, setSearchParams] = useSearchParams()
-  const [sourceName, setSourceName] = useState(searchParams.get('source') || '')
-  const [query, setQuery] = useState(searchParams.get('q') || '')
-  const [language, setLanguage] = useState(searchParams.get('lang') || '')
+  const [searchParams, setSearchParams] = useSearchParams();
+  const [sourceName, setSourceName] = useState(
+    searchParams.get("source") || ""
+  );
+  const [query, setQuery] = useState(searchParams.get("q") || "");
+  const [language, setLanguage] = useState(searchParams.get("lang") || "");
 
   // Update URL when search parameters change
   useEffect(() => {
-    const params = new URLSearchParams()
-    if (sourceName) params.set('source', sourceName)
-    if (query) params.set('q', query)
-    if (language) params.set('lang', language)
-    setSearchParams(params, { replace: true })
-  }, [sourceName, query, language, setSearchParams])
+    const params = new URLSearchParams();
+    if (sourceName) params.set("source", sourceName);
+    if (query) params.set("q", query);
+    if (language) params.set("lang", language);
+    setSearchParams(params, { replace: true });
+  }, [sourceName, query, language, setSearchParams]);
 
   const { data: results, isLoading } = useQuery({
-    queryKey: ['search', sourceName, query, language],
-    queryFn: () => api.search({ source_name: sourceName, query, language, limit: 20 }),
+    queryKey: ["search", sourceName, query, language],
+    queryFn: () =>
+      api.search({ source_name: sourceName, query, language, limit: 20 }),
     enabled: !!(sourceName || query || language),
-  })
+  });
 
   const handleSearch = (e: React.FormEvent) => {
-    e.preventDefault()
-    // The query will automatically run due to the enabled condition
-  }
+    e.preventDefault();
+  };
 
   return (
     <div className="space-y-6 max-w-4xl mx-auto">
@@ -114,7 +116,9 @@ export default function Search() {
             <Link
               key={result.snippet.id}
               to={`/snippets/${result.snippet.id}`}
-              state={{ from: window.location.pathname + window.location.search }}
+              state={{
+                from: window.location.pathname + window.location.search,
+              }}
               className="block bg-secondary/50 rounded-lg p-4 hover:bg-secondary transition-colors"
             >
               <div className="flex items-start justify-between mb-2">

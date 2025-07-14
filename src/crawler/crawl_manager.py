@@ -314,7 +314,7 @@ class CrawlManager:
                         job.documents_crawled = documents_crawled
                     if documents_enriched is not None:
                         job.documents_enriched = documents_enriched
-                    
+
                     # Prepare data for WebSocket update
                     job_data = {
                         "urls_crawled": job.processed_pages,
@@ -962,10 +962,12 @@ class CrawlManager:
                             )
                         )
 
-                    FilterChain(filters) if filters else None
+                    filter_chain = FilterChain(filters) if filters else None
 
                     # Configure BFS deep crawling strategy
-                    strategy = BFSDeepCrawlStrategy(max_depth=max_depth, include_external=False)
+                    strategy = BFSDeepCrawlStrategy(
+                        max_depth=max_depth, include_external=False, filter_chain=filter_chain
+                    )
 
                     # Configure Rate Limiter
                     rate_limiter = RateLimiter(base_delay=(1.0, 2.0), max_delay=30.0, max_retries=4)
@@ -1029,13 +1031,11 @@ class CrawlManager:
                             await self._record_failed_page(job_id, result.url, result.error_message)
 
                         # Update job progress and send WebSocket updates
-                        if crawled_count % 3 == 0 or crawled_count == 1:  # Update more frequently
+                        if crawled_count % 3 == 0 or crawled_count == 1:
                             with self.db_manager.session_scope() as session:
                                 job = session.query(CrawlJob).filter_by(id=job_id).first()
                                 if job:
-                                    # job.urls_crawled = crawled_count  # Field doesn't exist
                                     job.processed_pages = crawled_count
-                                    # Set total_pages to current count - will grow as we discover more
                                     job.total_pages = crawled_count
                                     job.snippets_extracted = total_snippets
                                     job.crawl_phase = "crawling"
@@ -1446,7 +1446,9 @@ class CrawlManager:
                     job_id=job_id,
                     code_blocks=code_blocks,
                 )
-                logger.info(f"Successfully submitted {len(code_blocks)} blocks for doc {document_id}")
+                logger.info(
+                    f"Successfully submitted {len(code_blocks)} blocks for doc {document_id}"
+                )
         except Exception as e:
             logger.error(f"Failed to submit document {document_id} to enrichment pipeline: {e}")
 
@@ -1927,7 +1929,7 @@ class CrawlManager:
                             doc.processed_content or doc.raw_content or "",
                             str(doc.url),
                             "markdown",
-                            doc.processed_content or doc.raw_content or ""
+                            doc.processed_content or doc.raw_content or "",
                         )
 
                         if code_blocks:
@@ -1940,7 +1942,9 @@ class CrawlManager:
                                 links=[],
                                 code_blocks=code_blocks,
                                 metadata=dict(doc.metadata) if doc.metadata else {},
-                                markdown_content=str(doc.markdown_content) if doc.markdown_content else None
+                                markdown_content=(
+                                    str(doc.markdown_content) if doc.markdown_content else None
+                                ),
                             )
 
                             # Process the document
@@ -2048,7 +2052,11 @@ class CrawlManager:
                 name=f"{str(original_job.name)} - Retry Failed Pages",
                 start_urls=failed_urls,
                 max_depth=0,  # Don't crawl deeper, just retry the specific pages
-                domain_restrictions=list(original_job.domain_restrictions) if original_job.domain_restrictions else [],
+                domain_restrictions=(
+                    list(original_job.domain_restrictions)
+                    if original_job.domain_restrictions
+                    else []
+                ),
                 max_pages=len(failed_urls),
                 metadata={"retry_of_job": str(job_id), "original_job_name": original_job.name},
             )
