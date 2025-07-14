@@ -1,0 +1,99 @@
+services:
+  postgres:
+    image: postgres:15
+    container_name: codedox-postgres
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: codedox
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./src/database/schema.sql:/docker-entrypoint-initdb.d/01-schema.sql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: codedox-api
+    ports:
+      - "8000:8000"
+    env_file:
+      - .env.docker
+    environment:
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_NAME: codedox
+      DB_USER: postgres
+      DB_PASSWORD: postgres
+      ENVIRONMENT: production
+    depends_on:
+      postgres:
+        condition: service_healthy
+    volumes:
+      - ./logs:/app/logs
+    command: python -m uvicorn src.api.main:app --host 0.0.0.0 --port 8000
+
+  # Note: MCP server runs in stdio mode and is exposed via the API server
+  # Uncomment below if you need standalone MCP server for debugging
+  # mcp_server:
+  #   build:
+  #     context: .
+  #     dockerfile: Dockerfile
+  #   container_name: codedox-mcp
+  #   ports:
+  #     - "8899:8899"
+  #   env_file:
+  #     - .env.docker
+  #   environment:
+  #     DB_HOST: postgres
+  #     DB_PORT: 5432
+  #     DB_NAME: codedox
+  #     DB_USER: postgres
+  #     DB_PASSWORD: postgres
+  #     MCP_PORT: 8899
+  #   depends_on:
+  #     postgres:
+  #       condition: service_healthy
+  #   volumes:
+  #     - ./logs:/app/logs
+  #   command: python -m src.mcp_server.server
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: codedox-frontend
+    ports:
+      - "5173:5173"
+    depends_on:
+      - api
+    networks:
+      - default
+
+  # Optional: pgAdmin for database management
+  pgadmin:
+    image: dpage/pgadmin4:latest
+    container_name: codedox-pgadmin
+    environment:
+      PGADMIN_DEFAULT_EMAIL: admin@example.com
+      PGADMIN_DEFAULT_PASSWORD: admin
+    ports:
+      - "5050:80"
+    depends_on:
+      - postgres
+    profiles:
+      - debug
+
+volumes:
+  postgres_data:
+
+networks:
+  default:
+    name: codedox-network
