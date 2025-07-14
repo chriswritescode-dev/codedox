@@ -352,7 +352,7 @@ class StreamableTransport:
         
         return None
     
-    async def _create_event_stream(
+    async def _create_event_stream(  # type: ignore[no-untyped-def]
         self,
         initial_responses: List[Dict[str, Any]],
         session_id: Optional[str],

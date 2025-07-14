@@ -43,9 +43,9 @@ class LLMResponse:
     content: str
     model: str
     usage: Optional[Dict[str, int]] = None
-    metadata: Dict[str, Any] = None
+    metadata: Optional[Dict[str, Any]] = None
     
-    def __post_init__(self):
+    def __post_init__(self) -> None:
         if self.metadata is None:
             self.metadata = {}
 
@@ -283,9 +283,11 @@ class LLMClient:
             llm_response = self._parse_response(response_data)
             
             # Add timing info
-            llm_response.metadata["response_time"] = time.time() - start_time
+            if llm_response.metadata is not None:
+                llm_response.metadata["response_time"] = time.time() - start_time
             
-            logger.info(f"Generated response: {len(llm_response.content)} chars in {llm_response.metadata['response_time']:.2f}s")
+            response_time = llm_response.metadata.get('response_time', 0) if llm_response.metadata else 0
+            logger.info(f"Generated response: {len(llm_response.content)} chars in {response_time:.2f}s")
             
             return llm_response
             
@@ -408,14 +410,14 @@ class LLMClient:
                 metadata={"provider": self.provider.value, "raw_response": response_data}
             )
     
-    async def close(self):
+    async def close(self) -> None:
         """Close HTTP client."""
         await self.client.aclose()
     
-    async def __aenter__(self):
+    async def __aenter__(self) -> 'LLMClient':
         """Async context manager entry."""
         return self
     
-    async def __aexit__(self, exc_type, exc_val, exc_tb):
+    async def __aexit__(self, exc_type: Any, exc_val: Any, exc_tb: Any) -> None:
         """Async context manager exit."""
         await self.close()

@@ -1,7 +1,7 @@
 """API routes for FastAPI."""
 
 import logging
-from typing import Optional, List
+from typing import Optional, List, Dict, Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
@@ -20,7 +20,7 @@ mcp_tools = MCPTools()
 
 
 @router.get("/statistics")
-async def get_statistics(db: Session = Depends(get_db)):
+async def get_statistics(db: Session = Depends(get_db)) -> Dict[str, Any]:
     """Get dashboard statistics."""
     total_sources = db.query(CrawlJob).filter_by(status='completed').count()
     
@@ -72,7 +72,7 @@ async def get_statistics(db: Session = Depends(get_db)):
 
 
 @router.get("/sources")
-async def get_sources(db: Session = Depends(get_db)):
+async def get_sources(db: Session = Depends(get_db)) -> List[Dict[str, Any]]:
     """Get all sources (completed crawl jobs)."""
     # Use completed crawl jobs as sources
     sources = db.query(CrawlJob).filter_by(status='completed').all()
@@ -99,7 +99,7 @@ async def get_sources(db: Session = Depends(get_db)):
 
 
 @router.get("/sources/{source_id}")
-async def get_source(source_id: str, db: Session = Depends(get_db)):
+async def get_source(source_id: str, db: Session = Depends(get_db)) -> Dict[str, Any]:
     """Get a specific source (crawl job)."""
     source = db.query(CrawlJob).filter_by(id=source_id).first()
     
@@ -128,7 +128,7 @@ async def get_source_documents(
     limit: int = Query(20, le=100),
     offset: int = Query(0, ge=0),
     db: Session = Depends(get_db)
-):
+) -> Dict[str, Any]:
     """Get paginated documents for a specific source."""
     source = db.query(CrawlJob).filter_by(id=source_id).first()
     
@@ -172,7 +172,7 @@ async def get_source_snippets(
     limit: int = Query(20, le=100),
     offset: int = Query(0, ge=0),
     db: Session = Depends(get_db)
-):
+) -> Dict[str, Any]:
     """Get paginated code snippets for a specific source with optional search."""
     source = db.query(CrawlJob).filter_by(id=source_id).first()
     
@@ -184,7 +184,7 @@ async def get_source_snippets(
         searcher = CodeSearcher(db)
         snippets, total = searcher.search(
             query=query,
-            source=source.name,
+            source=str(source.name),
             language=language,
             limit=limit,
             offset=offset
@@ -232,7 +232,7 @@ async def get_source_snippets(
 
 
 @router.get("/sources/{source_id}/languages")
-async def get_source_languages(source_id: str, db: Session = Depends(get_db)):
+async def get_source_languages(source_id: str, db: Session = Depends(get_db)) -> Dict[str, List[Dict[str, Any]]]:
     """Get unique languages used in a source's code snippets."""
     source = db.query(CrawlJob).filter_by(id=source_id).first()
     
@@ -257,7 +257,7 @@ async def get_source_languages(source_id: str, db: Session = Depends(get_db)):
 
 
 @router.delete("/sources/bulk")
-async def delete_sources_bulk(source_ids: List[str], db: Session = Depends(get_db)):
+async def delete_sources_bulk(source_ids: List[str], db: Session = Depends(get_db)) -> Dict[str, Any]:
     """Delete multiple sources (crawl jobs) and all their associated data."""
     if not source_ids:
         raise HTTPException(status_code=400, detail="No source IDs provided")
@@ -297,7 +297,7 @@ async def delete_sources_bulk(source_ids: List[str], db: Session = Depends(get_d
 
 
 @router.delete("/sources/{source_id}")
-async def delete_source(source_id: str, db: Session = Depends(get_db)):
+async def delete_source(source_id: str, db: Session = Depends(get_db)) -> Dict[str, str]:
     """Delete a source (crawl job) and all its associated data."""
     source = db.query(CrawlJob).filter_by(id=source_id).first()
     
@@ -312,7 +312,7 @@ async def delete_source(source_id: str, db: Session = Depends(get_db)):
 
 
 @router.get("/crawl-jobs")
-async def get_crawl_jobs(db: Session = Depends(get_db)):
+async def get_crawl_jobs(db: Session = Depends(get_db)) -> List[Dict[str, Any]]:
     """Get all crawl jobs."""
     jobs = db.query(CrawlJob).order_by(CrawlJob.created_at.desc()).all()
     
@@ -340,7 +340,7 @@ async def get_crawl_jobs(db: Session = Depends(get_db)):
 
 
 @router.get("/crawl-jobs/{job_id}")
-async def get_crawl_job(job_id: str, db: Session = Depends(get_db)):
+async def get_crawl_job(job_id: str, db: Session = Depends(get_db)) -> Dict[str, Any]:
     """Get a specific crawl job."""
     job = db.query(CrawlJob).filter_by(id=job_id).first()
     
@@ -387,7 +387,7 @@ class CreateCrawlJobRequest(BaseModel):
 @router.post("/crawl-jobs")
 async def create_crawl_job(
     request: CreateCrawlJobRequest
-):
+) -> Dict[str, Any]:
     """Create a new crawl job."""
     result = await mcp_tools.init_crawl(
         name=request.name,
@@ -406,7 +406,7 @@ async def create_crawl_job(
 
 
 @router.delete("/crawl-jobs/bulk")
-async def delete_crawl_jobs_bulk(job_ids: List[str], db: Session = Depends(get_db)):
+async def delete_crawl_jobs_bulk(job_ids: List[str], db: Session = Depends(get_db)) -> Dict[str, Any]:
     """Delete multiple crawl jobs and all their associated data."""
     if not job_ids:
         raise HTTPException(status_code=400, detail="No job IDs provided")
@@ -449,7 +449,7 @@ async def delete_crawl_jobs_bulk(job_ids: List[str], db: Session = Depends(get_d
 
 
 @router.delete("/crawl-jobs/{job_id}")
-async def delete_crawl_job(job_id: str, db: Session = Depends(get_db)):
+async def delete_crawl_job(job_id: str, db: Session = Depends(get_db)) -> Dict[str, str]:
     """Delete a crawl job and all its associated data."""
     job = db.query(CrawlJob).filter_by(id=job_id).first()
     
@@ -471,7 +471,7 @@ async def delete_crawl_job(job_id: str, db: Session = Depends(get_db)):
 
 
 @router.post("/crawl-jobs/{job_id}/cancel")
-async def cancel_crawl_job(job_id: str):
+async def cancel_crawl_job(job_id: str) -> Dict[str, str]:
     """Cancel a running crawl job."""
     crawl_manager = CrawlManager()
     success = await crawl_manager.cancel_job(job_id)
@@ -483,7 +483,7 @@ async def cancel_crawl_job(job_id: str):
 
 
 @router.post("/crawl-jobs/{job_id}/resume")
-async def resume_crawl_job(job_id: str):
+async def resume_crawl_job(job_id: str) -> Dict[str, str]:
     """Resume a failed or stalled crawl job."""
     crawl_manager = CrawlManager()
     success = await crawl_manager.resume_job(job_id)
@@ -495,7 +495,7 @@ async def resume_crawl_job(job_id: str):
 
 
 @router.post("/crawl-jobs/{job_id}/restart-enrichment")
-async def restart_enrichment(job_id: str):
+async def restart_enrichment(job_id: str) -> Dict[str, str]:
     """Restart only the enrichment process for a crawl job."""
     crawl_manager = CrawlManager()
     success = await crawl_manager.restart_enrichment(job_id)
@@ -507,7 +507,7 @@ async def restart_enrichment(job_id: str):
 
 
 @router.post("/crawl-jobs/{job_id}/retry-failed")
-async def retry_failed_pages(job_id: str):
+async def retry_failed_pages(job_id: str) -> Dict[str, str]:
     """Create a new crawl job to retry failed pages from a previous job."""
     crawl_manager = CrawlManager()
     new_job_id = await crawl_manager.retry_failed_pages(job_id)
@@ -530,7 +530,7 @@ async def search_snippets(
     limit: int = Query(20, le=100),
     offset: int = Query(0, ge=0),
     db: Session = Depends(get_db)
-):
+) -> Dict[str, Any]:
     """Search code snippets."""
     searcher = CodeSearcher(db)
     snippets, total = searcher.search(
@@ -541,28 +541,33 @@ async def search_snippets(
         offset=offset
     )
     
-    return [
-        {
-            "snippet": {
-                "id": str(snippet.id),
-                "code": snippet.code_content,
-                "language": snippet.language,
-                "description": snippet.description,
-                "source_url": snippet.source_url or snippet.document.url,
-                "document_title": snippet.document.title,
-                "file_path": snippet.source_url,
-                "start_line": snippet.line_start,
-                "end_line": snippet.line_end,
-                "created_at": snippet.created_at.isoformat(),
-            },
-            "score": 1.0,  # Placeholder score
-        }
-        for snippet in snippets
-    ]
+    return {
+        "results": [
+            {
+                "snippet": {
+                    "id": str(snippet.id),
+                    "code": snippet.code_content,
+                    "language": snippet.language,
+                    "description": snippet.description,
+                    "source_url": snippet.source_url or snippet.document.url,
+                    "document_title": snippet.document.title,
+                    "file_path": snippet.source_url,
+                    "start_line": snippet.line_start,
+                    "end_line": snippet.line_end,
+                    "created_at": snippet.created_at.isoformat(),
+                },
+                "score": 1.0,  # Placeholder score
+            }
+            for snippet in snippets
+        ],
+        "total": total,
+        "limit": limit,
+        "offset": offset
+    }
 
 
 @router.get("/snippets/{snippet_id}")
-async def get_snippet(snippet_id: str, db: Session = Depends(get_db)):
+async def get_snippet(snippet_id: str, db: Session = Depends(get_db)) -> Dict[str, Any]:
     """Get a specific code snippet."""
     snippet = db.query(CodeSnippet).filter(CodeSnippet.id == int(snippet_id)).first()
     
@@ -585,24 +590,24 @@ async def get_snippet(snippet_id: str, db: Session = Depends(get_db)):
 
 
 @router.get("/health")
-async def health_check():
+async def health_check() -> Dict[str, str]:
     """Health check endpoint."""
     return {"status": "healthy"}
 
 
 @router.get("/health/database")
-async def health_database(db: Session = Depends(get_db)):
+async def health_database(db: Session = Depends(get_db)) -> Dict[str, str]:
     """Check database health."""
     try:
         from sqlalchemy import text
         db.execute(text("SELECT 1"))
         return {"status": "healthy", "message": "Database is connected"}
     except Exception as e:
-        return {"status": "error", "message": f"Database error: {str(e)}"}
+        raise HTTPException(status_code=500, detail=f"Database error: {str(e)}")
 
 
 @router.get("/health/llm")
-async def health_llm():
+async def health_llm() -> Dict[str, Any]:
     """Check LLM service health."""
     from ..llm.client import LLMClient
     
@@ -636,7 +641,7 @@ async def health_llm():
 
 
 @router.get("/health/crawl-jobs")
-async def health_crawl_jobs():
+async def health_crawl_jobs() -> Dict[str, Any]:
     """Check health of crawl jobs."""
     from ..crawler.health_monitor import get_health_monitor
     
@@ -652,7 +657,7 @@ async def health_crawl_jobs():
 
 
 @router.get("/health/crawl-jobs/{job_id}")
-async def health_crawl_job(job_id: str):
+async def health_crawl_job(job_id: str) -> Dict[str, Any]:
     """Check health of a specific crawl job."""
     from ..crawler.health_monitor import get_health_monitor
     

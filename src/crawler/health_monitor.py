@@ -3,7 +3,7 @@
 import asyncio
 import logging
 from datetime import datetime, timedelta
-from typing import List
+from typing import List, Dict, Any
 
 from ..database import get_db_manager, CrawlJob
 from ..config import get_settings
@@ -21,12 +21,12 @@ STALLED_THRESHOLD = 300  # 5 minutes
 class CrawlHealthMonitor:
     """Monitor health of running crawl jobs."""
     
-    def __init__(self):
+    def __init__(self) -> None:
         """Initialize the health monitor."""
         self.db_manager = get_db_manager()
         self.running = False
         
-    async def start(self):
+    async def start(self) -> None:
         """Start the health monitoring loop."""
         self.running = True
         logger.info("Starting crawl health monitor")
@@ -39,12 +39,12 @@ class CrawlHealthMonitor:
                 logger.error(f"Error in health monitor: {e}")
                 await asyncio.sleep(HEALTH_CHECK_INTERVAL)
     
-    async def stop(self):
+    async def stop(self) -> None:
         """Stop the health monitoring loop."""
         logger.info("Stopping crawl health monitor")
         self.running = False
     
-    async def _check_stalled_jobs(self):
+    async def _check_stalled_jobs(self) -> None:
         """Check for stalled jobs and mark them as failed."""
         with self.db_manager.session_scope() as session:
             # Find running jobs with old heartbeats
@@ -93,7 +93,7 @@ class CrawlHealthMonitor:
             
             return [str(job.id) for job in stalled_jobs]
     
-    def check_job_health(self, job_id: str) -> dict:
+    def check_job_health(self, job_id: str) -> Dict[str, Any]:
         """Check health status of a specific job.
         
         Args:

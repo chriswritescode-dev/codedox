@@ -2,7 +2,7 @@
 
 import re
 import logging
-from typing import Dict, List, Optional, NamedTuple
+from typing import Dict, List, Optional, NamedTuple, Any
 from pathlib import Path
 
 try:
@@ -36,14 +36,14 @@ class DetectionResult(NamedTuple):
 class LanguageDetector:
     """Detects programming language of code snippets using multiple methods."""
 
-    def __init__(self):
+    def __init__(self) -> None:
         """Initialize the language detector."""
-        self.parsers = {}
-        self.language_patterns = {}
+        self.parsers: Dict[str, Any] = {}
+        self.language_patterns: Dict[str, Any] = {}
         self._init_tree_sitter()
         self._init_patterns()
 
-    def _init_tree_sitter(self):
+    def _init_tree_sitter(self) -> None:
         """Initialize tree-sitter parsers for supported languages."""
         if not TREE_SITTER_AVAILABLE:
             return
@@ -71,20 +71,16 @@ class LanguageDetector:
                     lang = module.LANGUAGE
 
                 # Wrap PyCapsule in Language object if needed
-                if hasattr(Language, 'build_library'):
-                    # Older API
-                    parser.set_language(Language(lang))
-                else:
-                    # Newer API
-                    from tree_sitter import Language as TSLanguage
-                    parser.language = TSLanguage(lang)
+                # Newer API
+                from tree_sitter import Language as TSLanguage
+                parser.language = TSLanguage(lang)
 
                 self.parsers[lang_name] = parser
                 logger.debug(f"Initialized tree-sitter parser for {lang_name}")
             except Exception as e:
                 logger.warning(f"Failed to initialize {lang_name} parser: {e}")
 
-    def _init_patterns(self):
+    def _init_patterns(self) -> None:
         """Initialize regex patterns for fallback language detection."""
         self.language_patterns = {
             'python': {
@@ -250,7 +246,7 @@ class LanguageDetector:
 
         return DetectionResult('unknown', 0.0, 'tree-sitter')
 
-    def _count_errors(self, node: 'Node') -> int:
+    def _count_errors(self, node: Any) -> int:
         """Count error nodes in the parse tree."""
         if node.type == 'ERROR' or node.is_missing:
             return 1
@@ -260,7 +256,7 @@ class LanguageDetector:
             count += self._count_errors(child)
         return count
 
-    def _count_nodes(self, node: 'Node') -> int:
+    def _count_nodes(self, node: Any) -> int:
         """Count total nodes in the parse tree."""
         count = 1
         for child in node.children:

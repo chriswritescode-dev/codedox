@@ -46,7 +46,7 @@ class DatabaseManager:
             bind=self.engine
         )
 
-    def init_db(self, drop_existing: bool = False):
+    def init_db(self, drop_existing: bool = False) -> None:
         """Initialize database schema.
         
         Args:
@@ -66,7 +66,7 @@ class DatabaseManager:
                     WHERE table_schema = 'public' 
                     AND table_name IN ('crawl_jobs', 'documents', 'code_snippets', 'page_links')
                 """))
-                table_count = result.scalar()
+                table_count = result.scalar() or 0
                 
                 if table_count > 0 and not drop_existing:
                     logger.info(f"Database already initialized ({table_count} tables exist)")
@@ -121,7 +121,7 @@ class DatabaseManager:
         finally:
             session.close()
 
-    def execute_sql_file(self, filepath: str):
+    def execute_sql_file(self, filepath: str) -> None:
         """Execute SQL commands from a file.
         
         Args:
@@ -212,7 +212,7 @@ def get_session() -> Session:
     return get_db_manager().get_session()
 
 
-def init_db(drop_existing: bool = False):
+def init_db(drop_existing: bool = False) -> None:
     """Initialize the database."""
     db_manager = get_db_manager()
     db_manager.init_db(drop_existing=drop_existing)

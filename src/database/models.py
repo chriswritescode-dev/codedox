@@ -1,7 +1,7 @@
 """SQLAlchemy models for the code extraction database."""
 
 from datetime import datetime
-from typing import Dict, Any
+from typing import Dict, Any, List, TYPE_CHECKING
 from uuid import uuid4
 from sqlalchemy import (
     Column, String, Integer, Text, DateTime, ForeignKey,
@@ -9,14 +9,14 @@ from sqlalchemy import (
     Index, func
 )
 from sqlalchemy.dialects.postgresql import UUID, JSONB
-from sqlalchemy.ext.declarative import declarative_base
+from sqlalchemy.orm import declarative_base
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import text
 
 Base = declarative_base()
 
 
-class CrawlJob(Base):
+class CrawlJob(Base):  # type: ignore[misc,valid-type]
     """Represents a crawling job with configuration and progress tracking."""
     
     __tablename__ = 'crawl_jobs'
@@ -24,9 +24,9 @@ class CrawlJob(Base):
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid4)
     name = Column(String, nullable=False)
     domain = Column(String, unique=True)
-    start_urls = Column(ARRAY(Text), nullable=False)
+    start_urls: Column[List[str]] = Column(ARRAY(Text), nullable=False)
     max_depth = Column(Integer, default=1, nullable=False)
-    domain_restrictions = Column(ARRAY(Text))
+    domain_restrictions: Column[List[str]] = Column(ARRAY(Text))
     status = Column(String(20), default='pending', nullable=False)
     total_pages = Column(Integer, default=0)
     processed_pages = Column(Integer, default=0)
@@ -86,7 +86,7 @@ class CrawlJob(Base):
         }
 
 
-class Document(Base):
+class Document(Base):  # type: ignore[misc,valid-type]
     """Represents a crawled document/page."""
     
     __tablename__ = 'documents'
@@ -121,7 +121,7 @@ class Document(Base):
     )
 
 
-class CodeSnippet(Base):
+class CodeSnippet(Base):  # type: ignore[misc,valid-type]
     """Represents an extracted code snippet with metadata."""
     
     __tablename__ = 'code_snippets'
@@ -141,11 +141,11 @@ class CodeSnippet(Base):
     # Enhanced context fields
     section_title = Column(Text)
     section_content = Column(Text)  # Full section containing the code
-    related_snippets = Column(ARRAY(Integer))  # IDs of related code snippets
+    related_snippets: Column[List[int]] = Column(ARRAY(Integer))  # IDs of related code snippets
     
-    functions = Column(ARRAY(Text))
-    imports = Column(ARRAY(Text))
-    keywords = Column(ARRAY(Text))
+    functions: Column[List[str]] = Column(ARRAY(Text))
+    imports: Column[List[str]] = Column(ARRAY(Text))
+    keywords: Column[List[str]] = Column(ARRAY(Text))
     snippet_type = Column(String(20), default='code')
     source_url = Column(Text, index=True)
     meta_data = Column(JSONB, default={})
@@ -199,7 +199,7 @@ CODE:
 ----------------------------------------"""
 
 
-class PageLink(Base):
+class PageLink(Base):  # type: ignore[misc,valid-type]
     """Represents links discovered during crawling for depth tracking."""
     
     __tablename__ = 'page_links'
@@ -222,7 +222,7 @@ class PageLink(Base):
     )
 
 
-class FailedPage(Base):
+class FailedPage(Base):  # type: ignore[misc,valid-type]
     """Represents a page that failed to be crawled after all retries."""
     
     __tablename__ = 'failed_pages'

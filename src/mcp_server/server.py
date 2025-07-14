@@ -20,14 +20,14 @@ settings = get_settings()
 class MCPServer:
     """MCP server for exposing code extraction tools to AI assistants."""
     
-    def __init__(self):
+    def __init__(self) -> None:
         """Initialize the MCP server."""
         self.server = Server("rag-pipeline")
         self.db_manager = get_db_manager()
         self.tools = MCPTools()
         self._register_handlers()
     
-    def _register_handlers(self):
+    def _register_handlers(self) -> None:
         """Register MCP tool handlers."""
         
         @self.server.list_tools()
@@ -37,7 +37,7 @@ class MCPServer:
                 Tool(
                     name="init_crawl",
                     description="Initialize a new web crawl job for documentation",
-                    input_schema={
+                    inputSchema={
                         "type": "object",
                         "properties": {
                             "name": {
@@ -71,7 +71,7 @@ class MCPServer:
                 Tool(
                     name="get_sources",
                     description="Get list of available libraries/sources with stats",
-                    input_schema={
+                    inputSchema={
                         "type": "object",
                         "properties": {
                             "job_id": {
@@ -84,7 +84,7 @@ class MCPServer:
                 Tool(
                     name="search_content",
                     description="Search code snippets across all sources or in a specific library",
-                    input_schema={
+                    inputSchema={
                         "type": "object",
                         "properties": {
                             "query": {
@@ -113,7 +113,7 @@ class MCPServer:
                 Tool(
                     name="get_snippet_details",
                     description="Get detailed information about a specific code snippet by ID",
-                    input_schema={
+                    inputSchema={
                         "type": "object",
                         "properties": {
                             "snippet_id": {
@@ -130,6 +130,7 @@ class MCPServer:
         async def call_tool(name: str, arguments: Dict[str, Any]) -> List[TextContent]:
             """Execute a tool and return results."""
             try:
+                result: Any
                 if name == "init_crawl":
                     result = await self.tools.init_crawl(
                         name=arguments["name"],
@@ -177,7 +178,7 @@ class MCPServer:
                 }
                 return [TextContent(type="text", text=json.dumps(error_result, indent=2))]
     
-    async def start(self):
+    async def start(self) -> None:
         """Start the MCP server with stdio transport."""
         logger.info(f"Starting MCP server on stdio transport")
         
@@ -194,12 +195,12 @@ class MCPServer:
             logger.error(f"Failed to start MCP server: {e}")
             raise
     
-    def run(self):
+    def run(self) -> None:
         """Run the MCP server (blocking)."""
         asyncio.run(self.start())
 
 
-def main():
+def main() -> None:
     """Main entry point for MCP server."""
     # Test database connection
     db_manager = get_db_manager()

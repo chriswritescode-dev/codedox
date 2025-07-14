@@ -3,7 +3,7 @@
 import logging
 import hashlib
 from contextlib import asynccontextmanager
-from typing import List, Optional, Dict, Any
+from typing import List, Optional, Dict, Any, AsyncGenerator
 
 from fastapi import FastAPI, HTTPException, Depends, Query, UploadFile, File, Request, Header
 from fastapi.middleware.cors import CORSMiddleware
@@ -54,7 +54,7 @@ class UploadMarkdownRequest(BaseModel):
 
 # Application lifespan manager
 @asynccontextmanager
-async def lifespan(app: FastAPI):
+async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     """Manage application lifecycle."""
     # Startup
     logger.info("Starting CodeDox API...")
@@ -139,7 +139,7 @@ async def mcp_streamable_endpoint(
     accept: str = Header(None),
     origin: Optional[str] = Header(None),
     last_event_id: Optional[str] = Header(None)
-):
+) -> Any:
     """Handle MCP requests using the newest streamable HTTP transport."""
     return await streamable_transport.handle_request(
         request,
@@ -152,7 +152,7 @@ async def mcp_streamable_endpoint(
 
 # Health check endpoint
 @app.get("/health")
-async def health_check():
+async def health_check() -> Dict[str, str]:
     """Check API health status."""
     return {
         "status": "healthy",
@@ -163,7 +163,7 @@ async def health_check():
 
 # Crawl endpoints
 @app.post("/crawl/init", response_model=Dict[str, Any])
-async def init_crawl(request: CrawlRequest):
+async def init_crawl(request: CrawlRequest) -> Dict[str, Any]:
     """Initialize a new crawl job."""
     try:
         result = await mcp_tools.init_crawl(
@@ -185,7 +185,7 @@ async def init_crawl(request: CrawlRequest):
 
 
 @app.get("/crawl/status/{job_id}")
-async def get_crawl_status(job_id: str):
+async def get_crawl_status(job_id: str) -> Dict[str, Any]:
     """Get status of a crawl job."""
     try:
         result = await mcp_tools.get_crawl_status(job_id)
@@ -203,7 +203,7 @@ async def get_crawl_status(job_id: str):
 
 
 @app.post("/crawl/cancel/{job_id}")
-async def cancel_crawl(job_id: str):
+async def cancel_crawl(job_id: str) -> Dict[str, Any]:
     """Cancel a running crawl job."""
     try:
         result = await mcp_tools.cancel_crawl(job_id)
@@ -223,7 +223,7 @@ async def cancel_crawl(job_id: str):
 
 # Search endpoints
 @app.post("/search")
-async def search_code(request: SearchRequest, db: Session = Depends(get_db)):
+async def search_code(request: SearchRequest, db: Session = Depends(get_db)) -> Dict[str, Any]:
     """Search for code snippets."""
     try:
         searcher = CodeSearcher(db)
@@ -253,7 +253,7 @@ async def search_code(request: SearchRequest, db: Session = Depends(get_db)):
 
 
 @app.get("/search/languages")
-async def get_languages(db: Session = Depends(get_db)):
+async def get_languages(db: Session = Depends(get_db)) -> Dict[str, List[str]]:
     """Get list of available programming languages."""
     try:
         searcher = CodeSearcher(db)
@@ -271,7 +271,7 @@ async def get_recent_snippets(
     language: Optional[str] = None,
     limit: int = Query(default=10, ge=1, le=50),
     db: Session = Depends(get_db)
-):
+) -> Dict[str, Any]:
     """Get recently added snippets."""
     try:
         searcher = CodeSearcher(db)
@@ -296,7 +296,7 @@ async def get_recent_snippets(
 
 # Upload endpoints
 @app.post("/upload/markdown")
-async def upload_markdown(request: UploadMarkdownRequest, db: Session = Depends(get_db)):
+async def upload_markdown(request: UploadMarkdownRequest, db: Session = Depends(get_db)) -> Dict[str, Any]:
     """Upload and process markdown content."""
     try:
         from ..parser import CodeExtractor
@@ -375,7 +375,7 @@ async def upload_file(
     file: UploadFile = File(...),
     source_url: Optional[str] = None,
     db: Session = Depends(get_db)
-):
+) -> Dict[str, Any]:
     """Upload a markdown file for processing."""
     try:
         # Check file type
@@ -411,7 +411,7 @@ async def upload_file(
 
 # Snippet endpoints
 @app.get("/snippets/{snippet_id}")
-async def get_snippet(snippet_id: int, db: Session = Depends(get_db)):
+async def get_snippet(snippet_id: int, db: Session = Depends(get_db)) -> Dict[str, Any]:
     """Get details of a specific code snippet."""
     try:
         from ..database.models import CodeSnippet
@@ -436,7 +436,7 @@ async def export_snippets(
     job_id: str,
     format: str = Query(default="json", regex="^(json|markdown)$"),
     db: Session = Depends(get_db)
-):
+) -> Any:
     """Export snippets from a crawl job."""
     try:
         searcher = CodeSearcher(db)
@@ -464,7 +464,7 @@ async def export_snippets(
 
 # Error handlers
 @app.exception_handler(404)
-async def not_found_handler(request, exc):
+async def not_found_handler(request: Request, exc: Any) -> JSONResponse:
     """Handle 404 errors."""
     return JSONResponse(
         status_code=404,
@@ -473,7 +473,7 @@ async def not_found_handler(request, exc):
 
 
 @app.exception_handler(500)
-async def internal_error_handler(request, exc):
+async def internal_error_handler(request: Request, exc: Any) -> JSONResponse:
     """Handle 500 errors."""
     logger.error(f"Internal server error: {exc}")
     return JSONResponse(

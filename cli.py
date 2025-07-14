@@ -379,7 +379,7 @@ def crawl_resume(job_id: str):
 
     async def run_resume():
         manager = CrawlManager()
-        success = await manager.resume_job(job_id)
+        success = await manager.resume_failed_job(job_id)
 
         if success:
             console.print(f"[green]✓[/green] Job {job_id} resumed successfully")
@@ -588,7 +588,7 @@ def enrich_missing(job_id: Optional[str], limit: int):
                     console.print(f"\nProcessing job {job_id} ({len(docs)} documents)")
 
                     # Use the resume enrichment functionality
-                    success = await manager.resume_job(job_id)
+                    success = await manager.resume_failed_job(job_id)
                     if success:
                         console.print(f"[green]✓[/green] Enrichment started for job {job_id}")
                     else:

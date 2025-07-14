@@ -19,12 +19,12 @@ class EnrichedCodeBlock:
     detected_language: Optional[str] = None
     enriched_title: Optional[str] = None
     enriched_description: Optional[str] = None
-    keywords: List[str] = None
-    frameworks: List[str] = None
+    keywords: Optional[List[str]] = None
+    frameworks: Optional[List[str]] = None
     purpose: Optional[str] = None
-    dependencies: List[str] = None
+    dependencies: Optional[List[str]] = None
 
-    def __post_init__(self):
+    def __post_init__(self) -> None:
         if self.keywords is None:
             self.keywords = []
         if self.frameworks is None:
@@ -163,7 +163,7 @@ class MetadataEnricher:
                 logger.error(f"Error enriching block: {result}")
                 enriched_blocks.append(EnrichedCodeBlock(original=block))
             else:
-                enriched_blocks.append(result)
+                enriched_blocks.append(result)  # type: ignore
 
         successful_count = sum(1 for r in results if not isinstance(r, Exception))
         logger.info(f"Completed enrichment: {successful_count}/{len(code_blocks)} successful")
@@ -232,7 +232,7 @@ Provide structured metadata in the specified JSON format."""
                 # Validate structure
                 self._validate_metadata(metadata)
 
-                return metadata
+                return metadata  # type: ignore[no-any-return]
             else:
                 logger.error(f"No JSON found in response: {response}")
                 return {}
@@ -245,7 +245,7 @@ Provide structured metadata in the specified JSON format."""
             logger.error(f"Error parsing LLM response: {e}")
             return {}
 
-    def _validate_metadata(self, metadata: Dict[str, Any]):
+    def _validate_metadata(self, metadata: Dict[str, Any]) -> None:
         """Validate and clean metadata structure."""
         # Ensure lists are lists
         for field in ['keywords', 'frameworks', 'dependencies']:

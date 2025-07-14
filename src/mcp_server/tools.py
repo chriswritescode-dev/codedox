@@ -15,7 +15,7 @@ settings = get_settings()
 class MCPTools:
     """Implementation of MCP tools for code extraction."""
     
-    def __init__(self):
+    def __init__(self) -> None:
         """Initialize MCP tools."""
         self.db_manager = get_db_manager()
         self.crawl_manager = CrawlManager()

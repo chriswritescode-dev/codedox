@@ -4,7 +4,7 @@ import os
 import logging
 import logging.handlers
 from pathlib import Path
-from typing import Optional, List
+from typing import Optional, List, Any
 from pydantic import Field
 from pydantic.types import SecretStr
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -52,7 +52,7 @@ class LLMConfig(BaseSettings):
 
     endpoint: str = "http://localhost:8080"
     model: str = "gpt-4"
-    api_key: SecretStr = Field(default="", env="LLM_API_KEY")
+    api_key: SecretStr = Field(default=SecretStr(""), validation_alias="LLM_API_KEY")
     max_tokens: int = 1000
     temperature: float = 0.1
     max_concurrent_requests: int = 20
@@ -172,8 +172,8 @@ class Settings(BaseSettings):
 
     # General settings
     output_separator: str = "----------------------------------------"
-    environment: str = Field(default="development", env="ENVIRONMENT")
-    debug: bool = Field(default=False, env="DEBUG")
+    environment: str = Field(default="development", validation_alias="ENVIRONMENT")
+    debug: bool = Field(default=False, validation_alias="DEBUG")
 
     model_config = SettingsConfigDict(
         env_file=".env",
@@ -183,7 +183,7 @@ class Settings(BaseSettings):
         validate_assignment=True,
     )
     
-    def __init__(self, **kwargs):
+    def __init__(self, **kwargs: Any) -> None:
         """Initialize settings with sub-configurations."""
         super().__init__(**kwargs)
         
@@ -197,7 +197,7 @@ class Settings(BaseSettings):
         self.api = APIConfig()
         self.logging = LoggingConfig()
 
-    def setup_logging(self):
+    def setup_logging(self) -> None:
         """Configure logging based on settings."""
         log_level = getattr(logging, self.logging.level.upper(), logging.INFO)
 
