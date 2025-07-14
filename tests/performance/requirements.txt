@@ -1,0 +1,13 @@
+# Performance Testing Requirements
+# Install with: pip install -r tests/performance/requirements.txt
+
+# Visualization libraries
+matplotlib>=3.5.0
+seaborn>=0.12.0
+
+# Data analysis
+numpy>=1.21.0
+
+# Already in main project but listed for clarity
+httpx>=0.24.0
+tenacity>=8.0.0

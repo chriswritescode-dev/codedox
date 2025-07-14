@@ -1,0 +1,60 @@
+# Core Framework
+fastapi==0.115.5
+uvicorn[standard]==0.32.1
+pydantic==2.10.4
+pydantic-settings==2.6.1
+
+# Database
+psycopg[binary,pool]==3.2.3
+sqlalchemy==2.0.36
+alembic==1.14.0
+
+# Language Detection
+tree-sitter>=0.21.0
+tree-sitter-python>=0.21.0
+tree-sitter-javascript>=0.21.0
+tree-sitter-java>=0.21.0
+tree-sitter-typescript>=0.21.0
+tree-sitter-go>=0.21.0
+tree-sitter-rust>=0.21.0
+tree-sitter-cpp>=0.21.0
+tree-sitter-c-sharp>=0.21.0
+tree-sitter-ruby>=0.21.0
+tree-sitter-php>=0.21.0
+
+# Web Crawling
+crawl4ai>=0.4.0
+httpx==0.28.1  # Still needed for LLM client
+
+# MCP Server
+mcp>=0.9.0
+
+# Utilities
+python-dotenv==1.0.1
+PyYAML==6.0.2
+click==8.1.8
+rich==13.9.4
+python-multipart==0.0.19
+
+# Web UI
+jinja2==3.1.5
+websockets==14.1
+
+# Development
+pytest==8.3.4
+pytest-asyncio==0.25.2
+pytest-cov==6.0.0
+black==24.10.0
+flake8==7.1.1
+mypy==1.13.0
+pre-commit==4.0.1
+
+# Optional: For LLM integration
+openai==1.59.6
+anthropic==0.42.0
+tenacity==9.0.0  # For retry logic
+
+# Optional: For performance testing and visualization
+matplotlib>=3.5.0
+seaborn>=0.12.0
+numpy>=1.21.0

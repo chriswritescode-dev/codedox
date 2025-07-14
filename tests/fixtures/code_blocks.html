@@ -1,0 +1,167 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>HTML Code Block Test Fixtures</title>
+</head>
+<body>
+    <h1>HTML Code Block Formats</h1>
+
+    <h2>Standard pre/code combination</h2>
+    <pre><code class="language-python">def standard_format():
+    """This is the most common format"""
+    return "pre > code"</code></pre>
+
+    <h2>Pre with language class</h2>
+    <pre class="language-javascript">
+function preOnly() {
+    // Some docs use pre without nested code
+    console.log("No code tag");
+}</pre>
+
+    <h2>Code tag variations</h2>
+    
+    <h3>Inline code (should be filtered by line count)</h3>
+    <code>const inline = "single line";</code>
+
+    <h3>Multi-line code without pre</h3>
+    <code class="language-rust">
+fn main() {
+    println!("Multi-line code");
+    println!("without pre tag");
+}
+    </code>
+
+    <h2>Alternative class prefixes</h2>
+    <pre><code class="lang-go">package main
+
+import "fmt"
+
+func main() {
+    fmt.Println("lang- prefix")
+}</code></pre>
+
+    <pre><code class="highlight-sql">SELECT * FROM users
+WHERE active = true
+ORDER BY created_at DESC;</code></pre>
+
+    <h2>HTML entities preservation</h2>
+    <pre><code class="language-html">&lt;div class="container"&gt;
+    &lt;p&gt;HTML entities: &amp;amp; &amp;lt; &amp;gt; &amp;quot; &amp;apos;&lt;/p&gt;
+    &lt;p&gt;Numeric: &amp;#60; &amp;#62; &amp;#x3C; &amp;#x3E;&lt;/p&gt;
+&lt;/div&gt;</code></pre>
+
+    <h2>Syntax highlighting with spans</h2>
+    <pre><code class="language-python"><span class="keyword">def</span> <span class="function">highlighted</span>():
+    <span class="comment"># IDEs often add spans for syntax highlighting</span>
+    <span class="keyword">return</span> <span class="string">"should extract without spans"</span></code></pre>
+
+    <h2>Custom component formats</h2>
+    
+    <div class="code-block" data-language="typescript">
+        <pre><code>interface User {
+    id: number;
+    name: string;
+    email: string;
+}</code></pre>
+    </div>
+
+    <CodeBlock language="jsx">
+function Component() {
+    return &lt;div&gt;Custom component&lt;/div&gt;;
+}
+    </CodeBlock>
+
+    <Highlight language="python">
+async def custom_highlight():
+    await asyncio.sleep(1)
+    return "done"
+    </Highlight>
+
+    <h2>Nested structures</h2>
+    <div class="documentation">
+        <p>Here's an example:</p>
+        <pre><code class="language-java">public class Example {
+    public static void main(String[] args) {
+        System.out.println("Nested in div");
+    }
+}</code></pre>
+    </div>
+
+    <h2>Whitespace preservation tests</h2>
+    <pre><code>
+    # Leading empty line
+def spaced_function():
+    """
+    Multi-line docstring
+    with irregular spacing
+    """
+    
+    # Empty line above
+    result = {
+        'tabs':	'here',	# Tab characters
+        'spaces':    'here',  # Multiple spaces
+        'mixed': 	  'indentation'  # Tab + spaces
+    }
+    
+    return result
+    # Trailing empty line
+
+</code></pre>
+
+    <h2>GitHub-style code blocks in HTML</h2>
+    <div class="highlight highlight-python">
+        <pre><code>def github_style():
+    # GitHub uses these classes
+    return "highlighted"</code></pre>
+    </div>
+
+    <h2>Prism.js format</h2>
+    <pre class="line-numbers"><code class="language-css">body {
+    margin: 0;
+    padding: 0;
+    font-family: sans-serif;
+}</code></pre>
+
+    <h2>Rouge (Jekyll) format</h2>
+    <div class="language-ruby highlighter-rouge">
+        <pre class="highlight"><code>puts "Hello from Rouge"
+array = [1, 2, 3]
+array.each { |n| puts n }</code></pre>
+    </div>
+
+    <h2>Line numbers in table format</h2>
+    <table class="code-table">
+        <tr>
+            <td class="line-numbers">1<br>2<br>3</td>
+            <td class="code">
+                <pre><code>function withLineNumbers() {
+    return "Some docs use tables";
+}</code></pre>
+            </td>
+        </tr>
+    </table>
+
+    <h2>Edge cases</h2>
+
+    <h3>Empty code blocks</h3>
+    <pre><code></code></pre>
+    <pre><code class="language-python"></code></pre>
+
+    <h3>Code with only whitespace</h3>
+    <pre><code>
+
+    </code></pre>
+
+    <h3>Malformed nesting</h3>
+    <code><pre>def backwards():
+    return "pre inside code"</pre></code>
+
+    <h3>Multiple code tags in one pre</h3>
+    <pre>
+        <code class="language-python">first_block = 1</code>
+        Some text between
+        <code class="language-python">second_block = 2</code>
+    </pre>
+
+</body>
+</html>
