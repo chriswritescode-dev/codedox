@@ -11,25 +11,25 @@ logger = logging.getLogger(__name__)
 class ConnectionManager:
     """Manages WebSocket connections for real-time updates."""
     
-    def __init__(self):
+    def __init__(self) -> None:
         self.active_connections: Dict[str, WebSocket] = {}
         self.subscriptions: Dict[str, Set[str]] = {}  # client_id -> set of job_ids
     
-    async def connect(self, websocket: WebSocket, client_id: str):
+    async def connect(self, websocket: WebSocket, client_id: str) -> None:
         """Accept a new WebSocket connection."""
         await websocket.accept()
         self.active_connections[client_id] = websocket
         self.subscriptions[client_id] = set()
         logger.info(f"Client {client_id} connected")
     
-    def disconnect(self, client_id: str):
+    def disconnect(self, client_id: str) -> None:
         """Remove a WebSocket connection."""
         if client_id in self.active_connections:
             del self.active_connections[client_id]
             del self.subscriptions[client_id]
             logger.info(f"Client {client_id} disconnected")
     
-    async def send_message(self, client_id: str, message: dict):
+    async def send_message(self, client_id: str, message: dict) -> None:
         """Send a message to a specific client."""
         if client_id in self.active_connections:
             try:
@@ -38,7 +38,7 @@ class ConnectionManager:
                 logger.error(f"Error sending message to {client_id}: {e}")
                 self.disconnect(client_id)
     
-    async def broadcast(self, message: dict):
+    async def broadcast(self, message: dict) -> None:
         """Broadcast a message to all connected clients."""
         disconnected_clients = []
         
@@ -53,7 +53,7 @@ class ConnectionManager:
         for client_id in disconnected_clients:
             self.disconnect(client_id)
     
-    async def broadcast_to_subscribers(self, job_id: str, message: dict):
+    async def broadcast_to_subscribers(self, job_id: str, message: dict) -> None:
         """Broadcast a message to clients subscribed to a specific job."""
         disconnected_clients = []
         
@@ -69,13 +69,13 @@ class ConnectionManager:
         for client_id in disconnected_clients:
             self.disconnect(client_id)
     
-    def subscribe(self, client_id: str, job_id: str):
+    def subscribe(self, client_id: str, job_id: str) -> None:
         """Subscribe a client to updates for a specific job."""
         if client_id in self.subscriptions:
             self.subscriptions[client_id].add(job_id)
             logger.info(f"Client {client_id} subscribed to job {job_id}")
     
-    def unsubscribe(self, client_id: str, job_id: str):
+    def unsubscribe(self, client_id: str, job_id: str) -> None:
         """Unsubscribe a client from updates for a specific job."""
         if client_id in self.subscriptions:
             self.subscriptions[client_id].discard(job_id)
@@ -86,7 +86,7 @@ class ConnectionManager:
 manager = ConnectionManager()
 
 
-async def websocket_endpoint(websocket: WebSocket, client_id: str):
+async def websocket_endpoint(websocket: WebSocket, client_id: str) -> None:
     """WebSocket endpoint handler."""
     await manager.connect(websocket, client_id)
     
@@ -139,7 +139,7 @@ async def websocket_endpoint(websocket: WebSocket, client_id: str):
         manager.disconnect(client_id)
 
 
-async def notify_crawl_update(job_id: str, status: str, data: dict):
+async def notify_crawl_update(job_id: str, status: str, data: dict) -> None:
     """Notify subscribers about crawl job updates."""
     message = {
         "type": "crawl_update",

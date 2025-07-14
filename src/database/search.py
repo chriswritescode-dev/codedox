@@ -28,7 +28,7 @@ class CodeSearcher:
         language: Optional[str] = None,
         job_id: Optional[str] = None,
         snippet_type: Optional[str] = None,
-        limit: int = None,
+        limit: Optional[int] = None,
         offset: int = 0,
         include_context: bool = True
     ) -> Tuple[List[CodeSnippet], int]:
@@ -97,15 +97,15 @@ class CodeSearcher:
             # Get count
             count_sql = sql.replace("SELECT cs.id", "SELECT COUNT(*)")
             count_sql = count_sql.split("ORDER BY")[0]  # Remove ORDER BY and LIMIT
-            total_count = self.session.execute(text(count_sql), {k: v for k, v in params.items() if k not in ['limit', 'offset']}).scalar()
+            total_count = int(self.session.execute(text(count_sql), {k: v for k, v in params.items() if k not in ['limit', 'offset']}).scalar() or 0)
             
             # Convert results to CodeSnippet objects
             results = []
             for row in result:
                 snippet = self.session.query(CodeSnippet).filter(CodeSnippet.id == row.id).first()
                 if snippet and not include_context:
-                    snippet.context_before = ""
-                    snippet.context_after = ""
+                    snippet.context_before = ""  # Clear context
+                    snippet.context_after = ""  # Clear context
                 if snippet:
                     results.append(snippet)
             
@@ -141,12 +141,12 @@ class CodeSearcher:
             
             if not include_context:
                 for snippet in results:
-                    snippet.context_before = ""
-                    snippet.context_after = ""
+                    snippet.context_before = ""  # Clear context
+                    snippet.context_after = ""  # Clear context
             
             return results, total_count
     
-    def search_by_function(self, function_name: str, limit: int = None) -> List[CodeSnippet]:
+    def search_by_function(self, function_name: str, limit: Optional[int] = None) -> List[CodeSnippet]:
         """Search for snippets containing specific function names.
         
         Args:
@@ -165,7 +165,7 @@ class CodeSearcher:
         
         return results
     
-    def search_by_import(self, import_name: str, limit: int = None) -> List[CodeSnippet]:
+    def search_by_import(self, import_name: str, limit: Optional[int] = None) -> List[CodeSnippet]:
         """Search for snippets with specific imports.
         
         Args:
@@ -184,7 +184,7 @@ class CodeSearcher:
         
         return results
     
-    def search_similar(self, text: str, limit: int = None) -> List[CodeSnippet]:
+    def search_similar(self, text: str, limit: Optional[int] = None) -> List[CodeSnippet]:
         """Find similar code using trigram similarity.
         
         Args:
@@ -286,7 +286,7 @@ class CodeSearcher:
         self,
         hours: int = 24,
         language: Optional[str] = None,
-        limit: int = None
+        limit: Optional[int] = None
     ) -> List[CodeSnippet]:
         """Get recently added snippets.
         

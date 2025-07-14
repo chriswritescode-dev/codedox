@@ -2,7 +2,7 @@
 
 import asyncio
 import logging
-from typing import List, Dict, Any, Optional, Tuple, Set
+from typing import List, Dict, Any, Optional, Tuple, Set, Callable
 from dataclasses import dataclass
 from datetime import datetime
 from collections import deque
@@ -79,7 +79,7 @@ class EnrichmentPipeline:
         self.storage_worker: Optional[asyncio.Task] = None
         self.status_monitor: Optional[asyncio.Task] = None
 
-    async def start(self, num_enrichment_workers: Optional[int] = None):
+    async def start(self, num_enrichment_workers: Optional[int] = None) -> None:
         """Start the pipeline workers.
         
         Args:
@@ -125,8 +125,8 @@ class EnrichmentPipeline:
             self.enrichment_workers.append(worker)
             logger.info(f"Created enrichment worker task: enricher-{i}")
             # Add done callback to log when worker exits
-            def make_callback(worker_id):
-                def callback(task):
+            def make_callback(worker_id: str) -> Callable[[asyncio.Task], None]:
+                def callback(task: asyncio.Task) -> None:
                     if task.cancelled():
                         logger.warning(f"Worker {worker_id} was cancelled")
                     elif task.exception():
@@ -153,7 +153,7 @@ class EnrichmentPipeline:
         # Verify workers are scheduled
         logger.info(f"Pipeline started: {len(self.enrichment_workers)} enrichment workers, 1 storage worker")
 
-    async def stop(self):
+    async def stop(self) -> None:
         """Stop the pipeline gracefully."""
         if not self.is_running:
             return
@@ -191,7 +191,7 @@ class EnrichmentPipeline:
 
         logger.info(f"Pipeline stopped. Processed {self.completed_count} blocks from {len(self.completed_documents)} documents, {self.error_count} errors")
 
-    async def add_document(self, document_id: int, document_url: str, job_id: str, code_blocks: List[CodeBlock]):
+    async def add_document(self, document_id: int, document_url: str, job_id: str, code_blocks: List[CodeBlock]) -> None:
         """Add a document's code blocks to the enrichment queue.
         
         Args:
@@ -228,7 +228,7 @@ class EnrichmentPipeline:
         logger.info(f"Enrichment queue size: {self.enrichment_queue.qsize()}/{self.max_queue_size}")
         logger.info(f"Storage queue size: {self.storage_queue.qsize()}/{self.max_queue_size}")
 
-    async def _enrichment_worker(self, worker_id: str):
+    async def _enrichment_worker(self, worker_id: str) -> None:
         """Worker that processes enrichment tasks."""
         logger.info(f"Enrichment worker {worker_id} starting...")
         await asyncio.sleep(0)  # Yield to ensure proper scheduling
@@ -260,6 +260,8 @@ class EnrichmentPipeline:
 
                     try:
                         # Enrich the code block
+                        if not self.enricher:
+                            raise RuntimeError("Enricher not initialized")
                         enriched_block = await self.enricher.enrich_code_block(task.code_block)
 
                         # Create result
@@ -320,7 +322,7 @@ class EnrichmentPipeline:
 
         logger.info(f"Enrichment worker {worker_id} stopped after processing {tasks_processed} tasks")
 
-    async def _status_monitor(self):
+    async def _status_monitor(self) -> None:
         """Monitor pipeline status and log periodically."""
         logger.info("Pipeline status monitor started")
         last_log_time = asyncio.get_event_loop().time()
@@ -363,7 +365,7 @@ class EnrichmentPipeline:
 
         logger.info("Pipeline status monitor stopped")
 
-    async def _restart_dead_workers(self):
+    async def _restart_dead_workers(self) -> None:
         """Restart any workers that have died."""
         new_workers = []
         for i, worker in enumerate(self.enrichment_workers):
@@ -387,7 +389,7 @@ class EnrichmentPipeline:
 
         self.enrichment_workers = new_workers
 
-    async def _storage_worker(self):
+    async def _storage_worker(self) -> None:
         """Worker that stores enriched results in batches."""
         logger.info("Storage worker starting...")
         await asyncio.sleep(0)  # Yield to ensure proper scheduling
@@ -448,7 +450,7 @@ class EnrichmentPipeline:
 
         logger.info("Storage worker stopped")
 
-    async def _store_batch(self, batch: List[EnrichmentResult]):
+    async def _store_batch(self, batch: List[EnrichmentResult]) -> None:
         """Store a batch of enriched results."""
         logger.debug(f"Storing batch of {len(batch)} enriched results")
 

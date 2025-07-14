@@ -12,7 +12,10 @@ try:
 except ImportError:
     # Fallback if language detector is not available
     TREE_SITTER_AVAILABLE = False
-    LanguageDetector = None
+    
+    class LanguageDetector:  # type: ignore
+        """Placeholder for when language detector is not available."""
+        pass
 
 logger = logging.getLogger(__name__)
 
@@ -62,18 +65,18 @@ class CodeBlock:
 class HTMLCodeParser(HTMLParser):
     """Parse HTML to extract code blocks from various HTML structures."""
     
-    def __init__(self):
+    def __init__(self) -> None:
         super().__init__()
-        self.code_blocks = []
-        self.current_block = None
+        self.code_blocks: List[Dict[str, Any]] = []
+        self.current_block: Optional[Dict[str, Any]] = None
         self.in_pre = False
         self.in_code = False
-        self.tag_stack = []
+        self.tag_stack: List[str] = []
         self.in_pre_code = False  # Track if we're in code inside pre
         self.in_custom_component = False  # Track custom code components
-        self.custom_component_type = None
+        self.custom_component_type: Optional[str] = None
     
-    def handle_starttag(self, tag, attrs):
+    def handle_starttag(self, tag: str, attrs: List[Tuple[str, Optional[str]]]) -> None:
         """Handle opening tags."""
         self.tag_stack.append(tag)
         attrs_dict = dict(attrs)
@@ -117,14 +120,14 @@ class HTMLCodeParser(HTMLParser):
         elif tag == 'div':
             # Check for GitHub/Rouge/Prism style code blocks
             class_attr = attrs_dict.get('class', '')
-            if any(marker in class_attr for marker in ['highlight', 'highlighter-rouge', 'code-block']):
+            if class_attr and any(marker in class_attr for marker in ['highlight', 'highlighter-rouge', 'code-block']):
                 # This might contain a code block
                 self.current_block = {
                     'content': '',
                     'language': self._extract_language(attrs_dict)
                 }
     
-    def handle_endtag(self, tag):
+    def handle_endtag(self, tag: str) -> None:
         """Handle closing tags."""
         if self.tag_stack and self.tag_stack[-1] == tag:
             self.tag_stack.pop()
@@ -149,13 +152,13 @@ class HTMLCodeParser(HTMLParser):
                 self.code_blocks.append(self.current_block)
             self.current_block = None
     
-    def handle_data(self, data):
+    def handle_data(self, data: str) -> None:
         """Handle text data - preserve exactly as is."""
         if self.current_block is not None and (self.in_pre_code or (self.in_code and not self.in_pre) or self.in_custom_component):
             # IMPORTANT: Do not modify the data!
             self.current_block['content'] += data
     
-    def handle_entityref(self, name):
+    def handle_entityref(self, name: str) -> None:
         """Handle HTML entities like &lt; &gt; &amp;"""
         if self.current_block is not None and (self.in_pre_code or (self.in_code and not self.in_pre) or self.in_custom_component):
             # Convert common entities
@@ -168,7 +171,7 @@ class HTMLCodeParser(HTMLParser):
             }
             self.current_block['content'] += entities.get(name, f'&{name};')
     
-    def handle_charref(self, name):
+    def handle_charref(self, name: str) -> None:
         """Handle numeric character references."""
         if self.current_block is not None and (self.in_pre_code or (self.in_code and not self.in_pre) or self.in_custom_component):
             try:
@@ -182,14 +185,14 @@ class HTMLCodeParser(HTMLParser):
             except ValueError:
                 self.current_block['content'] += f'&#{name};'
     
-    def _extract_language(self, attrs_dict):
+    def _extract_language(self, attrs_dict: Dict[str, Optional[str]]) -> str:
         """Extract language from class attribute."""
         class_attr = attrs_dict.get('class', '')
         # Handle various formats: language-js, lang-javascript, highlight-js, etc.
         for prefix in ['language-', 'lang-', 'highlight-']:
-            if prefix in class_attr:
+            if class_attr and prefix in class_attr:
                 # Extract the language part
-                parts = class_attr.split()
+                parts = class_attr.split() if class_attr else []
                 for part in parts:
                     if part.startswith(prefix):
                         return part[len(prefix):]
@@ -251,7 +254,7 @@ class CodeExtractor:
 
         # Initialize language detector if available
         self.language_detector = None
-        if self.use_tree_sitter and LanguageDetector:
+        if self.use_tree_sitter:
             try:
                 self.language_detector = LanguageDetector()
                 self.logger.info("Tree-sitter validation enabled for code extraction")
@@ -777,21 +780,21 @@ class CodeExtractor:
         # No more headers found, section goes to end of content
         return len(content)
 
-    def _count_nodes(self, node) -> int:
+    def _count_nodes(self, node: Any) -> int:
         """Count total nodes in AST."""
         count = 1
         for child in node.children:
             count += self._count_nodes(child)
         return count
 
-    def _count_error_nodes(self, node) -> int:
+    def _count_error_nodes(self, node: Any) -> int:
         """Count error nodes in AST."""
         count = 1 if node.type == 'ERROR' or node.is_error else 0
         for child in node.children:
             count += self._count_error_nodes(child)
         return count
 
-    def _has_complete_structures(self, root, language: str) -> bool:
+    def _has_complete_structures(self, root: Any, language: str) -> bool:
         """Check if code has complete structures like functions or classes."""
         complete_types = {
             'python': ['function_definition', 'class_definition'],  # Removed 'module'
@@ -810,7 +813,7 @@ class CodeExtractor:
 
         return self._has_node_types(root, target_types)
 
-    def _has_node_types(self, node, types: List[str]) -> bool:
+    def _has_node_types(self, node: Any, types: List[str]) -> bool:
         """Check if AST contains any of the specified node types."""
         if node.type in types:
             return True
@@ -846,7 +849,7 @@ class CodeExtractor:
                 return False
         return True
 
-    def _has_code_nodes(self, root, language: str) -> bool:
+    def _has_code_nodes(self, root: Any, language: str) -> bool:
         """Check if AST has actual code nodes (not just comments/whitespace)."""
         # Define what constitutes "code" nodes for each language
         code_node_types = {
@@ -866,7 +869,7 @@ class CodeExtractor:
         # Check if any node type contains keywords from our target types
         return self._contains_node_types(root, target_types)
 
-    def _contains_node_types(self, node, keywords: List[str]) -> bool:
+    def _contains_node_types(self, node: Any, keywords: List[str]) -> bool:
         """Check if AST contains nodes with types containing any of the keywords."""
         for keyword in keywords:
             if keyword in node.type.lower():

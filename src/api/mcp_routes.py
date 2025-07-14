@@ -36,13 +36,13 @@ async def stream_response(data: Dict[str, Any]) -> AsyncGenerator[str, None]:
 
 
 @router.get("/health")
-async def mcp_health():
+async def mcp_health() -> Dict[str, str]:
     """Check MCP service health."""
     return {"status": "healthy", "service": "mcp-http"}
 
 
 @router.get("/tools")
-async def list_tools():
+async def list_tools() -> Dict[str, Any]:
     """List available MCP tools."""
     tools = [
         {
@@ -141,7 +141,7 @@ async def list_tools():
 
 
 @router.post("/execute/{tool_name}")
-async def execute_tool(tool_name: str, params: Dict[str, Any]):
+async def execute_tool(tool_name: str, params: Dict[str, Any]) -> Dict[str, Any]:
     """Execute a specific MCP tool."""
     try:
         if tool_name == "init_crawl":
@@ -199,7 +199,7 @@ async def execute_tool(tool_name: str, params: Dict[str, Any]):
 
 
 @router.post("/stream/execute/{tool_name}")
-async def execute_tool_stream(tool_name: str, params: Dict[str, Any]):
+async def execute_tool_stream(tool_name: str, params: Dict[str, Any]) -> StreamingResponse:
     """Execute a tool and stream the response."""
     try:
         # Execute the tool
@@ -263,7 +263,7 @@ async def execute_tool_stream(tool_name: str, params: Dict[str, Any]):
 
 
 @router.post("/stream")
-async def mcp_stream(request: MCPRequest):
+async def mcp_stream(request: MCPRequest) -> StreamingResponse:
     """
     MCP streaming endpoint that handles multiple request types.
     Compatible with LLM tools that expect streaming responses.
