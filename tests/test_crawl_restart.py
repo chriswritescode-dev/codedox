@@ -211,7 +211,7 @@ class TestCrawlRestart:
             mock_crawler_cls.return_value.__aenter__.return_value = crawler_instance
             
             # Resume should complete successfully
-            success = await crawl_manager.resume_job(job_id)
+            success = await crawl_manager.resume_failed_job(job_id)
             assert success
             # 3. Maintain the crawl depth tracking
     
