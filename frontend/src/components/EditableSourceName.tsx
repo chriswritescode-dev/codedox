@@ -1,5 +1,5 @@
-import React, { useState, useRef, useEffect } from 'react';
-import { Edit3, Check, X, Loader2 } from 'lucide-react';
+import React, { useState, useRef, useEffect } from "react";
+import { Edit3, Check, X, Loader2 } from "lucide-react";
 
 interface EditableSourceNameProps {
   id: string;
@@ -12,7 +12,7 @@ export const EditableSourceName: React.FC<EditableSourceNameProps> = ({
   id,
   name,
   onUpdate,
-  className = '',
+  className = "",
 }) => {
   const [isEditing, setIsEditing] = useState(false);
   const [editValue, setEditValue] = useState(name);
@@ -31,7 +31,8 @@ export const EditableSourceName: React.FC<EditableSourceNameProps> = ({
     }
   }, [isEditing]);
 
-  const handleEdit = () => {
+  const handleEdit = (e: React.MouseEvent<HTMLButtonElement>) => {
+    e.preventDefault();
     setIsEditing(true);
     setError(null);
   };
@@ -44,9 +45,9 @@ export const EditableSourceName: React.FC<EditableSourceNameProps> = ({
 
   const handleSave = async () => {
     const trimmedValue = editValue.trim();
-    
+
     if (!trimmedValue) {
-      setError('Name cannot be empty');
+      setError("Name cannot be empty");
       return;
     }
 
@@ -62,24 +63,29 @@ export const EditableSourceName: React.FC<EditableSourceNameProps> = ({
       await onUpdate(id, trimmedValue);
       setIsEditing(false);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to update name');
+      setError(err instanceof Error ? err.message : "Failed to update name");
     } finally {
       setIsLoading(false);
     }
   };
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === 'Enter') {
+    if (e.key === "Enter") {
       e.preventDefault();
       handleSave();
-    } else if (e.key === 'Escape') {
+    } else if (e.key === "Escape") {
       handleCancel();
     }
   };
 
   if (isEditing) {
     return (
-      <div className={`inline-flex items-center gap-2 ${className}`}>
+      <div
+        className={`inline-flex items-center gap-2 ${className}`}
+        onClick={(e) => {
+          e.preventDefault();
+        }}
+      >
         <div className="relative">
           <input
             ref={inputRef}
@@ -97,7 +103,7 @@ export const EditableSourceName: React.FC<EditableSourceNameProps> = ({
             </div>
           )}
         </div>
-        
+
         <div className="flex items-center gap-1">
           {isLoading ? (
             <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
