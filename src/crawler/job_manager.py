@@ -1,0 +1,351 @@
+"""Crawl job lifecycle management."""
+
+import logging
+from typing import Optional, Dict, Any, List
+from datetime import datetime
+
+from sqlalchemy.orm import Session
+
+from ..database import CrawlJob, get_db_manager
+from .domain_utils import get_primary_domain
+
+logger = logging.getLogger(__name__)
+
+
+class JobManager:
+    """Manages crawl job lifecycle operations."""
+
+    def __init__(self):
+        """Initialize job manager."""
+        self.db_manager = get_db_manager()
+
+    def create_job(
+        self,
+        name: str,
+        start_urls: List[str],
+        max_depth: int,
+        domain_restrictions: List[str],
+        config: Dict[str, Any],
+        user_id: Optional[str] = None,
+    ) -> str:
+        """Create a new crawl job.
+
+        Args:
+            name: Job name
+            start_urls: URLs to start crawling
+            max_depth: Maximum crawl depth
+            domain_restrictions: Domain restrictions
+            config: Additional configuration
+            user_id: User identifier
+
+        Returns:
+            Job ID
+        """
+        domain = get_primary_domain(start_urls)
+        if not domain:
+            raise ValueError("No valid domain found in start URLs")
+
+        with self.db_manager.session_scope() as session:
+            job = CrawlJob(
+                name=name,
+                domain=domain,
+                start_urls=start_urls,
+                max_depth=max_depth,
+                domain_restrictions=domain_restrictions,
+                status="running",
+                started_at=datetime.utcnow(),
+                created_by=user_id,
+                last_heartbeat=datetime.utcnow(),
+                crawl_phase="crawling",
+                config=config,
+            )
+            session.add(job)
+            session.commit()
+            return str(job.id)
+
+    def get_or_create_job(
+        self,
+        name: str,
+        start_urls: List[str],
+        max_depth: int,
+        domain_restrictions: List[str],
+        config: Dict[str, Any],
+        user_id: Optional[str] = None,
+    ) -> str:
+        """Get existing job for domain or create new one.
+
+        Args:
+            name: Job name
+            start_urls: URLs to start crawling
+            max_depth: Maximum crawl depth
+            domain_restrictions: Domain restrictions
+            config: Additional configuration
+            user_id: User identifier
+
+        Returns:
+            Job ID
+        """
+        domain = get_primary_domain(start_urls)
+        if not domain:
+            raise ValueError("No valid domain found in start URLs")
+
+        with self.db_manager.session_scope() as session:
+            # Check for existing job with same domain
+            existing_job = session.query(CrawlJob).filter_by(domain=domain).first()
+
+            if existing_job:
+                # Reuse existing job - update it with new configuration
+                logger.info(f"Reusing existing crawl job for domain '{domain}': {existing_job.id}")
+
+                # Reset job for new crawl
+                existing_job.name = name
+                existing_job.start_urls = start_urls
+                existing_job.max_depth = max_depth
+                existing_job.domain_restrictions = domain_restrictions
+                existing_job.status = "running"
+                existing_job.started_at = datetime.utcnow()
+                existing_job.created_by = user_id
+                existing_job.last_heartbeat = datetime.utcnow()
+                existing_job.crawl_phase = "crawling"
+                existing_job.error_message = None
+                existing_job.retry_count = 0
+                # Reset completion times
+                existing_job.completed_at = None
+                existing_job.crawl_completed_at = None
+                existing_job.enrichment_started_at = None
+                existing_job.enrichment_completed_at = None
+                existing_job.documents_crawled = 0
+                existing_job.documents_enriched = 0
+                existing_job.processed_pages = 0
+                existing_job.total_pages = 0
+                existing_job.snippets_extracted = 0
+                existing_job.config = config
+
+                session.commit()
+                return str(existing_job.id)
+            else:
+                # Create new job
+                return self.create_job(
+                    name, start_urls, max_depth, domain_restrictions, config, user_id
+                )
+
+    def update_job_status(
+        self,
+        job_id: str,
+        status: Optional[str] = None,
+        phase: Optional[str] = None,
+        error_message: Optional[str] = None,
+        **kwargs,
+    ) -> bool:
+        """Update job status and fields.
+
+        Args:
+            job_id: Job ID
+            status: New status
+            phase: Current phase
+            error_message: Error message if failed
+            **kwargs: Additional fields to update
+
+        Returns:
+            True if updated successfully
+        """
+        with self.db_manager.session_scope() as session:
+            job = self.get_job(job_id, session)
+            if not job:
+                return False
+
+            if status:
+                job.status = status
+            if phase is not None:
+                job.crawl_phase = phase
+            if error_message:
+                job.error_message = error_message
+
+            # Update any additional fields
+            for key, value in kwargs.items():
+                if hasattr(job, key):
+                    setattr(job, key, value)
+
+            # Update timestamps
+            job.last_heartbeat = datetime.utcnow()
+
+            session.commit()
+            return True
+
+    def update_job_progress(
+        self,
+        job_id: str,
+        processed_pages: Optional[int] = None,
+        total_pages: Optional[int] = None,
+        snippets_extracted: Optional[int] = None,
+        documents_crawled: Optional[int] = None,
+        documents_enriched: Optional[int] = None,
+    ) -> bool:
+        """Update job progress metrics.
+
+        Args:
+            job_id: Job ID
+            processed_pages: Number of processed pages
+            total_pages: Total pages found
+            snippets_extracted: Number of snippets extracted
+            documents_crawled: Number of documents crawled
+            documents_enriched: Number of documents enriched
+
+        Returns:
+            True if updated successfully
+        """
+        with self.db_manager.session_scope() as session:
+            job = self.get_job(job_id, session)
+            if not job:
+                return False
+
+            if processed_pages is not None:
+                job.processed_pages = processed_pages
+            if total_pages is not None:
+                job.total_pages = total_pages
+            if snippets_extracted is not None:
+                job.snippets_extracted = snippets_extracted
+            if documents_crawled is not None:
+                job.documents_crawled = documents_crawled
+            if documents_enriched is not None:
+                job.documents_enriched = documents_enriched
+
+            job.last_heartbeat = datetime.utcnow()
+            session.commit()
+            return True
+
+    def complete_job(
+        self, job_id: str, success: bool = True, error_message: Optional[str] = None
+    ) -> bool:
+        """Mark job as completed.
+
+        Args:
+            job_id: Job ID
+            success: Whether job completed successfully
+            error_message: Error message if failed
+
+        Returns:
+            True if updated successfully
+        """
+        with self.db_manager.session_scope() as session:
+            job = self.get_job(job_id, session)
+            if not job:
+                return False
+
+            job.status = "completed" if success else "failed"
+            job.completed_at = datetime.utcnow()
+            job.crawl_phase = None
+
+            if error_message:
+                job.error_message = error_message
+
+            # Set completion timestamps
+            if not job.crawl_completed_at:
+                job.crawl_completed_at = datetime.utcnow()
+            if not job.enrichment_completed_at:
+                job.enrichment_completed_at = datetime.utcnow()
+
+            session.commit()
+            return True
+
+    def get_job(self, job_id: str, session: Optional[Session] = None) -> Optional[CrawlJob]:
+        """Get job by ID.
+
+        Args:
+            job_id: Job ID (string or UUID)
+            session: Optional database session
+
+        Returns:
+            CrawlJob or None
+        """
+        if session:
+            return session.query(CrawlJob).filter_by(id=job_id).first()
+        else:
+            with self.db_manager.session_scope() as session:
+                return session.query(CrawlJob).filter_by(id=job_id).first()
+
+    def get_job_status(self, job_id: str) -> Optional[Dict[str, Any]]:
+        """Get job status as dictionary.
+
+        Args:
+            job_id: Job ID
+
+        Returns:
+            Job status dictionary or None
+        """
+        with self.db_manager.session_scope() as session:
+            job = self.get_job(job_id, session)
+            if job:
+                return job.to_dict()
+        return None
+
+    def cancel_job(self, job_id: str) -> bool:
+        """Cancel a running job.
+
+        Args:
+            job_id: Job ID
+
+        Returns:
+            True if cancelled successfully
+        """
+        return self.update_job_status(
+            job_id, status="cancelled", phase=None, completed_at=datetime.utcnow()
+        )
+
+    def is_job_active(self, job_id: str) -> bool:
+        """Check if job is still active.
+
+        Args:
+            job_id: Job ID
+
+        Returns:
+            True if job is running
+        """
+        job = self.get_job(job_id)
+        return job is not None and job.status == "running"
+
+    def update_heartbeat(self, job_id: str) -> bool:
+        """Update job heartbeat timestamp.
+
+        Args:
+            job_id: Job ID
+
+        Returns:
+            True if updated successfully
+        """
+        with self.db_manager.session_scope() as session:
+            job = self.get_job(job_id, session)
+            if job:
+                job.last_heartbeat = datetime.utcnow()
+                session.commit()
+                return True
+        return False
+
+    def mark_crawl_complete(self, job_id: str) -> bool:
+        """Mark crawl phase as complete.
+
+        Args:
+            job_id: Job ID
+
+        Returns:
+            True if updated successfully
+        """
+        return self.update_job_status(
+            job_id,
+            phase="enriching",
+            crawl_completed_at=datetime.utcnow(),
+            enrichment_started_at=datetime.utcnow(),
+        )
+
+    def mark_enrichment_complete(self, job_id: str) -> bool:
+        """Mark enrichment phase as complete.
+
+        Args:
+            job_id: Job ID
+
+        Returns:
+            True if updated successfully
+        """
+        return self.update_job_status(
+            job_id, phase="finalizing", enrichment_completed_at=datetime.utcnow()
+        )

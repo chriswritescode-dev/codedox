@@ -130,8 +130,8 @@ def test_mcp_streamable_tools_list_json(client):
     tool_names = [tool["name"] for tool in tools]
     
     assert "init_crawl" in tool_names
-    assert "get_sources" in tool_names
-    assert "search_content" in tool_names
+    assert "search_libraries" in tool_names
+    assert "get_content" in tool_names
 
 
 def test_mcp_streamable_tools_list_sse(client):
@@ -168,8 +168,8 @@ def test_mcp_streamable_tools_list_sse(client):
     tool_names = [tool["name"] for tool in tools]
     
     assert "init_crawl" in tool_names
-    assert "get_sources" in tool_names
-    assert "search_content" in tool_names
+    assert "search_libraries" in tool_names
+    assert "get_content" in tool_names
 
 
 def test_mcp_streamable_batch_request_json(client):
@@ -372,3 +372,64 @@ def test_mcp_streamable_session_handling(client):
     assert result["jsonrpc"] == "2.0"
     assert result["id"] == "1"
     assert "result" in result
+
+
+def test_mcp_streamable_prefixed_tool_name(client):
+    """Test handling of prefixed tool names (e.g., vszd2c_search_libraries)."""
+    # First initialize
+    init_request = {
+        "jsonrpc": "2.0",
+        "id": "1",
+        "method": "initialize",
+        "params": {
+            "protocolVersion": "2024-11-05",
+            "capabilities": {},
+            "clientInfo": {"name": "test", "version": "1.0"}
+        }
+    }
+    
+    response = client.post(
+        "/mcp",
+        json=init_request,
+        headers={
+            "Accept": "application/json, text/event-stream",
+            "Content-Type": "application/json"
+        }
+    )
+    assert response.status_code == 200
+    
+    # Now test prefixed tool call
+    tool_request = {
+        "jsonrpc": "2.0",
+        "id": "2",
+        "method": "tools/call",
+        "params": {
+            "name": "vszd2c_search_libraries",  # Prefixed tool name
+            "arguments": {
+                "query": "react",
+                "max_results": 5
+            }
+        }
+    }
+    
+    response = client.post(
+        "/mcp",
+        json=tool_request,
+        headers={
+            "Accept": "application/json, text/event-stream",
+            "Content-Type": "application/json"
+        }
+    )
+    
+    assert response.status_code == 200
+    result = response.json()
+    assert result["jsonrpc"] == "2.0"
+    assert result["id"] == "2"
+    
+    # Should have result (tool extracted correctly) or error with details
+    assert "result" in result or "error" in result
+    
+    # If error, it should have meaningful details
+    if "error" in result:
+        assert "message" in result["error"]
+        assert result["error"]["message"] != "{}"  # Should not be empty

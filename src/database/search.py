@@ -212,6 +212,77 @@ class CodeSearcher:
         # Extract just the snippets
         return [r[0] for r in results]
     
+    def search_libraries(
+        self,
+        query: str,
+        limit: int = 10
+    ) -> List[Dict[str, Any]]:
+        """Search for libraries by name using fuzzy matching.
+        
+        Args:
+            query: Search query for library names
+            limit: Maximum results to return
+            
+        Returns:
+            List of library information dictionaries
+        """
+        # Use PostgreSQL's similarity function for fuzzy matching
+        sql_query = """
+        SELECT 
+            cj.id,
+            cj.name,
+            COALESCE(cj.config->>'description', '') as description,
+            cj.config->>'versions' as versions_json,
+            COUNT(DISTINCT cs.id) as snippet_count,
+            similarity(LOWER(cj.name), LOWER(:query)) as name_similarity
+        FROM crawl_jobs cj
+        LEFT JOIN documents d ON d.crawl_job_id = cj.id
+        LEFT JOIN code_snippets cs ON cs.document_id = d.id
+        WHERE cj.status != 'cancelled'
+        AND (
+            LOWER(cj.name) LIKE LOWER(:pattern)
+            OR similarity(LOWER(cj.name), LOWER(:query)) > 0.1
+        )
+        GROUP BY cj.id, cj.name, cj.config
+        ORDER BY 
+            CASE WHEN LOWER(cj.name) = LOWER(:query) THEN 0 ELSE 1 END,
+            name_similarity DESC,
+            snippet_count DESC
+        LIMIT :limit
+        """
+        
+        params = {
+            'query': query,
+            'pattern': f'%{query}%',
+            'limit': limit
+        }
+        
+        result = self.session.execute(text(sql_query), params)
+        
+        libraries = []
+        for row in result:
+            library = {
+                'library_id': str(row.id),
+                'name': row.name,
+                'description': row.description or 'No description available',
+                'snippet_count': row.snippet_count,
+                'similarity_score': float(row.name_similarity) if row.name_similarity else 0.0
+            }
+            
+            # Parse versions if available
+            if row.versions_json:
+                try:
+                    import json
+                    versions = json.loads(row.versions_json)
+                    if isinstance(versions, list):
+                        library['versions'] = versions
+                except:
+                    pass
+            
+            libraries.append(library)
+        
+        return libraries
+    
     def get_sources(self, job_id: Optional[str] = None) -> List[Dict[str, Any]]:
         """Get list of crawled sources with statistics.
         

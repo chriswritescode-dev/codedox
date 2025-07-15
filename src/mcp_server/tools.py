@@ -107,65 +107,109 @@ class MCPTools:
                 "library_name": name
             }
     
-    async def get_sources(self, job_id: Optional[str] = None) -> List[Dict[str, Any]]:
-        """Get list of available sources/libraries.
+    
+    async def search_libraries(
+        self,
+        query: str,
+        max_results: int = 10
+    ) -> Dict[str, Any]:
+        """Search for available libraries by name or keyword.
         
         Args:
-            job_id: Optional job ID to filter by
+            query: Search query for library names
+            max_results: Maximum results to return
             
         Returns:
-            List of source information
+            Dictionary with selected library and explanation
         """
         try:
             with self.db_manager.session_scope() as session:
                 searcher = CodeSearcher(session)
-                sources = searcher.get_sources(job_id=job_id)
+                libraries = searcher.search_libraries(
+                    query=query,
+                    limit=max_results
+                )
                 
-                # Format sources for MCP output
-                formatted_sources = []
-                for source in sources:
-                    formatted_source = {
-                        "id": source['id'],  # Always include ID
-                        "name": source['name'],
-                        "repository": source.get('repository', ''),
-                        "description": source.get('description', 'No description available'),
-                        "status": source['status'],
-                        "tokens": source['tokens'],
-                        "snippets": source['snippet_count'],
-                        "last_update": source.get('last_update_relative', 'Never')
+                if not libraries:
+                    return {
+                        "status": "no_matches",
+                        "message": f"No libraries found matching '{query}'",
+                        "suggestion": "Try a different search term or check if the library has been crawled"
                     }
-                    
-                    # Add additional job details if requested
-                    if job_id:
-                        formatted_source.update({
-                            "job_id": source['id'],
-                            "document_count": source['document_count'],
-                            "last_update_iso": source.get('last_update')
-                        })
-                    
-                    formatted_sources.append(formatted_source)
                 
-                return formatted_sources
+                # Find the best match
+                best_match = libraries[0]  # Already sorted by relevance
+                other_matches = libraries[1:5] if len(libraries) > 1 else []
+                
+                # Determine match quality
+                exact_match = best_match['name'].lower() == query.lower()
+                strong_match = query.lower() in best_match['name'].lower()
+                
+                # Build response
+                response = {
+                    "status": "success",
+                    "selected_library": {
+                        "library_id": best_match['library_id'],
+                        "name": best_match['name'],
+                        "description": best_match['description'],
+                        "snippet_count": best_match['snippet_count']
+                    }
+                }
+                
+                # Add versions if available
+                if 'versions' in best_match:
+                    response["selected_library"]["versions"] = best_match['versions']
+                
+                # Add explanation
+                if exact_match:
+                    response["explanation"] = f"Exact match found for '{query}'"
+                elif strong_match:
+                    response["explanation"] = f"Strong match found: '{best_match['name']}' contains '{query}'"
+                else:
+                    response["explanation"] = f"Best match based on similarity: '{best_match['name']}'"
+                
+                # Add similarity score if available
+                if 'similarity_score' in best_match:
+                    response["match_confidence"] = f"{best_match['similarity_score']:.2%}"
+                
+                # Acknowledge other matches
+                if other_matches:
+                    response["other_matches"] = [
+                        {
+                            "library_id": lib['library_id'],
+                            "name": lib['name'],
+                            "snippet_count": lib['snippet_count']
+                        }
+                        for lib in other_matches
+                    ]
+                    response["note"] = f"Found {len(libraries)} total matches. Showing the most relevant."
+                
+                # Add warning for low snippet count
+                if best_match['snippet_count'] < 10:
+                    response["warning"] = "This library has limited documentation coverage"
+                
+                return response
                 
         except Exception as e:
-            logger.error(f"Failed to get sources: {e}")
-            return [{
+            logger.error(f"Failed to search libraries: {e}")
+            return {
+                "status": "error",
                 "error": str(e),
-                "message": "Failed to retrieve sources"
-            }]
+                "message": "Failed to search libraries"
+            }
     
-    async def search_content(
+    async def get_content(
         self,
-        query: str,
-        source: Optional[str] = None,
+        library_id: str,
+        query: Optional[str] = None,
         language: Optional[str] = None,
         max_results: int = 10
     ) -> str:
-        """Search for content across all sources or in a specific source.
+        """Get content from a specific library, optionally filtered by search query.
         
         Args:
-            query: Search query
-            source: Optional library/source name to filter by
+            library_id: Library ID (required) - obtained from search_libraries
+            query: Optional search query to filter results
             language: Optional language filter
             max_results: Maximum results to return
             
@@ -176,19 +220,20 @@ class MCPTools:
             with self.db_manager.session_scope() as session:
                 searcher = CodeSearcher(session)
                 
-                # Search with optional source filter
+                # Search with required library_id filter
                 snippets, total_count = searcher.search(
-                    query=query,
-                    source=source,
+                    query=query or "",  # Use empty string if query is None
+                    job_id=library_id,
                     language=language,
                     limit=max_results,
                     include_context=False  # Don't include context in search results
                 )
                 
                 if not snippets:
-                    no_results_msg = f"No results found for query '{query}'"
-                    if source:
-                        no_results_msg += f" in source '{source}'"
+                    if query:
+                        no_results_msg = f"No results found for query '{query}' in library {library_id}"
+                    else:
+                        no_results_msg = f"No content found in library {library_id}"
                     if language:
                         no_results_msg += f" with language filter '{language}'"
                     return no_results_msg
@@ -200,9 +245,10 @@ class MCPTools:
                 header = f"Found {len(snippets)} results"
                 if total_count > len(snippets):
                     header += f" (showing first {len(snippets)} of {total_count} total)"
-                header += f" for query '{query}'"
-                if source:
-                    header += f" in {source}"
+                if query:
+                    header += f" for query '{query}' in library {library_id}"
+                else:
+                    header += f" in library {library_id}"
                 if language:
                     header += f" (language: {language})"
                 header += "\n\n"

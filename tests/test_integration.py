@@ -65,18 +65,21 @@ class TestEndToEndWorkflow:
         assert "result" in data
         assert "job_id" in data["result"]
         
-        # Step 3: Get sources via MCP
-        response = client.post("/mcp/execute/get_sources", json={})
+        # Step 3: Search libraries via MCP
+        response = client.post("/mcp/execute/search_libraries", json={"query": "test"})
         assert response.status_code == 200
         data = response.json()
         assert "result" in data
-        assert isinstance(data["result"], list)
+        result = data["result"]
+        assert result["status"] == "success"
+        assert "selected_library" in result
+        library_id = result["selected_library"]["library_id"]
         
         # Step 4: Search via MCP
         response = client.post(
-            "/mcp/execute/search_content",
+            "/mcp/execute/get_content",
             json={
-                "source": "Test Source",
+                "library_id": library_id,
                 "query": "test",
                 "max_results": 5
             }
@@ -105,8 +108,8 @@ class TestEndToEndWorkflow:
             json={
                 "method": "tools/execute",
                 "params": {
-                    "name": "get_sources",
-                    "params": {}
+                    "name": "search_libraries",
+                    "params": {"query": "test"}
                 }
             }
         )

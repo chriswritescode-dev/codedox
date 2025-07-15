@@ -1,6 +1,10 @@
 """Pytest configuration and fixtures for API tests."""
 
 import os
+
+# Set testing environment variable before any imports
+os.environ["TESTING"] = "true"
+
 import pytest
 import asyncio
 import logging
@@ -321,30 +325,27 @@ def db(setup_database) -> Generator[Session, None, None]:
 @pytest.fixture
 def client(db: Session) -> TestClient:
     """Get test client with database override."""
+    # Store original overrides
+    original_overrides = app.dependency_overrides.copy()
+    
+    # Set test database override
     app.dependency_overrides[get_db] = lambda: db
-    with TestClient(app) as test_client:
-        yield test_client
-    app.dependency_overrides.clear()
     
-    # Cancel all pending tasks before teardown
-    import asyncio
+    # Create test client
+    test_client = TestClient(app)
+    
     try:
-        loop = asyncio.get_event_loop()
-        pending = asyncio.all_tasks(loop)
-        for task in pending:
-            task.cancel()
-        # Give cancelled tasks a chance to finish
-        loop.run_until_complete(asyncio.gather(*pending, return_exceptions=True))
-    except Exception:
-        pass
-    
-    # Clean up any pending async tasks
-    import gc
-    gc.collect()
-    
-    # Give a moment for async tasks to complete
-    import time
-    time.sleep(0.1)
+        yield test_client
+    finally:
+        # Ensure cleanup happens even on failure
+        test_client.close()
+        
+        # Restore original overrides
+        app.dependency_overrides = original_overrides
+        
+        # Small delay to ensure connections are closed
+        import time
+        time.sleep(0.05)
 
 
 @pytest.fixture
@@ -503,21 +504,19 @@ def mock_mcp_tools(monkeypatch):
             "domain_restrictions": []
         }
     
-    async def mock_get_sources(self, job_id: str = None):
-        return [
-            {
-                "id": str(uuid4()),
+    async def mock_search_libraries(self, query: str, max_results: int = 10):
+        return {
+            "status": "success",
+            "selected_library": {
+                "library_id": str(uuid4()),
                 "name": "Test Source",
-                "repository": "",
                 "description": "Test description",
-                "status": "Completed",
-                "snippets": 100,
-                "tokens": 50000,
-                "last_update": "1 hour ago"
-            }
-        ]
+                "snippet_count": 100
+            },
+            "explanation": "Exact match found for 'test'"
+        }
     
-    async def mock_search_content(self, query: str, source: str = None, language: str = None, max_results: int = 10):
+    async def mock_get_content(self, library_id: str, query: str = None, language: str = None, max_results: int = 10):
         return """Found 1 results in Test Source
 
 TITLE: Test Result
@@ -574,8 +573,8 @@ print('test')
     # Patch the MCPTools methods
     from src.mcp_server.tools import MCPTools
     monkeypatch.setattr(MCPTools, "init_crawl", mock_init_crawl)
-    monkeypatch.setattr(MCPTools, "get_sources", mock_get_sources)
-    monkeypatch.setattr(MCPTools, "search_content", mock_search_content)
+    monkeypatch.setattr(MCPTools, "search_libraries", mock_search_libraries)
+    monkeypatch.setattr(MCPTools, "get_content", mock_get_content)
     monkeypatch.setattr(MCPTools, "get_snippet_details", mock_get_snippet_details)
 
 

@@ -7,13 +7,13 @@ from fastapi import APIRouter, HTTPException
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
-from ..mcp_server.tools import MCPTools
+from ..mcp_server.server import MCPServer
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/mcp")
 
-# Initialize MCP tools
-mcp_tools = MCPTools()
+# Initialize MCP server
+mcp_server = MCPServer()
 
 
 class MCPRequest(BaseModel):
@@ -44,154 +44,40 @@ async def mcp_health() -> Dict[str, str]:
 @router.get("/tools")
 async def list_tools() -> Dict[str, Any]:
     """List available MCP tools."""
-    tools = [
-        {
-            "name": "init_crawl",
-            "description": "Initialize a new web crawl job for documentation",
-            "input_schema": {
-                "type": "object",
-                "properties": {
-                    "name": {
-                        "type": "string",
-                        "description": "Library/framework name (e.g., 'Next.js', '.NET')"
-                    },
-                    "start_urls": {
-                        "type": "array",
-                        "items": {"type": "string"},
-                        "description": "URLs to start crawling from"
-                    },
-                    "max_depth": {
-                        "type": "integer",
-                        "default": 1,
-                        "minimum": 0,
-                        "maximum": 3,
-                        "description": "Maximum crawl depth (0-3)"
-                    },
-                    "domain_filter": {
-                        "type": "string",
-                        "description": "Optional domain restriction pattern"
-                    },
-                    "metadata": {
-                        "type": "object",
-                        "description": "Additional metadata (repository, description, etc.)"
-                    }
-                },
-                "required": ["name", "start_urls"]
-            }
-        },
-        {
-            "name": "get_sources",
-            "description": "Get list of available libraries/sources with stats",
-            "input_schema": {
-                "type": "object",
-                "properties": {
-                    "job_id": {
-                        "type": "string",
-                        "description": "Optional specific job ID to filter by"
-                    }
-                }
-            }
-        },
-        {
-            "name": "search_content",
-            "description": "Search code snippets across all sources or in a specific library",
-            "input_schema": {
-                "type": "object",
-                "properties": {
-                    "query": {
-                        "type": "string",
-                        "description": "Search query for content"
-                    },
-                    "source": {
-                        "type": "string",
-                        "description": "Optional library name filter (e.g., 'Next.js', '.NET')"
-                    },
-                    "language": {
-                        "type": "string",
-                        "description": "Optional programming language filter"
-                    },
-                    "max_results": {
-                        "type": "integer",
-                        "default": 10,
-                        "minimum": 1,
-                        "maximum": 50,
-                        "description": "Maximum results to return"
-                    }
-                },
-                "required": ["query"]
-            }
-        },
-        {
-            "name": "get_snippet_details",
-            "description": "Get detailed information about a specific code snippet by ID",
-            "input_schema": {
-                "type": "object",
-                "properties": {
-                    "snippet_id": {
-                        "type": "integer",
-                        "description": "The ID of the snippet (from search results)"
-                    }
-                },
-                "required": ["snippet_id"]
-            }
-        }
-    ]
-    
-    return {"tools": tools}
+    return {"tools": mcp_server.get_tool_definitions()}
 
 
 @router.post("/execute/{tool_name}")
 async def execute_tool(tool_name: str, params: Dict[str, Any]) -> Dict[str, Any]:
     """Execute a specific MCP tool."""
     try:
-        if tool_name == "init_crawl":
-            # Validate required params
-            if "name" not in params:
-                raise HTTPException(status_code=422, detail="Missing required parameter: name")
-            if "start_urls" not in params:
-                raise HTTPException(status_code=422, detail="Missing required parameter: start_urls")
-                
-            result = await mcp_tools.init_crawl(
-                name=params["name"],
-                start_urls=params["start_urls"],
-                max_depth=params.get("max_depth", 1),
-                domain_filter=params.get("domain_filter"),
-                metadata=params.get("metadata", {})
-            )
-            
-        elif tool_name == "get_sources":
-            result = await mcp_tools.get_sources(
-                job_id=params.get("job_id")
-            )
-            
-        elif tool_name == "search_content":
-            # Validate required param
-            if "query" not in params:
-                raise HTTPException(status_code=422, detail="Missing required parameter: query")
-                
-            result = await mcp_tools.search_content(
-                query=params["query"],
-                source=params.get("source"),
-                language=params.get("language"),
-                max_results=params.get("max_results", 10)
-            )
-            
-        elif tool_name == "get_snippet_details":
-            # Validate required param
-            if "snippet_id" not in params:
-                raise HTTPException(status_code=422, detail="Missing required parameter: snippet_id")
-                
-            result = await mcp_tools.get_snippet_details(
-                snippet_id=params["snippet_id"]
-            )
-            
-        else:
+        # Get tool definitions to validate required parameters
+        tool_defs = {tool["name"]: tool for tool in mcp_server.get_tool_definitions()}
+        
+        if tool_name not in tool_defs:
             raise HTTPException(status_code=404, detail=f"Unknown tool: {tool_name}")
         
-        return {"result": result}
+        # Validate required parameters
+        tool_def = tool_defs[tool_name]
+        required_params = tool_def["input_schema"].get("required", [])
+        for param in required_params:
+            if param not in params:
+                raise HTTPException(status_code=422, detail=f"Missing required parameter: {param}")
         
+        # Execute the tool
+        result = await mcp_server.execute_tool(tool_name, params)
+        
+        # Format result based on tool type
+        if tool_name == "get_content" and isinstance(result, str):
+            return {"result": result, "format": "text"}
+        else:
+            return {"result": result}
+        
+    except ValueError as e:
+        # Handle unknown tool errors from execute_tool
+        raise HTTPException(status_code=404, detail=str(e))
     except HTTPException:
-        # Re-raise HTTP exceptions (like 404)
+        # Re-raise HTTP exceptions
         raise
     except Exception as e:
         logger.error(f"Error executing tool {tool_name}: {e}")
@@ -202,44 +88,21 @@ async def execute_tool(tool_name: str, params: Dict[str, Any]) -> Dict[str, Any]
 async def execute_tool_stream(tool_name: str, params: Dict[str, Any]) -> StreamingResponse:
     """Execute a tool and stream the response."""
     try:
+        # Get tool definitions to validate
+        tool_defs = {tool["name"]: tool for tool in mcp_server.get_tool_definitions()}
+        
+        if tool_name not in tool_defs:
+            raise ValueError(f"Unknown tool: {tool_name}")
+        
+        # Validate required parameters
+        tool_def = tool_defs[tool_name]
+        required_params = tool_def["input_schema"].get("required", [])
+        for param in required_params:
+            if param not in params:
+                raise ValueError(f"Missing required parameter: {param}")
+        
         # Execute the tool
-        if tool_name == "init_crawl":
-            result = await mcp_tools.init_crawl(
-                name=params["name"],
-                start_urls=params["start_urls"],
-                max_depth=params.get("max_depth", 1),
-                domain_filter=params.get("domain_filter"),
-                metadata=params.get("metadata", {})
-            )
-            
-        elif tool_name == "get_sources":
-            result = await mcp_tools.get_sources(
-                job_id=params.get("job_id")
-            )
-            
-        elif tool_name == "search_content":
-            # Validate required param
-            if "query" not in params:
-                raise HTTPException(status_code=422, detail="Missing required parameter: query")
-                
-            result = await mcp_tools.search_content(
-                query=params["query"],
-                source=params.get("source"),
-                language=params.get("language"),
-                max_results=params.get("max_results", 10)
-            )
-            
-        elif tool_name == "get_snippet_details":
-            # Validate required param
-            if "snippet_id" not in params:
-                raise HTTPException(status_code=422, detail="Missing required parameter: snippet_id")
-                
-            result = await mcp_tools.get_snippet_details(
-                snippet_id=params["snippet_id"]
-            )
-            
-        else:
-            raise HTTPException(status_code=404, detail=f"Unknown tool: {tool_name}")
+        result = await mcp_server.execute_tool(tool_name, params)
         
         # Stream the response
         return StreamingResponse(
@@ -287,58 +150,15 @@ async def mcp_stream(request: MCPRequest) -> StreamingResponse:
             }
             
         elif method == "tools/list":
-            # List available tools
+            # Get tools from MCP server and convert to protocol format
+            tool_defs = mcp_server.get_tool_definitions()
             tools = [
                 {
-                    "name": "init_crawl",
-                    "description": "Initialize a new web crawl job for documentation",
-                    "inputSchema": {
-                        "type": "object",
-                        "properties": {
-                            "name": {"type": "string", "description": "Library/framework name"},
-                            "start_urls": {"type": "array", "items": {"type": "string"}},
-                            "max_depth": {"type": "integer", "default": 1, "minimum": 0, "maximum": 3},
-                            "domain_filter": {"type": "string"},
-                            "metadata": {"type": "object"}
-                        },
-                        "required": ["name", "start_urls"]
-                    }
-                },
-                {
-                    "name": "get_sources",
-                    "description": "Get list of available libraries/sources with stats",
-                    "inputSchema": {
-                        "type": "object",
-                        "properties": {
-                            "job_id": {"type": "string", "description": "Optional specific job ID"}
-                        }
-                    }
-                },
-                {
-                    "name": "search_content",
-                    "description": "Search code snippets across all sources or in a specific library",
-                    "inputSchema": {
-                        "type": "object",
-                        "properties": {
-                            "query": {"type": "string", "description": "Search query for content"},
-                            "source": {"type": "string", "description": "Optional library name filter"},
-                            "language": {"type": "string", "description": "Optional language filter"},
-                            "max_results": {"type": "integer", "default": 10, "minimum": 1, "maximum": 50}
-                        },
-                        "required": ["query"]
-                    }
-                },
-                {
-                    "name": "get_snippet_details",
-                    "description": "Get detailed information about a specific code snippet by ID",
-                    "inputSchema": {
-                        "type": "object",
-                        "properties": {
-                            "snippet_id": {"type": "integer", "description": "The ID of the snippet (from search results)"}
-                        },
-                        "required": ["snippet_id"]
-                    }
+                    "name": tool["name"],
+                    "description": tool["description"],
+                    "inputSchema": tool["input_schema"]
                 }
+                for tool in tool_defs
             ]
             response_data = {"tools": tools}
             
@@ -350,17 +170,8 @@ async def mcp_stream(request: MCPRequest) -> StreamingResponse:
             if not tool_name:
                 raise ValueError("Tool name is required")
             
-            # Execute the appropriate tool
-            if tool_name == "init_crawl":
-                result = await mcp_tools.init_crawl(**tool_args)
-            elif tool_name == "get_sources":
-                result = await mcp_tools.get_sources(**tool_args)
-            elif tool_name == "search_content":
-                result = await mcp_tools.search_content(**tool_args)
-            elif tool_name == "get_snippet_details":
-                result = await mcp_tools.get_snippet_details(**tool_args)
-            else:
-                raise ValueError(f"Unknown tool: {tool_name}")
+            # Execute the tool using MCP server
+            result = await mcp_server.execute_tool(tool_name, tool_args)
             
             # Format response according to MCP protocol
             response_data = {
@@ -380,17 +191,8 @@ async def mcp_stream(request: MCPRequest) -> StreamingResponse:
             if not tool_name:
                 raise ValueError("Tool name is required")
             
-            # Execute the appropriate tool
-            if tool_name == "init_crawl":
-                result = await mcp_tools.init_crawl(**tool_params)
-            elif tool_name == "get_sources":
-                result = await mcp_tools.get_sources(**tool_params)
-            elif tool_name == "search_content":
-                result = await mcp_tools.search_content(**tool_params)
-            elif tool_name == "get_snippet_details":
-                result = await mcp_tools.get_snippet_details(**tool_params)
-            else:
-                raise ValueError(f"Unknown tool: {tool_name}")
+            # Execute the tool using MCP server
+            result = await mcp_server.execute_tool(tool_name, tool_params)
             
             response_data = {
                 "method": method,

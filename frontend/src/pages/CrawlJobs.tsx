@@ -64,7 +64,7 @@ export default function CrawlJobs() {
   });
 
   const handleSubmit = (formData: {
-    name: string;
+    name?: string;
     base_url: string;
     max_depth: number;
     domain_filter?: string;

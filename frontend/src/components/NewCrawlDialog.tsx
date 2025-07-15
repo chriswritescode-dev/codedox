@@ -5,7 +5,7 @@ interface NewCrawlDialogProps {
   isOpen: boolean;
   onClose: () => void;
   onSubmit: (data: {
-    name: string;
+    name?: string;
     base_url: string;
     max_depth: number;
     domain_filter?: string;

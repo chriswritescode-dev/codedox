@@ -127,6 +127,24 @@ class TestCrawlJobDomainUniqueness:
 class TestCrawlManagerDomainReuse:
     """Test crawl manager domain reuse functionality."""
     
+    @pytest.fixture(autouse=True)
+    def cleanup_crawl_jobs(self):
+        """Clean up crawl jobs before and after each test."""
+        from src.database import get_db_manager
+        
+        # Clean before test
+        db_manager = get_db_manager()
+        with db_manager.session_scope() as session:
+            session.query(CrawlJob).filter_by(domain="nextjs.org").delete()
+            session.commit()
+        
+        yield
+        
+        # Clean after test
+        with db_manager.session_scope() as session:
+            session.query(CrawlJob).filter_by(domain="nextjs.org").delete()
+            session.commit()
+    
     @pytest.fixture
     def crawl_manager(self):
         """Create crawl manager instance."""
@@ -142,39 +160,49 @@ class TestCrawlManagerDomainReuse:
             domain_restrictions=["nextjs.org"]
         )
     
+    @pytest.mark.asyncio
     @patch('src.crawler.crawl_manager.asyncio.create_task')
-    async def test_start_crawl_new_domain(self, mock_create_task, crawl_manager, sample_config, db):
+    async def test_start_crawl_new_domain(self, mock_create_task, crawl_manager, sample_config):
         """Test starting crawl for new domain creates new job."""
+        from src.database import get_db_manager
+        
         mock_create_task.return_value = AsyncMock()
         
         job_id = await crawl_manager.start_crawl(sample_config)
         
-        # Verify job was created
-        job = db.query(CrawlJob).filter_by(id=job_id).first()
-        assert job is not None
-        assert job.domain == "nextjs.org"
-        assert job.name == "Test Crawl"
-        assert job.status == "running"
+        # Verify job was created using the same db manager
+        db_manager = get_db_manager()
+        with db_manager.session_scope() as session:
+            job = session.query(CrawlJob).filter_by(id=job_id).first()
+            assert job is not None
+            assert job.domain == "nextjs.org"
+            assert job.name == "Test Crawl"
+            assert job.status == "running"
         
         # Verify async task was started
         mock_create_task.assert_called_once()
     
+    @pytest.mark.asyncio
     @patch('src.crawler.crawl_manager.asyncio.create_task')
-    async def test_start_crawl_existing_domain_reuses_job(self, mock_create_task, crawl_manager, sample_config, db):
+    async def test_start_crawl_existing_domain_reuses_job(self, mock_create_task, crawl_manager, sample_config):
         """Test starting crawl for existing domain reuses existing job."""
+        from src.database import get_db_manager
+        
         mock_create_task.return_value = AsyncMock()
         
         # Create existing job
-        existing_job = CrawlJob(
-            name="Old Crawl",
-            domain="nextjs.org",
-            start_urls=["https://nextjs.org/old"],
-            max_depth=2,
-            status="completed"
-        )
-        db.add(existing_job)
-        db.commit()
-        existing_job_id = str(existing_job.id)
+        db_manager = get_db_manager()
+        with db_manager.session_scope() as session:
+            existing_job = CrawlJob(
+                name="Old Crawl",
+                domain="nextjs.org",
+                start_urls=["https://nextjs.org/old"],
+                max_depth=2,
+                status="completed"
+            )
+            session.add(existing_job)
+            session.commit()
+            existing_job_id = str(existing_job.id)
         
         # Start new crawl with same domain
         job_id = await crawl_manager.start_crawl(sample_config)
@@ -183,20 +211,22 @@ class TestCrawlManagerDomainReuse:
         assert job_id == existing_job_id
         
         # Verify job was updated, not created
-        job = db.query(CrawlJob).filter_by(id=job_id).first()
-        assert job.name == "Test Crawl"  # Updated name
-        assert job.start_urls == ["https://nextjs.org/docs"]  # Updated URLs
-        assert job.max_depth == 1  # Updated depth
-        assert job.status == "running"  # Reset status
-        assert job.domain == "nextjs.org"  # Same domain
-        
-        # Verify only one job exists for this domain
-        jobs_count = db.query(CrawlJob).filter_by(domain="nextjs.org").count()
-        assert jobs_count == 1
+        with db_manager.session_scope() as session:
+            job = session.query(CrawlJob).filter_by(id=job_id).first()
+            assert job.name == "Test Crawl"  # Updated name
+            assert job.start_urls == ["https://nextjs.org/docs"]  # Updated URLs
+            assert job.max_depth == 1  # Updated depth
+            assert job.status == "running"  # Reset status
+            assert job.domain == "nextjs.org"  # Same domain
+            
+            # Verify only one job exists for this domain
+            jobs_count = session.query(CrawlJob).filter_by(domain="nextjs.org").count()
+            assert jobs_count == 1
         
         # Verify async task was started
         mock_create_task.assert_called_once()
     
+    @pytest.mark.asyncio
     async def test_start_crawl_invalid_domain(self, crawl_manager):
         """Test starting crawl with invalid URLs raises error."""
         invalid_config = CrawlConfig(
