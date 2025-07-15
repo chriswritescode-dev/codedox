@@ -23,6 +23,7 @@ import { DocumentList } from "../components/DocumentList";
 import { SnippetList } from "../components/SnippetList";
 import { PaginationControls } from "../components/PaginationControls";
 import { useDebounce } from "../hooks/useDebounce";
+import { EditableSourceName } from "../components/EditableSourceName";
 
 type TabType = "overview" | "documents" | "snippets";
 
@@ -159,8 +160,25 @@ export default function SourceDetail() {
     },
   });
 
+  const updateSourceNameMutation = useMutation({
+    mutationFn: ({ name }: { name: string }) =>
+      api.updateSourceName(id!, name),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["source", id] });
+      queryClient.invalidateQueries({ queryKey: ["sources"] });
+    },
+    onError: (error) => {
+      console.error("Failed to update source name:", error);
+      throw error;
+    },
+  });
+
   const confirmDelete = () => {
     deleteMutation.mutate();
+  };
+
+  const handleUpdateSourceName = async (sourceId: string, newName: string) => {
+    await updateSourceNameMutation.mutateAsync({ name: newName });
   };
 
   const docsTotalPages = useMemo(
@@ -206,7 +224,12 @@ export default function SourceDetail() {
           <div className="flex items-center gap-3">
             <Database className="h-8 w-8 text-muted-foreground" />
             <div>
-              <h1 className="text-2xl font-bold">{source.name}</h1>
+              <EditableSourceName
+                id={source.id}
+                name={source.name}
+                onUpdate={handleUpdateSourceName}
+                className="text-2xl font-bold"
+              />
               <a
                 href={source.base_url}
                 target="_blank"

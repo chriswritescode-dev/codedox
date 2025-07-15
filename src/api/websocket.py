@@ -2,7 +2,7 @@
 
 import json
 import logging
-from typing import Dict, Set
+from typing import Dict, Set, Any
 from fastapi import WebSocket, WebSocketDisconnect
 
 logger = logging.getLogger(__name__)
@@ -29,7 +29,7 @@ class ConnectionManager:
             del self.subscriptions[client_id]
             logger.info(f"Client {client_id} disconnected")
     
-    async def send_message(self, client_id: str, message: dict) -> None:
+    async def send_message(self, client_id: str, message: Dict[str, Any]) -> None:
         """Send a message to a specific client."""
         if client_id in self.active_connections:
             try:
@@ -38,7 +38,7 @@ class ConnectionManager:
                 logger.error(f"Error sending message to {client_id}: {e}")
                 self.disconnect(client_id)
     
-    async def broadcast(self, message: dict) -> None:
+    async def broadcast(self, message: Dict[str, Any]) -> None:
         """Broadcast a message to all connected clients."""
         disconnected_clients = []
         
@@ -53,7 +53,7 @@ class ConnectionManager:
         for client_id in disconnected_clients:
             self.disconnect(client_id)
     
-    async def broadcast_to_subscribers(self, job_id: str, message: dict) -> None:
+    async def broadcast_to_subscribers(self, job_id: str, message: Dict[str, Any]) -> None:
         """Broadcast a message to clients subscribed to a specific job."""
         disconnected_clients = []
         
@@ -139,7 +139,7 @@ async def websocket_endpoint(websocket: WebSocket, client_id: str) -> None:
         manager.disconnect(client_id)
 
 
-async def notify_crawl_update(job_id: str, status: str, data: dict) -> None:
+async def notify_crawl_update(job_id: str, status: str, data: Dict[str, Any]) -> None:
     """Notify subscribers about crawl job updates."""
     message = {
         "type": "crawl_update",

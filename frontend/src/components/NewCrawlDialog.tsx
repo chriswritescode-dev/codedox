@@ -30,12 +30,13 @@ export const NewCrawlDialog: React.FC<NewCrawlDialogProps> = ({
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!formData.name || !formData.base_url) {
-      alert('Please fill in all required fields');
+    if (!formData.base_url) {
+      alert('Please enter a base URL');
       return;
     }
     onSubmit({
       ...formData,
+      name: formData.name || undefined, // Allow empty name for auto-detection
       domain_filter: formData.domain_filter || undefined,
     });
   };
@@ -61,7 +62,7 @@ export const NewCrawlDialog: React.FC<NewCrawlDialogProps> = ({
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>
             <label htmlFor="name" className="block text-sm font-medium mb-1">
-              Name <span className="text-destructive">*</span>
+              Name <span className="text-xs text-muted-foreground">(optional - auto-detected if empty)</span>
             </label>
             <input
               id="name"
@@ -69,8 +70,7 @@ export const NewCrawlDialog: React.FC<NewCrawlDialogProps> = ({
               value={formData.name}
               onChange={(e) => setFormData({ ...formData, name: e.target.value })}
               className="w-full px-3 py-2 border border-input rounded-md bg-background focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent transition-all"
-              placeholder="e.g., Next.js Documentation"
-              required
+              placeholder="Will be auto-detected from site (e.g., Next.js Documentation)"
             />
           </div>
 

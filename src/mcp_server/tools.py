@@ -22,7 +22,7 @@ class MCPTools:
     
     async def init_crawl(
         self,
-        name: str,
+        name: Optional[str],
         start_urls: List[str],
         max_depth: int = 1,
         domain_filter: Optional[str] = None,
@@ -31,7 +31,7 @@ class MCPTools:
         """Initialize a new crawl job.
         
         Args:
-            name: Library/framework name
+            name: Library/framework name (auto-detected if not provided)
             start_urls: URLs to start crawling
             max_depth: Maximum crawl depth (0-3)
             domain_filter: Optional domain restriction
@@ -44,6 +44,14 @@ class MCPTools:
             # Prepare metadata
             if metadata is None:
                 metadata = {}
+            
+            # Generate temporary name if not provided
+            if not name:
+                from urllib.parse import urlparse
+                parsed = urlparse(start_urls[0])
+                domain = parsed.netloc.replace('www.', '')
+                name = f"[Auto-detecting from {domain}]"
+                metadata['auto_detect_name'] = True
             
             metadata.update({
                 'library_name': name,
@@ -84,10 +92,11 @@ class MCPTools:
                 "job_id": job_id,
                 "status": "started",
                 "library_name": name,
-                "message": f"Crawl job '{name}' initiated with {len(start_urls)} URLs at depth {max_depth}",
+                "message": f"Crawl job initiated with {len(start_urls)} URLs at depth {max_depth}",
                 "start_urls": start_urls,
                 "max_depth": max_depth,
-                "domain_restrictions": domain_restrictions
+                "domain_restrictions": domain_restrictions,
+                "auto_detect_name": metadata.get('auto_detect_name', False)
             }
             
         except Exception as e:
