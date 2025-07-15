@@ -67,25 +67,31 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         logger.error("Run 'python cli.py init' to initialize the database.")
         raise RuntimeError("Database connection failed")
     
-    # Start health monitor
-    from ..crawler.health_monitor import get_health_monitor
-    import asyncio
-    health_monitor = get_health_monitor()
-    health_task = asyncio.create_task(health_monitor.start())
-    logger.info("Started crawl job health monitor")
+    # Start health monitor (skip in test environment)
+    import os
+    if os.getenv("TESTING") != "true":
+        from ..crawler.health_monitor import get_health_monitor
+        import asyncio
+        health_monitor = get_health_monitor()
+        health_task = asyncio.create_task(health_monitor.start())
+        logger.info("Started crawl job health monitor")
+    else:
+        health_monitor = None
+        health_task = None
     
     yield
     
     # Shutdown
     logger.info("Shutting down CodeDox API...")
     
-    # Stop health monitor
-    await health_monitor.stop()
-    health_task.cancel()
-    try:
-        await health_task
-    except asyncio.CancelledError:
-        pass
+    # Stop health monitor if running
+    if health_monitor and health_task:
+        await health_monitor.stop()
+        health_task.cancel()
+        try:
+            await health_task
+        except asyncio.CancelledError:
+            pass
 
 
 def get_application() -> FastAPI:

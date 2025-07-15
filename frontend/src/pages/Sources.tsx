@@ -1,8 +1,8 @@
 import React, { useState, useMemo } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { api } from '../lib/api'
-import { Link } from 'react-router-dom'
-import { Database, FileText, Code, Trash2, X, Search, Check } from 'lucide-react'
+import { Link, useNavigate } from 'react-router-dom'
+import { Database, FileText, Code, Trash2, X, Search, Check, RefreshCw } from 'lucide-react'
 import { ConfirmationDialog } from '../components/ConfirmationDialog'
 import { EditableSourceName } from '../components/EditableSourceName'
 
@@ -18,6 +18,7 @@ export default function Sources() {
   );
   const [isBulkDelete, setIsBulkDelete] = useState(false);
   const queryClient = useQueryClient();
+  const navigate = useNavigate();
 
   const {
     data: sources,
@@ -73,6 +74,21 @@ export default function Sources() {
     onError: (error) => {
       console.error("Failed to update source name:", error);
       throw error; // Re-throw so the component can handle it
+    },
+  });
+
+  const recrawlMutation = useMutation({
+    mutationFn: (sourceId: string) => api.recrawlSource(sourceId),
+    onSuccess: (data) => {
+      // Navigate to the crawl detail page for the new crawl job
+      navigate(`/crawl/${data.id}`);
+    },
+    onError: (error) => {
+      console.error("Failed to recrawl source:", error);
+      alert(
+        "Failed to recrawl source: " +
+          (error instanceof Error ? error.message : "Unknown error")
+      );
     },
   });
 
@@ -134,6 +150,15 @@ export default function Sources() {
 
   const handleUpdateSourceName = async (id: string, newName: string) => {
     await updateSourceNameMutation.mutateAsync({ id, name: newName });
+  };
+
+  const handleRecrawlClick = (
+    e: React.MouseEvent,
+    sourceId: string
+  ) => {
+    e.preventDefault(); // Prevent navigation
+    e.stopPropagation(); // Prevent checkbox toggle
+    recrawlMutation.mutate(sourceId);
   };
 
   if (isLoading) {
@@ -298,33 +323,44 @@ export default function Sources() {
                 </div>
               </div>
 
-              <Link to={`/sources/${source.id}`} className="block">
-                <div className="flex items-start justify-between mb-4">
-                  <Database className="h-8 w-8 text-muted-foreground ml-8" />
-                  <div className="flex items-center gap-2">
-                    <span className="text-xs text-muted-foreground">
-                      {new Date(source.created_at).toLocaleDateString()}
-                    </span>
-                    <button
-                      onClick={(e) => handleDeleteClick(e, source)}
-                      className="p-1 text-muted-foreground hover:text-destructive hover:bg-destructive/10 rounded-md opacity-0 group-hover:opacity-100 transition-opacity"
-                      title="Delete source"
-                    >
-                      <Trash2 className="h-4 w-4" />
-                    </button>
-                  </div>
+              <div className="flex items-start justify-between mb-4">
+                <Database className="h-8 w-8 text-muted-foreground ml-8" />
+                <div className="flex items-center gap-2">
+                  <span className="text-xs text-muted-foreground">
+                    {new Date(source.created_at).toLocaleDateString()}
+                  </span>
+                  <button
+                    onClick={(e) => handleRecrawlClick(e, source.id)}
+                    className="p-1 text-muted-foreground hover:text-primary hover:bg-primary/10 rounded-md opacity-0 group-hover:opacity-100 transition-opacity"
+                    title="Recrawl source"
+                    disabled={recrawlMutation.isPending}
+                  >
+                    <RefreshCw className={`h-4 w-4 ${recrawlMutation.isPending ? 'animate-spin' : ''}`} />
+                  </button>
+                  <button
+                    onClick={(e) => handleDeleteClick(e, source)}
+                    className="p-1 text-muted-foreground hover:text-destructive hover:bg-destructive/10 rounded-md opacity-0 group-hover:opacity-100 transition-opacity"
+                    title="Delete source"
+                  >
+                    <Trash2 className="h-4 w-4" />
+                  </button>
                 </div>
+              </div>
 
-                <div className="mb-2">
-                  <EditableSourceName
-                    id={source.id}
-                    name={source.name}
-                    onUpdate={handleUpdateSourceName}
-                    className="text-lg"
-                  />
+              <div className="mb-4">
+                <EditableSourceName
+                  id={source.id}
+                  name={source.name}
+                  onUpdate={handleUpdateSourceName}
+                  className="text-lg font-medium"
+                />
+                <div className="text-xs text-muted-foreground mt-1 truncate">
+                  {source.base_url}
                 </div>
+              </div>
 
-                <div className="flex items-center justify-between text-sm">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-4 text-sm">
                   <div className="flex items-center text-muted-foreground">
                     <FileText className="h-4 w-4 mr-1" />
                     {source.documents_count} docs
@@ -334,7 +370,14 @@ export default function Sources() {
                     {source.snippets_count} snippets
                   </div>
                 </div>
-              </Link>
+                <Link 
+                  to={`/sources/${source.id}`} 
+                  className="text-sm text-primary hover:text-primary/80 hover:underline"
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  View Details →
+                </Link>
+              </div>
             </div>
           ))}
         </div>

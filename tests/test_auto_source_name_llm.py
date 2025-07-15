@@ -18,7 +18,10 @@ class TestAutoSourceNameLLM:
         
         # Mock the LLM client
         mock_llm_client = AsyncMock()
-        manager._llm_client = mock_llm_client
+        # After refactoring, LLM client is in result_processor.metadata_enricher
+        if not manager.result_processor.metadata_enricher:
+            manager.result_processor.metadata_enricher = AsyncMock()
+        manager.result_processor.metadata_enricher.llm_client = mock_llm_client
         
         # Test cases with expected LLM responses
         test_cases = [
@@ -36,7 +39,7 @@ class TestAutoSourceNameLLM:
                 model="test-model"
             )
             
-            result = await manager._extract_site_name(title, "http://example.com", {})
+            result = await manager.result_processor._extract_site_name(title, "http://example.com", {})
             assert result == expected_response, f"Failed for title: {title}"
             
             # Verify LLM was called with correct prompt structure
@@ -53,7 +56,10 @@ class TestAutoSourceNameLLM:
         manager = CrawlManager()
         
         mock_llm_client = AsyncMock()
-        manager._llm_client = mock_llm_client
+        # After refactoring, LLM client is in result_processor.metadata_enricher
+        if not manager.result_processor.metadata_enricher:
+            manager.result_processor.metadata_enricher = AsyncMock()
+        manager.result_processor.metadata_enricher.llm_client = mock_llm_client
         
         # Test LLM returning quoted responses
         test_cases = [
@@ -68,7 +74,7 @@ class TestAutoSourceNameLLM:
                 model="test-model"
             )
             
-            result = await manager._extract_site_name("Some Title", "http://example.com", {})
+            result = await manager.result_processor._extract_site_name("Some Title", "http://example.com", {})
             assert result == expected
     
     @pytest.mark.asyncio
@@ -77,29 +83,27 @@ class TestAutoSourceNameLLM:
         manager = CrawlManager()
         
         # No LLM client available
-        manager._llm_client = None
+        manager.result_processor.metadata_enricher = None
         
-        # Mock _ensure_llm_enricher to not set up LLM
-        with patch.object(manager, '_ensure_llm_enricher', new_callable=AsyncMock):
-            # Test with metadata title available
-            metadata = {"title": "React"}
-            result = await manager._extract_site_name("React Documentation", "http://example.com", metadata)
-            assert result == "React"  # Uses metadata title
-            
-            # Test without metadata - falls back to page title
-            result = await manager._extract_site_name("Vue.js Documentation", "http://example.com")
-            assert result == "Vue.js Documentation"
-            
-            # Long title without metadata - should truncate
-            long_title = "This is a very long documentation title that exceeds the maximum allowed length for a source name and should be truncated"
-            result = await manager._extract_site_name(long_title, "http://example.com")
-            assert len(result) <= 53
-            assert result.endswith("...")
-            
-            # Long metadata title - should not use it
-            long_metadata = {"title": "This is a very long metadata title that exceeds the maximum allowed length"}
-            result = await manager._extract_site_name("Short Title", "http://example.com", long_metadata)
-            assert result == "Short Title"  # Falls back to page title since metadata title is too long
+        # Test with metadata title available
+        metadata = {"title": "React"}
+        result = await manager.result_processor._extract_site_name("React Documentation", "http://example.com", metadata)
+        assert result == "React"  # Uses metadata title
+        
+        # Test without metadata - falls back to page title
+        result = await manager.result_processor._extract_site_name("Vue.js Documentation", "http://example.com")
+        assert result == "Vue.js Documentation"
+        
+        # Long title without metadata - should truncate
+        long_title = "This is a very long documentation title that exceeds the maximum allowed length for a source name and should be truncated"
+        result = await manager.result_processor._extract_site_name(long_title, "http://example.com")
+        assert len(result) <= 53
+        assert result.endswith("...")
+        
+        # Long metadata title - should not use it
+        long_metadata = {"title": "This is a very long metadata title that exceeds the maximum allowed length"}
+        result = await manager.result_processor._extract_site_name("Short Title", "http://example.com", long_metadata)
+        assert result == "Short Title"  # Falls back to page title since metadata title is too long
     
     @pytest.mark.asyncio
     async def test_extract_site_name_llm_error(self):
@@ -107,18 +111,21 @@ class TestAutoSourceNameLLM:
         manager = CrawlManager()
         
         mock_llm_client = AsyncMock()
-        manager._llm_client = mock_llm_client
+        # After refactoring, LLM client is in result_processor.metadata_enricher
+        if not manager.result_processor.metadata_enricher:
+            manager.result_processor.metadata_enricher = AsyncMock()
+        manager.result_processor.metadata_enricher.llm_client = mock_llm_client
         
         # Mock LLM to throw an error
         mock_llm_client.generate.side_effect = Exception("LLM service unavailable")
         
         # Test with metadata fallback
         metadata = {"title": "Next.js"}
-        result = await manager._extract_site_name("Next.js Documentation", "http://example.com", metadata)
+        result = await manager.result_processor._extract_site_name("Next.js Documentation", "http://example.com", metadata)
         assert result == "Next.js"  # Falls back to metadata title
         
         # Test without metadata
-        result = await manager._extract_site_name("React Documentation", "http://example.com")
+        result = await manager.result_processor._extract_site_name("React Documentation", "http://example.com")
         assert result == "React Documentation"  # Falls back to page title
     
     @pytest.mark.asyncio
@@ -126,8 +133,8 @@ class TestAutoSourceNameLLM:
         """Test handling of empty titles."""
         manager = CrawlManager()
         
-        assert await manager._extract_site_name("", "http://example.com", {}) is None
-        assert await manager._extract_site_name(None, "http://example.com", {}) is None
+        assert await manager.result_processor._extract_site_name("", "http://example.com", {}) is None
+        assert await manager.result_processor._extract_site_name(None, "http://example.com", {}) is None
     
     @pytest.mark.asyncio
     async def test_extract_site_name_llm_invalid_response(self):
@@ -135,7 +142,10 @@ class TestAutoSourceNameLLM:
         manager = CrawlManager()
         
         mock_llm_client = AsyncMock()
-        manager._llm_client = mock_llm_client
+        # After refactoring, LLM client is in result_processor.metadata_enricher
+        if not manager.result_processor.metadata_enricher:
+            manager.result_processor.metadata_enricher = AsyncMock()
+        manager.result_processor.metadata_enricher.llm_client = mock_llm_client
         
         # Test LLM returning too long response with metadata fallback
         mock_llm_client.generate.return_value = LLMResponse(
@@ -144,11 +154,11 @@ class TestAutoSourceNameLLM:
         )
         
         metadata = {"title": "React"}
-        result = await manager._extract_site_name("React Docs", "http://example.com", metadata)
+        result = await manager.result_processor._extract_site_name("React Docs", "http://example.com", metadata)
         assert result == "React"  # Falls back to metadata title
         
         # Test without metadata
-        result = await manager._extract_site_name("Vue Docs", "http://example.com")
+        result = await manager.result_processor._extract_site_name("Vue Docs", "http://example.com")
         assert result == "Vue Docs"  # Falls back to page title
     
     @pytest.mark.asyncio
@@ -187,27 +197,18 @@ class TestAutoSourceNameLLM:
             model="test-model"
         )
         
-        # Mock dependencies
-        with patch.object(manager, '_ensure_llm_enricher', new_callable=AsyncMock):
-            with patch.object(manager.db_manager, 'session_scope') as mock_session_scope:
-                # Setup mock session
-                mock_session = Mock()
-                mock_session_scope.return_value.__enter__.return_value = mock_session
-                
-                # Mock existing job with auto-detect name
-                mock_job = Mock()
-                mock_job.id = "test-job-id"
-                mock_job.name = "[Auto-detecting from nextjs.org]"
-                
-                # Setup so the name gets updated
-                manager._llm_client = mock_llm_client
-                
-                # Call the method directly
-                result = await manager._extract_site_name("Getting Started | Next.js", "https://nextjs.org/docs", {})
-                
-                # Verify LLM was called and returned expected result
-                assert result == "Next.js"
-                mock_llm_client.generate.assert_called_once()
+        # Setup so the name gets updated
+        # After refactoring, LLM client is in result_processor.metadata_enricher
+        if not manager.result_processor.metadata_enricher:
+            manager.result_processor.metadata_enricher = AsyncMock()
+        manager.result_processor.metadata_enricher.llm_client = mock_llm_client
+        
+        # Call the method directly
+        result = await manager.result_processor._extract_site_name("Getting Started | Next.js", "https://nextjs.org/docs", {})
+        
+        # Verify LLM was called and returned expected result
+        assert result == "Next.js"
+        mock_llm_client.generate.assert_called_once()
     
     @pytest.mark.asyncio
     async def test_llm_prompt_structure(self):
@@ -215,13 +216,16 @@ class TestAutoSourceNameLLM:
         manager = CrawlManager()
         
         mock_llm_client = AsyncMock()
-        manager._llm_client = mock_llm_client
+        # After refactoring, LLM client is in result_processor.metadata_enricher
+        if not manager.result_processor.metadata_enricher:
+            manager.result_processor.metadata_enricher = AsyncMock()
+        manager.result_processor.metadata_enricher.llm_client = mock_llm_client
         mock_llm_client.generate.return_value = LLMResponse(
             content="Test Framework",
             model="test-model"
         )
         
-        await manager._extract_site_name("Test Framework Documentation", "http://test.com", {})
+        await manager.result_processor._extract_site_name("Test Framework Documentation", "http://test.com", {})
         
         # Check the prompt structure
         call_args = mock_llm_client.generate.call_args
@@ -244,14 +248,17 @@ class TestAutoSourceNameLLM:
         
         # Scenario 1: LLM works - should use LLM result
         mock_llm_client = AsyncMock()
-        manager._llm_client = mock_llm_client
+        # After refactoring, LLM client is in result_processor.metadata_enricher
+        if not manager.result_processor.metadata_enricher:
+            manager.result_processor.metadata_enricher = AsyncMock()
+        manager.result_processor.metadata_enricher.llm_client = mock_llm_client
         mock_llm_client.generate.return_value = LLMResponse(
             content="Next.js",
             model="test-model"
         )
         
         metadata = {"title": "NextJS Framework"}  # Different from LLM result
-        result = await manager._extract_site_name("Getting Started | Next.js Documentation", "http://nextjs.org", metadata)
+        result = await manager.result_processor._extract_site_name("Getting Started | Next.js Documentation", "http://nextjs.org", metadata)
         assert result == "Next.js"  # Uses LLM result, not metadata
         
         # Scenario 2: LLM returns empty - should use metadata title
@@ -261,20 +268,19 @@ class TestAutoSourceNameLLM:
         )
         
         metadata = {"title": "React"}
-        result = await manager._extract_site_name("React Documentation", "http://react.dev", metadata)
+        result = await manager.result_processor._extract_site_name("React Documentation", "http://react.dev", metadata)
         assert result == "React"  # Uses metadata title
         
         # Scenario 3: LLM fails, metadata available - should use metadata
         mock_llm_client.generate.side_effect = Exception("LLM error")
         
         metadata = {"title": "Vue.js"}
-        result = await manager._extract_site_name("Vue.js Official Documentation", "http://vuejs.org", metadata)
+        result = await manager.result_processor._extract_site_name("Vue.js Official Documentation", "http://vuejs.org", metadata)
         assert result == "Vue.js"  # Uses metadata title
         
         # Scenario 4: No LLM, metadata empty - should use page title
-        manager._llm_client = None
+        manager.result_processor.metadata_enricher = None
         
-        with patch.object(manager, '_ensure_llm_enricher', new_callable=AsyncMock):
-            metadata = {"title": ""}  # Empty metadata title
-            result = await manager._extract_site_name("Django Docs", "http://django.com", metadata)
-            assert result == "Django Docs"  # Falls back to page title
+        metadata = {"title": ""}  # Empty metadata title
+        result = await manager.result_processor._extract_site_name("Django Docs", "http://django.com", metadata)
+        assert result == "Django Docs"  # Falls back to page title

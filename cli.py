@@ -113,9 +113,9 @@ def search(query: str, source: Optional[str], lang: Optional[str], limit: int):
         tools = MCPTools()
         
         with console.status("[bold green]Searching..."):
-            results = await tools.search_content(
+            results = await tools.get_content(
                 query=query,
-                source=source,
+                library_id=source,
                 language=lang,
                 max_results=limit
             )

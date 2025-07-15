@@ -30,8 +30,8 @@ class TestMCPToolsEndpoint:
         assert len(tools) == 4
         tool_names = [tool["name"] for tool in tools]
         assert "init_crawl" in tool_names
-        assert "get_sources" in tool_names
-        assert "search_content" in tool_names
+        assert "search_libraries" in tool_names
+        assert "get_content" in tool_names
         assert "get_snippet_details" in tool_names
         
         # Check tool structure
@@ -63,38 +63,23 @@ class TestMCPExecuteEndpoints:
         assert result["status"] == "started"
         assert "job_id" in result
     
-    def test_execute_get_sources(self, client, mock_mcp_tools):
-        """Test executing get_sources tool."""
-        response = client.post("/mcp/execute/get_sources", json={})
-        assert response.status_code == 200
-        data = response.json()
-        assert "result" in data
-        sources = data["result"]
-        assert len(sources) == 1
-        assert sources[0]["name"] == "Test Source"
-    
-    def test_execute_search_content(self, client, mock_mcp_tools):
-        """Test executing search_content tool."""
-        response = client.post(
-            "/mcp/execute/search_content",
-            json={
-                "query": "authentication",
-                "source": "Test Source",
-                "max_results": 5
-            }
-        )
+    def test_execute_search_libraries(self, client, mock_mcp_tools):
+        """Test executing search_libraries tool."""
+        response = client.post("/mcp/execute/search_libraries", json={"query": "test"})
         assert response.status_code == 200
         data = response.json()
         assert "result" in data
         result = data["result"]
-        assert isinstance(result, str)
-        assert "Found 1 results" in result
+        assert result["status"] == "success"
+        assert "selected_library" in result
+        assert result["selected_library"]["name"] == "Test Source"
     
-    def test_execute_search_content_without_source(self, client, mock_mcp_tools):
-        """Test executing search_content tool without source filter."""
+    def test_execute_get_content(self, client, mock_mcp_tools):
+        """Test executing get_content tool."""
         response = client.post(
-            "/mcp/execute/search_content",
+            "/mcp/execute/get_content",
             json={
+                "library_id": "test-lib-id",
                 "query": "authentication",
                 "max_results": 5
             }
@@ -106,18 +91,34 @@ class TestMCPExecuteEndpoints:
         assert isinstance(result, str)
         assert "Found 1 results" in result
     
-    def test_execute_search_content_missing_query(self, client, mock_mcp_tools):
-        """Test executing search_content tool without required query param."""
+    def test_execute_get_content_without_library_id(self, client, mock_mcp_tools):
+        """Test executing get_content tool without required library_id."""
         response = client.post(
-            "/mcp/execute/search_content",
+            "/mcp/execute/get_content",
             json={
-                "source": "Test Source",
+                "query": "authentication",
                 "max_results": 5
             }
         )
         assert response.status_code == 422
         data = response.json()
-        assert "Missing required parameter: query" in data["detail"]
+        assert "Missing required parameter: library_id" in data["detail"]
+    
+    def test_execute_get_content_without_query(self, client, mock_mcp_tools):
+        """Test executing get_content tool without optional query param - should succeed."""
+        response = client.post(
+            "/mcp/execute/get_content",
+            json={
+                "library_id": "test-lib-id",
+                "max_results": 5
+            }
+        )
+        assert response.status_code == 200
+        data = response.json()
+        assert "result" in data
+        result = data["result"]
+        assert isinstance(result, str)
+        assert "Found 1 results" in result
     
     def test_execute_get_snippet_details(self, client, mock_mcp_tools):
         """Test executing get_snippet_details tool."""
@@ -203,7 +204,7 @@ class TestMCPStreamEndpoints:
         json_data = json.loads(content[6:].strip())  # Remove "data: " prefix
         assert "tools" in json_data
         assert isinstance(json_data["tools"], list)
-        assert len(json_data["tools"]) == 4  # init_crawl, get_sources, search_content, get_snippet_details
+        assert len(json_data["tools"]) == 4  # init_crawl, search_libraries, get_content, get_snippet_details
     
     def test_stream_execute_tool(self, client, mock_mcp_tools):
         """Test streaming tool execution."""
@@ -212,8 +213,8 @@ class TestMCPStreamEndpoints:
             json={
                 "method": "tools/execute",
                 "params": {
-                    "name": "get_sources",
-                    "params": {}
+                    "name": "search_libraries",
+                    "params": {"query": "test"}
                 }
             }
         )
@@ -225,7 +226,7 @@ class TestMCPStreamEndpoints:
         assert content.startswith("data: ")
         json_data = json.loads(content[6:].strip())
         assert "result" in json_data
-        assert isinstance(json_data["result"], list)
+        assert isinstance(json_data["result"], dict)
     
     def test_stream_invalid_method(self, client):
         """Test stream with invalid method."""
@@ -245,9 +246,9 @@ class TestMCPStreamEndpoints:
     def test_stream_execute_specific_tool(self, client, mock_mcp_tools):
         """Test stream execute endpoint for specific tool."""
         response = client.post(
-            "/mcp/stream/execute/search_content",
+            "/mcp/stream/execute/get_content",
             json={
-                "source": "Test",
+                "library_id": "test-lib-id",
                 "query": "test query",
                 "max_results": 3
             }
@@ -260,7 +261,7 @@ class TestMCPStreamEndpoints:
         json_data = json.loads(content[6:].strip())
         assert "result" in json_data
         assert "tool" in json_data
-        assert json_data["tool"] == "search_content"
+        assert json_data["tool"] == "get_content"
         assert isinstance(json_data["result"], str)
 
 

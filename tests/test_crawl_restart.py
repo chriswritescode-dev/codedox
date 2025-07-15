@@ -73,7 +73,7 @@ class TestCrawlRestart:
             job_id = str(failed_job.id)
         
         # Mock crawler for restart
-        with patch('src.crawler.crawl_manager.AsyncWebCrawler') as mock_crawler_cls:
+        with patch('src.crawler.page_crawler.AsyncWebCrawler') as mock_crawler_cls:
             crawler_instance = AsyncMock()
             crawler_instance.arun_many.return_value = [
                 Mock(
@@ -194,7 +194,7 @@ class TestCrawlRestart:
             
         # Test resuming - it should skip already crawled URLs
         # Mock the crawl manager to only return new URLs
-        with patch('src.crawler.crawl_manager.AsyncWebCrawler') as mock_crawler_cls:
+        with patch('src.crawler.page_crawler.AsyncWebCrawler') as mock_crawler_cls:
             crawler_instance = AsyncMock()
             # Return pages that haven't been crawled yet
             crawler_instance.arun_many.return_value = [
@@ -211,11 +211,11 @@ class TestCrawlRestart:
             mock_crawler_cls.return_value.__aenter__.return_value = crawler_instance
             
             # Resume should complete successfully
-            success = await crawl_manager.resume_failed_job(job_id)
+            success = await crawl_manager.resume_job(job_id)
             assert success
             # 3. Maintain the crawl depth tracking
     
-    @pytest.mark.asyncio 
+    @pytest.mark.asyncio
     async def test_restart_with_updated_config(self, crawl_manager):
         """Test restarting a crawl with updated configuration."""
         db_manager = get_db_manager()
@@ -244,7 +244,7 @@ class TestCrawlRestart:
             max_pages=50  # Increased page limit
         )
         
-        with patch('src.crawler.crawl_manager.AsyncWebCrawler') as mock_crawler_cls:
+        with patch('src.crawler.page_crawler.AsyncWebCrawler') as mock_crawler_cls:
             crawler_instance = AsyncMock()
             crawler_instance.arun_many.return_value = []
             mock_crawler_cls.return_value.__aenter__.return_value = crawler_instance

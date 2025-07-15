@@ -101,7 +101,7 @@ class MCPConfig(BaseSettings):
     port: int = 8899  # Only used for standalone stdio server
     host: str = "localhost"  # Only used for standalone stdio server
     max_connections: int = 10
-    tools: List[str] = ["init_crawl", "get_sources", "search_content"]
+    tools: List[str] = ["init_crawl", "get_sources", "get_content"]
 
 
 class CrawlingConfig(BaseSettings):

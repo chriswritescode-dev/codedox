@@ -162,10 +162,10 @@ For direct API usage:
 # List available tools
 curl http://localhost:8000/mcp/tools
 
-# Search for code snippets
-curl -X POST http://localhost:8000/mcp/execute/search_content \
+# Get code snippets from a library
+curl -X POST http://localhost:8000/mcp/execute/get_content \
   -H "Content-Type: application/json" \
-  -d '{"source": "Next.js", "query": "authentication"}'
+  -d '{"library_id": "library-id", "query": "authentication"}'
 ```
 
 ### Stdio Mode (Standalone MCP Server)
@@ -190,9 +190,9 @@ This mode is only needed for specific AI integrations that don't support HTTP en
 2. **get_sources** - List available sources with statistics
    - `job_id`: Optional filter by specific job
 
-3. **search_content** - Search code snippets
-   - `source`: Library name (required)
-   - `query`: Search terms
+3. **get_content** - Get code snippets from a library
+   - `library_id`: Library ID (required) - obtained from search_libraries
+   - `query`: Optional search terms to filter results
    - `language`: Filter by programming language
    - `max_results`: Limit results (1-50)
 
@@ -261,7 +261,7 @@ mcp:
   tools:
     - init_crawl
     - get_sources
-    - search_content
+    - get_content
 ```
 
 ### LLM Configuration for Parallel Requests

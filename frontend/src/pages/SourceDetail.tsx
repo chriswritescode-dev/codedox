@@ -177,7 +177,7 @@ export default function SourceDetail() {
     deleteMutation.mutate();
   };
 
-  const handleUpdateSourceName = async (sourceId: string, newName: string) => {
+  const handleUpdateSourceName = async (_sourceId: string, newName: string) => {
     await updateSourceNameMutation.mutateAsync({ name: newName });
   };
 

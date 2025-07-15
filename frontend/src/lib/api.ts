@@ -191,6 +191,12 @@ class APIClient {
     })
   }
 
+  async recrawlSource(id: string): Promise<CrawlJob> {
+    return this.fetch<CrawlJob>(`/sources/${id}/recrawl`, {
+      method: 'POST',
+    })
+  }
+
   // Crawl Jobs
   async getCrawlJobs(): Promise<CrawlJob[]> {
     return this.fetch<CrawlJob[]>('/crawl-jobs')
@@ -201,7 +207,7 @@ class APIClient {
   }
 
   async createCrawlJob(data: {
-    name: string
+    name?: string
     base_url: string
     max_depth: number
     domain_filter?: string
