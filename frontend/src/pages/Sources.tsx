@@ -4,6 +4,7 @@ import { api } from '../lib/api'
 import { Link } from 'react-router-dom'
 import { Database, FileText, Code, Trash2, X, Search, Check } from 'lucide-react'
 import { ConfirmationDialog } from '../components/ConfirmationDialog'
+import { EditableSourceName } from '../components/EditableSourceName'
 
 export default function Sources() {
   const [deleteModalOpen, setDeleteModalOpen] = useState(false);
@@ -63,6 +64,18 @@ export default function Sources() {
     },
   });
 
+  const updateSourceNameMutation = useMutation({
+    mutationFn: ({ id, name }: { id: string; name: string }) =>
+      api.updateSourceName(id, name),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["sources"] });
+    },
+    onError: (error) => {
+      console.error("Failed to update source name:", error);
+      throw error; // Re-throw so the component can handle it
+    },
+  });
+
   // Filter sources based on search query
   const filteredSources = useMemo(() => {
     if (!sources) return [];
@@ -117,6 +130,10 @@ export default function Sources() {
 
   const deselectAll = () => {
     setSelectedSources(new Set());
+  };
+
+  const handleUpdateSourceName = async (id: string, newName: string) => {
+    await updateSourceNameMutation.mutateAsync({ id, name: newName });
   };
 
   if (isLoading) {
@@ -298,7 +315,14 @@ export default function Sources() {
                   </div>
                 </div>
 
-                <h2 className="text-lg font-semibold mb-2">{source.name}</h2>
+                <div className="mb-2">
+                  <EditableSourceName
+                    id={source.id}
+                    name={source.name}
+                    onUpdate={handleUpdateSourceName}
+                    className="text-lg"
+                  />
+                </div>
 
                 <div className="flex items-center justify-between text-sm">
                   <div className="flex items-center text-muted-foreground">

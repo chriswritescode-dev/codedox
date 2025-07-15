@@ -29,12 +29,11 @@ from ..language import LanguageDetector
 from ..llm import MetadataEnricher, LLMClient, LLMError
 from .enrichment_pipeline import EnrichmentPipeline
 
-# Import WebSocket notification function
 try:
     from ..api.websocket import notify_crawl_update
 except ImportError:
-    # WebSocket not available (e.g., when running CLI)
-    async def notify_crawl_update(job_id: str, status: str, data: dict) -> None:
+
+    async def notify_crawl_update(job_id: str, status: str, data: Dict[str, Any]) -> None:
         pass
 
 
@@ -42,7 +41,7 @@ logger = logging.getLogger(__name__)
 settings = get_settings()
 
 # Heartbeat interval in seconds
-HEARTBEAT_INTERVAL = 30
+HEARTBEAT_INTERVAL = 5
 # WebSocket update interval (send updates every N pages)
 WS_UPDATE_INTERVAL = 3
 
@@ -109,7 +108,6 @@ class CrawlManager:
         self._llm_client: Optional[LLMClient] = None
         self.enrichment_pipeline: Optional[EnrichmentPipeline] = None
         if settings.llm.endpoint:
-            # We'll initialize the enricher lazily in async context
             self._llm_endpoint = settings.llm.endpoint
             logger.info(
                 f"LLM enrichment will be initialized on first use with endpoint: {settings.llm.endpoint}"
@@ -138,10 +136,10 @@ class CrawlManager:
                     logger.warning(
                         f"LLM connection test failed: {test_result.get('error', 'Unknown error')}"
                     )
-                    self.metadata_enricher = False  # Mark as failed
+                    self.metadata_enricher = None  # Mark as failed
             except Exception as e:
                 logger.warning(f"Failed to initialize LLM enricher: {e}")
-                self.metadata_enricher = False  # Mark as failed
+                self.metadata_enricher = None  # Mark as failed
 
     async def _ensure_enrichment_pipeline(self) -> None:
         """Initialize enrichment pipeline if not already done."""
@@ -303,7 +301,7 @@ class CrawlManager:
         try:
             with self.db_manager.session_scope() as session:
                 job = session.query(CrawlJob).filter_by(id=job_id).first()
-                if job:
+                if job is not None:
                     # Refresh the object to ensure it's bound to current session
                     session.refresh(job)
                     job.last_heartbeat = datetime.utcnow()
@@ -344,7 +342,7 @@ class CrawlManager:
                 await asyncio.sleep(HEARTBEAT_INTERVAL)
                 with self.db_manager.session_scope() as session:
                     job = session.query(CrawlJob).filter_by(id=job_id).first()
-                    if job and job.status == "running":
+                    if job is not None and job.status == "running":
                         await self._update_heartbeat(job_id)
                     else:
                         # Job no longer running, stop heartbeat
@@ -375,7 +373,7 @@ class CrawlManager:
             # Check for existing crawl job with same domain
             existing_job = session.query(CrawlJob).filter_by(domain=domain).first()
 
-            if existing_job:
+            if existing_job is not None:
                 # Reuse existing job - update it with new configuration
                 logger.info(f"Reusing existing crawl job for domain '{domain}': {existing_job.id}")
 
@@ -482,7 +480,7 @@ class CrawlManager:
 
                     with self.db_manager.session_scope() as session:
                         job = session.query(CrawlJob).filter_by(id=job_id).first()
-                        if job:
+                        if job is not None:
                             if job.config is None:
                                 job.config = {}
                             job.config["crawl_start_time"] = datetime.now(timezone.utc).isoformat()
@@ -502,7 +500,7 @@ class CrawlManager:
                             )
                             with self.db_manager.session_scope() as session:
                                 job = session.query(CrawlJob).filter_by(id=job_id).first()
-                                if job:
+                                if job is not None:
                                     job.crawl_completed_at = datetime.utcnow()
                                     job.enrichment_started_at = datetime.utcnow()
                                     session.commit()
@@ -511,7 +509,11 @@ class CrawlManager:
                             crawl_time = None
                             with self.db_manager.session_scope() as session:
                                 job = session.query(CrawlJob).filter_by(id=job_id).first()
-                                if job and job.config and "crawl_start_time" in job.config:
+                                if (
+                                    job is not None
+                                    and job.config
+                                    and "crawl_start_time" in job.config
+                                ):
                                     start_time = datetime.fromisoformat(
                                         str(job.config["crawl_start_time"])
                                     )
@@ -565,7 +567,7 @@ class CrawlManager:
                                             logger.error(f"Error processing document: {result}")
                                         else:
                                             # Type assertion - we know result is the expected tuple
-                                            doc_id, snippet_count, links = result  # type: ignore[misc,has-type]
+                                            doc_id, snippet_count, links = result  # type: ignore[misc]
                                             total_snippets += int(snippet_count)  # type: ignore[has-type]
 
                                             # Track successful documents
@@ -575,7 +577,7 @@ class CrawlManager:
                                                     .filter_by(id=job_id)
                                                     .first()
                                                 )
-                                                if job:
+                                                if job is not None:
                                                     job.documents_crawled = (
                                                         job.documents_crawled or 0
                                                     ) + 1
@@ -588,7 +590,7 @@ class CrawlManager:
                             # Update job progress after processing results
                             with self.db_manager.session_scope() as session:
                                 job = session.query(CrawlJob).filter_by(id=job_id).first()
-                                if job:
+                                if job is not None:
                                     job.processed_pages = processed_count
                                     job.total_pages = len(visited_urls)
                                     job.snippets_extracted = total_snippets
@@ -622,89 +624,6 @@ class CrawlManager:
                         logger.error(f"Error crawling {start_url}: {e}")
                         continue
 
-            # After all crawling is done, wait for pipeline to process all tasks
-            if use_pipeline and self.enrichment_pipeline:
-                logger.info(
-                    "Crawl phase complete. Waiting for enrichment pipeline to process all tasks..."
-                )
-
-                # Monitor pipeline progress
-                last_enrichment_update = 0
-                check_count = 0
-                while True:
-                    # Yield to allow other tasks to run
-                    await asyncio.sleep(0)
-
-                    stats = self.enrichment_pipeline.get_stats()
-                    enrichment_queue_size = stats.get("enrichment_queue_size", 0)
-                    storage_queue_size = stats.get("storage_queue_size", 0)
-                    active_tasks = stats.get("active_tasks", 0)
-                    completed = stats.get("completed_count", 0)
-                    completed_documents = stats.get("completed_documents", 0)
-                    errors = stats.get("error_count", 0)
-
-                    check_count += 1
-                    if check_count % 5 == 1:  # Log every 5 checks (10 seconds)
-                        logger.info(
-                            f"Pipeline status: Enrichment queue: {enrichment_queue_size}, "
-                            f"Storage queue: {storage_queue_size}, Active: {active_tasks}, "
-                            f"Completed: {completed}, Errors: {errors}"
-                        )
-
-                    # Check if all queues are empty and no active tasks
-                    if enrichment_queue_size == 0 and storage_queue_size == 0 and active_tasks == 0:
-                        # Double check - sometimes there's a race condition
-                        await asyncio.sleep(1)
-                        final_stats = self.enrichment_pipeline.get_stats()
-                        if (
-                            final_stats.get("enrichment_queue_size", 0) == 0
-                            and final_stats.get("storage_queue_size", 0) == 0
-                            and final_stats.get("active_tasks", 0) == 0
-                        ):
-                            logger.info(
-                                f"All enrichment tasks completed! Total processed: {completed}"
-                            )
-                            break
-
-                    # Update job progress
-                    await self._update_heartbeat(job_id, documents_enriched=completed_documents)
-
-                    # Send WebSocket update periodically
-                    if completed > last_enrichment_update:
-                        await notify_crawl_update(
-                            job_id,
-                            "running",
-                            {
-                                "processed_pages": processed_count,
-                                "total_pages": len(visited_urls),
-                                "snippets_extracted": total_snippets,
-                                "documents_enriched": completed_documents,
-                                "enrichment_queue_size": enrichment_queue_size,
-                                "crawl_phase": "enriching",
-                                "timestamp": datetime.utcnow().isoformat(),
-                                # Calculate progress percentages
-                                "crawl_progress": min(
-                                    100,
-                                    round(
-                                        (processed_count / len(visited_urls) * 100)
-                                        if len(visited_urls) > 0
-                                        else 0
-                                    ),
-                                ),
-                                "enrichment_progress": min(
-                                    100,
-                                    round(
-                                        (completed_documents / processed_count * 100)
-                                        if processed_count > 0
-                                        else 0
-                                    ),
-                                ),
-                            },
-                        )
-                        last_enrichment_update = completed_documents
-
-                    # Wait before checking again
-                    await asyncio.sleep(2)
             else:
                 # Single page crawls - process each URL individually
                 url_queue: List[Tuple[str, int]] = [(url, 0) for url in config.start_urls]
@@ -720,6 +639,8 @@ class CrawlManager:
 
                     try:
                         results = await self._crawl_page(current_url, job_id, depth, 0)
+                        
+                        logger.debug(f"Single page crawl returned {len(results) if results else 0} results")
 
                         if results:
                             for result in results:
@@ -736,11 +657,13 @@ class CrawlManager:
                                             result, job_id, depth
                                         )
                                     total_snippets += snippet_count
+                        else:
+                            logger.warning(f"No results returned for single page: {current_url}")
 
                         # Update job progress
                         with self.db_manager.session_scope() as session:
                             job = session.query(CrawlJob).filter_by(id=job_id).first()
-                            if job:
+                            if job is not None:
                                 job.processed_pages = processed_count
                                 job.total_pages = len(visited_urls)
                                 job.snippets_extracted = total_snippets
@@ -776,6 +699,90 @@ class CrawlManager:
                     except Exception as e:
                         logger.error(f"Error crawling {current_url}: {e}")
                         continue
+
+            # After all crawling is done, wait for pipeline to process all tasks
+            if use_pipeline and self.enrichment_pipeline:
+                logger.info(
+                    "Crawl phase complete. Waiting for enrichment pipeline to process all tasks..."
+                )
+
+            # Monitor pipeline progress
+            last_enrichment_update = 0
+            check_count = 0
+            while True:
+                # Yield to allow other tasks to run
+                await asyncio.sleep(0)
+
+                stats = self.enrichment_pipeline.get_stats()
+                enrichment_queue_size = stats.get("enrichment_queue_size", 0)
+                storage_queue_size = stats.get("storage_queue_size", 0)
+                active_tasks = stats.get("active_tasks", 0)
+                completed = stats.get("completed_count", 0)
+                completed_documents = stats.get("completed_documents", 0)
+                errors = stats.get("error_count", 0)
+
+                check_count += 1
+                if check_count % 5 == 1:  # Log every 5 checks (10 seconds)
+                    logger.info(
+                        f"Pipeline status: Enrichment queue: {enrichment_queue_size}, "
+                        f"Storage queue: {storage_queue_size}, Active: {active_tasks}, "
+                        f"Completed: {completed}, Errors: {errors}"
+                    )
+
+                # Check if all queues are empty and no active tasks
+                if enrichment_queue_size == 0 and storage_queue_size == 0 and active_tasks == 0:
+                    # Double check - sometimes there's a race condition
+                    await asyncio.sleep(1)
+                    final_stats = self.enrichment_pipeline.get_stats()
+                    if (
+                        final_stats.get("enrichment_queue_size", 0) == 0
+                        and final_stats.get("storage_queue_size", 0) == 0
+                        and final_stats.get("active_tasks", 0) == 0
+                    ):
+                        logger.info(
+                            f"All enrichment tasks completed! Total processed: {completed}"
+                        )
+                        break
+
+                # Update job progress
+                await self._update_heartbeat(job_id, documents_enriched=completed_documents)
+
+                # Send WebSocket update periodically
+                if completed > last_enrichment_update:
+                    await notify_crawl_update(
+                        job_id,
+                        "running",
+                        {
+                            "processed_pages": processed_count,
+                            "total_pages": len(visited_urls),
+                            "snippets_extracted": total_snippets,
+                            "documents_enriched": completed_documents,
+                            "enrichment_queue_size": enrichment_queue_size,
+                            "crawl_phase": "enriching",
+                            "timestamp": datetime.utcnow().isoformat(),
+                            # Calculate progress percentages
+                            "crawl_progress": min(
+                                100,
+                                round(
+                                    (processed_count / len(visited_urls) * 100)
+                                    if len(visited_urls) > 0
+                                    else 0
+                                ),
+                            ),
+                            "enrichment_progress": min(
+                                100,
+                                round(
+                                    (completed_documents / processed_count * 100)
+                                    if processed_count > 0
+                                    else 0
+                                ),
+                            ),
+                        },
+                    )
+                    last_enrichment_update = completed_documents
+
+                # Wait before checking again
+                await asyncio.sleep(2)
 
             # Send a final crawl update if we haven't sent one recently
             if processed_count > last_ws_update_count:
@@ -824,7 +831,7 @@ class CrawlManager:
                     # Update job with final counts
                     with self.db_manager.session_scope() as session:
                         job = session.query(CrawlJob).filter_by(id=job_id).first()
-                        if job:
+                        if job is not None:
                             job.documents_enriched = stats.get("completed_documents", 0)
                             job.status = "completed"
                             job.completed_at = datetime.utcnow()
@@ -858,7 +865,7 @@ class CrawlManager:
             if not use_pipeline:
                 with self.db_manager.session_scope() as session:
                     job = session.query(CrawlJob).filter_by(id=job_id).first()
-                    if job:
+                    if job is not None:
                         job.status = "completed"
                         job.completed_at = datetime.utcnow()
                         job.crawl_completed_at = datetime.utcnow()
@@ -884,7 +891,7 @@ class CrawlManager:
             logger.error(f"Crawl job {job_id} failed: {e}")
             with self.db_manager.session_scope() as session:
                 job = session.query(CrawlJob).filter_by(id=job_id).first()
-                if job:
+                if job is not None:
                     job.status = "failed"
                     job.error_message = str(e)
                     job.completed_at = datetime.utcnow()
@@ -928,7 +935,7 @@ class CrawlManager:
         job_config = None
         with self.db_manager.session_scope() as session:
             job = session.query(CrawlJob).filter_by(id=job_id).first()
-            if job:
+            if job is not None:
                 job_config = {
                     "domain_restrictions": job.domain_restrictions,
                     "include_patterns": (
@@ -952,17 +959,28 @@ class CrawlManager:
                             DomainFilter(allowed_domains=job_config["domain_restrictions"])
                         )
 
-                    if job_config and (
-                        job_config["include_patterns"] or job_config["exclude_patterns"]
-                    ):
+                    if job_config and job_config["include_patterns"]:
+                        # Add include pattern filters
                         filters.append(
                             URLPatternFilter(
-                                include_patterns=job_config["include_patterns"],
-                                exclude_patterns=job_config["exclude_patterns"],
+                                patterns=job_config["include_patterns"],
+                                use_glob=True,
+                                reverse=False,  # Match patterns
                             )
                         )
 
-                    filter_chain = FilterChain(filters) if filters else None
+                    if job_config and job_config["exclude_patterns"]:
+                        # Add exclude pattern filters
+                        filters.append(
+                            URLPatternFilter(
+                                patterns=job_config["exclude_patterns"],
+                                use_glob=True,
+                                reverse=True,  # Exclude patterns
+                            )
+                        )
+
+                    # Always create a FilterChain, even if empty
+                    filter_chain = FilterChain(filters)
 
                     # Configure BFS deep crawling strategy
                     strategy = BFSDeepCrawlStrategy(
@@ -988,6 +1006,7 @@ class CrawlManager:
                                 "escape_html": False,
                                 "ignore_images": True,
                             },
+                            content_source="raw_html",
                         ),
                         wait_until="domcontentloaded",
                         page_timeout=30000,
@@ -1001,10 +1020,9 @@ class CrawlManager:
                     total_snippets = 0
                     last_ws_update_count = 0
 
-                    # Crawl with streaming
-                    async for result in await crawler.arun(
-                        url, config=config, dispatcher=dispatcher
-                    ):
+                    # Crawl with streaming - arun returns an async generator when stream=True
+                    crawl_results = await crawler.arun(url, config=config, dispatcher=dispatcher)
+                    async for result in crawl_results:
                         crawled_count += 1
 
                         if result.success:
@@ -1034,7 +1052,7 @@ class CrawlManager:
                         if crawled_count % 3 == 0 or crawled_count == 1:
                             with self.db_manager.session_scope() as session:
                                 job = session.query(CrawlJob).filter_by(id=job_id).first()
-                                if job:
+                                if job is not None:
                                     job.processed_pages = crawled_count
                                     job.total_pages = crawled_count
                                     job.snippets_extracted = total_snippets
@@ -1069,14 +1087,30 @@ class CrawlManager:
                                 "escape_html": False,
                                 "ignore_images": True,
                             },
+                            content_source="raw_html",
                         ),
                         wait_until="domcontentloaded",
                         page_timeout=60000,
                         cache_mode=CacheMode.BYPASS,
                     )
 
-                    # Crawl single page - arun returns an async iterator
-                    async for result in await crawler.arun(url, config=config):
+                    # Crawl single page - arun returns a container for single page
+                    result_container = await crawler.arun(url, config=config)
+                    # For single page, we get a container, not an iterator
+                    if hasattr(result_container, "results"):
+                        for result in result_container.results:
+                            if result.success:
+                                crawl_result = self._convert_library_result(result, depth)
+                                if crawl_result:
+                                    results.append(crawl_result)
+                                    logger.info(f"Successfully crawled: {url}")
+                            else:
+                                logger.error(f"Failed to crawl {url}: {result.error_message}")
+                                # Record the failed page for potential retry
+                                await self._record_failed_page(job_id, url, result.error_message)
+                    else:
+                        # Handle single result
+                        result = result_container
                         if result.success:
                             crawl_result = self._convert_library_result(result, depth)
                             if crawl_result:
@@ -1086,7 +1120,6 @@ class CrawlManager:
                             logger.error(f"Failed to crawl {url}: {result.error_message}")
                             # Record the failed page for potential retry
                             await self._record_failed_page(job_id, url, result.error_message)
-                        break  # Only process first result for single page
 
                 return results if results else None
 
@@ -1133,6 +1166,8 @@ class CrawlManager:
                         markdown_content = result.markdown.get("fit_markdown", "")
                 elif isinstance(result.markdown, str):
                     markdown_content = result.markdown
+                else:
+                    markdown_content = ""
 
                 if markdown_content:
                     logger.info(f"Extracted markdown content length: {len(markdown_content)}")
@@ -1159,7 +1194,7 @@ class CrawlManager:
                 logger.debug(f"  First line: {block.content.split(chr(10))[0][:80]}...")
 
             # Calculate content hash based on markdown content
-            content_hash = hashlib.md5(markdown_content.encode("utf-8")).hexdigest()
+            content_hash = hashlib.md5((markdown_content or "").encode("utf-8")).hexdigest()
 
             # Add Crawl4AI metadata if available
             if hasattr(result, "metadata") and result.metadata:
@@ -1168,7 +1203,7 @@ class CrawlManager:
             return CrawlResult(
                 url=result.url,
                 title=title,
-                content=markdown_content,  # Use markdown content
+                content=markdown_content or "",  # Use markdown content, ensure not None
                 content_hash=content_hash,
                 links=links,
                 code_blocks=code_blocks,
@@ -1292,7 +1327,7 @@ class CrawlManager:
                 return int(existing_doc.id), 0
 
             # Create or update document
-            if existing_doc:
+            if existing_doc is not None:
                 # Delete old code snippets before updating document
                 session.query(CodeSnippet).filter_by(document_id=existing_doc.id).delete()
 
@@ -1320,6 +1355,16 @@ class CrawlManager:
 
             doc_id = int(doc.id)
 
+            # Check if we need to auto-detect the name
+            job = session.query(CrawlJob).filter_by(id=job_id).first()
+            if job is not None and job.name.startswith("[Auto-detecting"):
+                # Extract name from the first page
+                detected_name = await self._extract_site_name(result.title, result.url, result.metadata)
+                if detected_name:
+                    logger.info(f"Auto-detected site name: {detected_name}")
+                    job.name = detected_name
+                    session.commit()
+
         # Submit code blocks to pipeline (non-blocking)
         if self.enrichment_pipeline and result.code_blocks:
             logger.info(
@@ -1336,7 +1381,7 @@ class CrawlManager:
             )
 
             # Add error handler to log any issues
-            def log_error(t: asyncio.Task) -> None:
+            def log_error(t: asyncio.Task[None]) -> None:
                 if t.exception():
                     logger.error(f"Failed to submit enrichment task: {t.exception()}")
 
@@ -1477,7 +1522,7 @@ class CrawlManager:
                 return int(existing_doc.id), 0
 
             # Create or update document
-            if existing_doc:
+            if existing_doc is not None:
                 # Delete old code snippets before updating document
                 session.query(CodeSnippet).filter_by(document_id=existing_doc.id).delete()
 
@@ -1501,6 +1546,16 @@ class CrawlManager:
 
             session.flush()  # Get doc.id
 
+            # Check if we need to auto-detect the name
+            job = session.query(CrawlJob).filter_by(id=job_id).first()
+            if job is not None and job.name.startswith("[Auto-detecting"):
+                # Extract name from the first page
+                detected_name = await self._extract_site_name(result.title, result.url, result.metadata)
+                if detected_name:
+                    logger.info(f"Auto-detected site name: {detected_name}")
+                    job.name = detected_name
+                    session.commit()
+
             # Mark document as being processed for enrichment
             doc.enrichment_status = "processing"
             session.commit()
@@ -1517,7 +1572,7 @@ class CrawlManager:
 
             # Enrich blocks with LLM if available
             enriched_blocks = []
-            if self.metadata_enricher and self.metadata_enricher is not False and blocks_to_process:
+            if self.metadata_enricher is not None and blocks_to_process:
                 try:
                     logger.info(f"Enriching {len(blocks_to_process)} code blocks with LLM")
                     enriched_results = await self.metadata_enricher.enrich_batch(blocks_to_process)
@@ -1642,6 +1697,98 @@ class CrawlManager:
             session.commit()
             return int(doc.id), snippet_count
 
+    async def _extract_site_name(self, title: str, url: str, metadata: Optional[Dict[str, Any]] = None) -> Optional[str]:
+        """Extract a clean site name from the page title using LLM.
+
+        Args:
+            title: Page title
+            url: Page URL
+            metadata: Optional metadata from crawl result
+
+        Returns:
+            Cleaned site name or None
+        """
+        if not title:
+            return None
+
+        # Initialize LLM client if needed
+        await self._ensure_llm_enricher()
+        
+        if not self._llm_client:
+            # Fallback to metadata title if LLM not available
+            logger.warning("LLM not available for site name extraction, using metadata title fallback")
+            if metadata and "title" in metadata:
+                meta_title = metadata["title"]
+                if meta_title and len(meta_title) <= 50:
+                    return meta_title.strip()
+            # Otherwise use the page title
+            if len(title) > 50:
+                return title[:50].rsplit(" ", 1)[0] + "..."
+            return title.strip()
+        
+        try:
+            # Create prompt for LLM
+            prompt = f"""Extract the name of the documentation site, library, or framework from this page title.
+
+Page Title: {title}
+Page URL: {url}
+
+Instructions:
+- Return ONLY the clean name of the library, framework, or documentation site
+- Remove any suffixes like "Documentation", "Docs", "Official Site", "Home", etc.
+- Remove version numbers
+- Use proper capitalization (e.g., "Next.js" not "nextjs")
+- Keep the name concise (under 50 characters)
+- If unsure, extract the most likely site/framework name from the title
+
+Examples:
+- "Getting Started | Next.js" → "Next.js"
+- "React Documentation" → "React"
+- "Django 5.0 Documentation" → "Django"
+- "API Reference | Stripe Docs" → "Stripe"
+
+Extracted name:"""
+            
+            # Call LLM with a short timeout since this is a simple task
+            response = await self._llm_client.generate(
+                prompt=prompt,
+                max_tokens=50,  # We only need a short name
+                temperature=0.1,  # Low temperature for consistency
+            )
+            
+            # Clean up the response
+            extracted_name = response.content.strip()
+            # Remove quotes if present
+            extracted_name = extracted_name.strip('"\'')
+            
+            # Validate the response
+            if extracted_name and len(extracted_name) <= 50:
+                logger.info(f"LLM extracted site name: {extracted_name} from title: {title}")
+                return extracted_name
+            else:
+                logger.warning(f"LLM returned invalid name: {extracted_name}, using fallback")
+                # Fallback to metadata title
+                if metadata and "title" in metadata:
+                    meta_title = metadata["title"]
+                    if meta_title and len(meta_title) <= 50:
+                        return meta_title.strip()
+                # Otherwise use the page title
+                if len(title) > 50:
+                    return title[:50].rsplit(" ", 1)[0] + "..."
+                return title.strip()
+                
+        except Exception as e:
+            logger.error(f"Failed to extract site name using LLM: {e}")
+            # Fallback to metadata title
+            if metadata and "title" in metadata:
+                meta_title = metadata["title"]
+                if meta_title and len(meta_title) <= 50:
+                    return meta_title.strip()
+            # Otherwise use the page title
+            if len(title) > 50:
+                return title[:50].rsplit(" ", 1)[0] + "..."
+            return title.strip()
+
     def _create_mock_enriched(self, block: Any) -> Any:
         """Create a mock enriched block for fallback."""
         from ..llm.enricher import EnrichedCodeBlock
@@ -1675,7 +1822,7 @@ class CrawlManager:
                     session.query(FailedPage).filter_by(crawl_job_id=job_uuid, url=url).first()
                 )
 
-                if not existing:
+                if existing is None:
                     failed_page = FailedPage(
                         crawl_job_id=job_uuid,
                         url=url,
@@ -1731,7 +1878,7 @@ class CrawlManager:
         """Pause a running crawl job."""
         with self.db_manager.session_scope() as session:
             job = session.query(CrawlJob).filter_by(id=job_id).first()
-            if job and job.status == "running":
+            if job is not None and job.status == "running":
                 job.status = "paused"
                 return True
         return False
@@ -1740,7 +1887,7 @@ class CrawlManager:
         """Resume a paused crawl job."""
         with self.db_manager.session_scope() as session:
             job = session.query(CrawlJob).filter_by(id=job_id).first()
-            if job and job.status == "paused":
+            if job is not None and job.status == "paused":
                 job.status = "running"
                 # TODO: Implement actual resume logic
                 return True
@@ -1750,7 +1897,7 @@ class CrawlManager:
         """Cancel a crawl job."""
         with self.db_manager.session_scope() as session:
             job = session.query(CrawlJob).filter_by(id=job_id).first()
-            if job and job.status in ["running", "paused"]:
+            if job is not None and job.status in ["running", "paused"]:
                 job.status = "cancelled"
                 job.completed_at = datetime.utcnow()
                 return True
@@ -1870,7 +2017,7 @@ class CrawlManager:
             logger.error(f"Failed to restart enrichment for job {job_id}: {e}")
             with self.db_manager.session_scope() as session:
                 job = session.query(CrawlJob).filter_by(id=job_id).first()
-                if job:
+                if job is not None:
                     job.status = "failed"
                     job.error_message = f"Enrichment restart failed: {str(e)}"
                     job.completed_at = datetime.utcnow()
@@ -1971,7 +2118,7 @@ class CrawlManager:
 
             with self.db_manager.session_scope() as session:
                 job = session.query(CrawlJob).filter_by(id=job_id).first()
-                if job:
+                if job is not None:
                     job.status = "completed"
                     job.completed_at = datetime.utcnow()
                     job.enrichment_completed_at = datetime.utcnow()
@@ -1986,7 +2133,7 @@ class CrawlManager:
             logger.error(f"Resume enrichment failed for job {job_id}: {e}")
             with self.db_manager.session_scope() as session:
                 job = session.query(CrawlJob).filter_by(id=job_id).first()
-                if job:
+                if job is not None:
                     job.status = "failed"
                     job.error_message = f"Resume enrichment failed: {str(e)}"
                     job.completed_at = datetime.utcnow()
@@ -2004,7 +2151,7 @@ class CrawlManager:
         """Get current status of a crawl job."""
         with self.db_manager.session_scope() as session:
             job = session.query(CrawlJob).filter_by(id=job_id).first()
-            if job:
+            if job is not None:
                 return job.to_dict()
         return None
 

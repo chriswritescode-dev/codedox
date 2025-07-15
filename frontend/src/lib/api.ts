@@ -184,6 +184,13 @@ class APIClient {
     })
   }
 
+  async updateSourceName(id: string, name: string): Promise<Source> {
+    return this.fetch<Source>(`/sources/${id}`, {
+      method: 'PATCH',
+      body: JSON.stringify({ name }),
+    })
+  }
+
   // Crawl Jobs
   async getCrawlJobs(): Promise<CrawlJob[]> {
     return this.fetch<CrawlJob[]>('/crawl-jobs')

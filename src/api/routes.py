@@ -2,9 +2,10 @@
 
 import logging
 from typing import Optional, List, Dict, Any
+from datetime import datetime
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
@@ -17,6 +18,11 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api")
 mcp_tools = MCPTools()
+
+
+class UpdateSourceRequest(BaseModel):
+    """Request model for updating source name."""
+    name: str = Field(..., min_length=1, max_length=200, description="New source name")
 
 
 @router.get("/statistics")
@@ -296,6 +302,40 @@ async def delete_sources_bulk(source_ids: List[str], db: Session = Depends(get_d
     }
 
 
+@router.patch("/sources/{source_id}")
+async def update_source_name(
+    source_id: str,
+    request: UpdateSourceRequest,
+    db: Session = Depends(get_db)
+) -> Dict[str, Any]:
+    """Update source name."""
+    source = db.query(CrawlJob).filter_by(id=source_id).first()
+    
+    if not source:
+        raise HTTPException(status_code=404, detail="Source not found")
+    
+    # Update the name
+    source.name = request.name  # type: ignore[assignment]
+    source.updated_at = datetime.utcnow()  # type: ignore[assignment]
+    db.commit()
+    
+    # Return updated source info
+    snippets_count = 0
+    for doc in source.documents:
+        snippets_count += len(doc.code_snippets)
+    
+    return {
+        "id": str(source.id),
+        "name": source.name,
+        "domain": source.domain,
+        "base_url": source.start_urls[0] if source.start_urls else "",
+        "created_at": source.created_at.isoformat(),
+        "updated_at": source.updated_at.isoformat(),
+        "documents_count": len(source.documents),
+        "snippets_count": snippets_count,
+    }
+
+
 @router.delete("/sources/{source_id}")
 async def delete_source(source_id: str, db: Session = Depends(get_db)) -> Dict[str, str]:
     """Delete a source (crawl job) and all its associated data."""
@@ -378,7 +418,7 @@ async def get_crawl_job(job_id: str, db: Session = Depends(get_db)) -> Dict[str,
 
 
 class CreateCrawlJobRequest(BaseModel):
-    name: str
+    name: Optional[str] = None
     base_url: str
     max_depth: int = 2
     domain_filter: Optional[str] = None

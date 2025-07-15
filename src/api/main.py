@@ -28,7 +28,7 @@ settings = get_settings()
 # Pydantic models for API
 class CrawlRequest(BaseModel):
     """Request model for starting a crawl."""
-    name: str = Field(..., description="Name of the library/framework")
+    name: Optional[str] = Field(None, description="Name of the library/framework (auto-detected if not provided)")
     start_urls: List[str] = Field(..., description="URLs to start crawling")
     max_depth: int = Field(default=1, ge=0, le=3, description="Maximum crawl depth")
     domain_filter: Optional[str] = Field(None, description="Domain restriction pattern")
