@@ -301,8 +301,9 @@ class JobManager:
         Returns:
             True if job is running
         """
-        job = self.get_job(job_id)
-        return job is not None and job.status == "running"
+        with self.db_manager.session_scope() as session:
+            job = self.get_job(job_id, session)
+            return job is not None and job.status == "running"
 
     def update_heartbeat(self, job_id: str) -> bool:
         """Update job heartbeat timestamp.

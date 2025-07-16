@@ -382,7 +382,7 @@ class CrawlManager:
 
     async def retry_failed_pages(self, job_id: str, user_id: Optional[str] = None) -> Optional[str]:
         """Create a new job to retry failed pages."""
-        from ..database import FailedPage
+        from ..database import FailedPage, CrawlJob
         from ..database import get_db_manager
 
         db_manager = get_db_manager()
@@ -395,28 +395,34 @@ class CrawlManager:
                 logger.info(f"No failed pages for job {job_id}")
                 return None
 
-            # Get original job
-            job = self.job_manager.get_job(job_id)
+            # Get original job in the same session
+            job = session.query(CrawlJob).filter_by(id=job_id).first()
             if not job:
+                logger.error(f"Job {job_id} not found")
                 return None
 
+            # Convert to dict while still in session
             job_dict = job.to_dict()
+            
+            # Extract URLs before session closes
+            failed_urls = [str(fp.url) for fp in failed_pages]
+            failed_count = len(failed_pages)
 
-            # Create retry config
-            retry_config = CrawlConfig(
-                name=f"{job_dict['name']} - Retry Failed Pages",
-                start_urls=[str(fp.url) for fp in failed_pages],
-                max_depth=0,
-                domain_restrictions=job_dict.get("domain_restrictions", []),
-                max_pages=len(failed_pages),
-                metadata={"retry_of_job": job_id, "original_job_name": job_dict["name"]},
-            )
+        # Create retry config outside session
+        retry_config = CrawlConfig(
+            name=f"{job_dict['name']} - Retry Failed Pages",
+            start_urls=failed_urls,
+            max_depth=0,
+            domain_restrictions=job_dict.get("domain_restrictions", []),
+            max_pages=failed_count,
+            metadata={"retry_of_job": job_id, "original_job_name": job_dict["name"]},
+        )
 
-            # Start new job
-            new_job_id = await self.start_crawl(retry_config, user_id)
-            logger.info(f"Created retry job {new_job_id} for {len(failed_pages)} failed pages")
+        # Start new job
+        new_job_id = await self.start_crawl(retry_config, user_id)
+        logger.info(f"Created retry job {new_job_id} for {failed_count} failed pages")
 
-            return new_job_id
+        return new_job_id
 
     def get_job_status(self, job_id: str) -> Optional[Dict[str, Any]]:
         """Get job status."""
