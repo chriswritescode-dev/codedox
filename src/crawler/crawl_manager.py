@@ -44,6 +44,7 @@ class CrawlManager:
     def __init__(self) -> None:
         """Initialize the crawl manager."""
         self.settings = settings
+        self._active_crawl_tasks: Dict[str, asyncio.Task] = {}  # Track active crawl tasks
 
         # Initialize components
         self.job_manager = JobManager()
@@ -103,13 +104,19 @@ class CrawlManager:
         )
 
         # Start async crawl
-        asyncio.create_task(self._execute_crawl(job_id, config))
+        task = asyncio.create_task(self._execute_crawl(job_id, config))
+        self._active_crawl_tasks[job_id] = task
 
         return job_id
 
     async def _execute_crawl(self, job_id: str, config: CrawlConfig) -> None:
         """Execute the crawl job."""
         try:
+            # Check if job is already cancelled
+            job_status = self.job_manager.get_job_status(job_id)
+            if job_status and job_status.get("status") == "cancelled":
+                logger.info(f"Job {job_id} is cancelled, not starting crawl")
+                return
             # Start tracking
             await self.progress_tracker.start_tracking(job_id)
 
@@ -154,6 +161,11 @@ class CrawlManager:
             self.job_manager.complete_job(job_id, success=True)
             await self.progress_tracker.send_completion(job_id, success=True)
 
+        except asyncio.CancelledError:
+            logger.info(f"Crawl job {job_id} was cancelled")
+            # Job status is already set to cancelled by cancel_job
+            await self.progress_tracker.send_completion(job_id, success=False, error="Cancelled by user")
+            raise  # Re-raise to properly handle task cancellation
         except Exception as e:
             logger.error(f"Crawl job {job_id} failed: {e}")
             self.job_manager.complete_job(job_id, success=False, error_message=str(e))
@@ -163,6 +175,8 @@ class CrawlManager:
             await self.progress_tracker.stop_tracking(job_id)
             if self.enrichment_manager.is_pipeline_running():
                 await self.enrichment_manager.stop_pipeline()
+            # Remove from active tasks
+            self._active_crawl_tasks.pop(job_id, None)
 
     async def _execute_deep_crawl(
         self, job_id: str, config: CrawlConfig, use_pipeline: bool
@@ -186,6 +200,12 @@ class CrawlManager:
         for start_url in config.start_urls:
             if processed_count >= config.max_pages:
                 break
+
+            # Check if job is cancelled
+            job_status = self.job_manager.get_job_status(job_id)
+            if job_status and job_status.get("status") == "cancelled":
+                logger.info(f"Job {job_id} has been cancelled, stopping crawl")
+                raise asyncio.CancelledError("Job cancelled by user")
 
             # Crawl from this start URL
             results = await self.page_crawler.crawl_page(
@@ -240,6 +260,12 @@ class CrawlManager:
             if url in visited_urls:
                 continue
 
+            # Check if job is cancelled
+            job_status = self.job_manager.get_job_status(job_id)
+            if job_status and job_status.get("status") == "cancelled":
+                logger.info(f"Job {job_id} has been cancelled, stopping crawl")
+                raise asyncio.CancelledError("Job cancelled by user")
+
             visited_urls.add(url)
 
             # Crawl single page
@@ -287,7 +313,28 @@ class CrawlManager:
 
     async def cancel_job(self, job_id: str) -> bool:
         """Cancel a crawl job."""
-        return self.job_manager.cancel_job(job_id)
+        # First update the database status
+        success = self.job_manager.cancel_job(job_id)
+        
+        if success and job_id in self._active_crawl_tasks:
+            # Cancel the active crawl task
+            task = self._active_crawl_tasks[job_id]
+            if not task.done():
+                logger.info(f"Cancelling active crawl task for job {job_id}")
+                task.cancel()
+                # Wait a moment for cancellation to propagate
+                try:
+                    await asyncio.wait_for(task, timeout=5.0)
+                except (asyncio.CancelledError, asyncio.TimeoutError):
+                    pass
+            # Remove from active tasks
+            self._active_crawl_tasks.pop(job_id, None)
+            
+            # Also stop enrichment pipeline if running
+            if self.enrichment_manager.is_pipeline_running():
+                await self.enrichment_manager.stop_pipeline()
+        
+        return success
 
     async def resume_job(self, job_id: str) -> bool:
         """Resume a failed or stalled job."""
@@ -316,11 +363,13 @@ class CrawlManager:
             # Resume crawl
             logger.info(f"Resuming job {job_id} from crawl phase")
             config = self._reconstruct_config(job_status)
-            asyncio.create_task(self._execute_crawl(job_id, config))
+            task = asyncio.create_task(self._execute_crawl(job_id, config))
+            self._active_crawl_tasks[job_id] = task
         else:
             # Resume enrichment
             logger.info(f"Resuming job {job_id} from enrichment phase")
-            asyncio.create_task(self._resume_enrichment(job_id))
+            task = asyncio.create_task(self._resume_enrichment(job_id))
+            self._active_crawl_tasks[job_id] = task
 
         return True
 

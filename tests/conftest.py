@@ -28,6 +28,7 @@ from sqlalchemy.orm import sessionmaker, Session
 from src.api.main import app
 from src.database import Base, get_db
 from src.database.models import CrawlJob, Document, CodeSnippet, FailedPage
+from src.database.connection import DatabaseManager
 
 logger = logging.getLogger(__name__)
 
@@ -72,10 +73,11 @@ def override_get_db():
         db.close()
 
 
-@pytest.fixture(scope="session")
+@pytest.fixture(scope="function")
 def event_loop():
-    """Create an instance of the default event loop for the test session."""
+    """Create an instance of the default event loop for each test function."""
     loop = asyncio.get_event_loop_policy().new_event_loop()
+    asyncio.set_event_loop(loop)
     yield loop
     
     # Cancel all pending tasks before closing
@@ -320,6 +322,28 @@ def db(setup_database) -> Generator[Session, None, None]:
     except Exception:
         # Ignore cleanup errors - they're not critical
         pass
+
+
+@pytest.fixture
+def async_db(setup_database):
+    """Get test database session for async tests."""
+    # For async tests, we'll use the same sync session approach
+    # This works because the tests will run in the event loop
+    connection = engine.connect()
+    trans = connection.begin()
+    
+    # Configure session to use our transaction
+    session = TestingSessionLocal(bind=connection)
+    
+    # Set search path to test schema
+    session.execute(text(f"SET search_path TO {TEST_SCHEMA}, public"))
+    
+    yield session
+    
+    # Clean up
+    session.close()
+    trans.rollback()
+    connection.close()
 
 
 @pytest.fixture
