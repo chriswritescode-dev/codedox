@@ -9,6 +9,7 @@ interface NewCrawlDialogProps {
     base_url: string;
     max_depth: number;
     domain_filter?: string;
+    max_concurrent_crawls: number;
   }) => void;
   isSubmitting?: boolean;
 }
@@ -24,6 +25,7 @@ export const NewCrawlDialog: React.FC<NewCrawlDialogProps> = ({
     base_url: '',
     max_depth: 1,
     domain_filter: '',
+    max_concurrent_crawls: 20,
   });
 
   if (!isOpen) return null;
@@ -42,7 +44,7 @@ export const NewCrawlDialog: React.FC<NewCrawlDialogProps> = ({
   };
 
   const handleClose = () => {
-    setFormData({ name: '', base_url: '', max_depth: 1, domain_filter: '' });
+    setFormData({ name: '', base_url: '', max_depth: 1, domain_filter: '', max_concurrent_crawls: 20 });
     onClose();
   };
 
@@ -145,6 +147,30 @@ export const NewCrawlDialog: React.FC<NewCrawlDialogProps> = ({
             />
             <p className="text-xs text-muted-foreground mt-1">
               Restrict crawling to this domain. Leave empty to use the domain from base URL.
+            </p>
+          </div>
+
+          <div>
+            <label htmlFor="max_concurrent_crawls" className="block text-sm font-medium mb-1">
+              Max Concurrent Crawls
+            </label>
+            <input
+              id="max_concurrent_crawls"
+              type="number"
+              min="1"
+              max="100"
+              value={formData.max_concurrent_crawls}
+              onChange={(e) =>
+                setFormData({
+                  ...formData,
+                  max_concurrent_crawls: parseInt(e.target.value) || 20,
+                })
+              }
+              className="w-full px-3 py-2 border border-input rounded-md bg-background focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent transition-all"
+              placeholder="20"
+            />
+            <p className="text-xs text-muted-foreground mt-1">
+              Maximum number of concurrent page crawls (1-100). Higher values are faster but use more resources.
             </p>
           </div>
 

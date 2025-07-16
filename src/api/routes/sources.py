@@ -310,6 +310,11 @@ async def recrawl_source(source_id: str, db: Session = Depends(get_db)) -> Dict[
     
     try:
         # Use the same init_crawl method that MCP and web UI use
+        # Get max_concurrent_crawls from original job config if available
+        max_concurrent = 20  # default
+        if original_job.config and isinstance(original_job.config, dict):
+            max_concurrent = original_job.config.get('max_concurrent_crawls', 20)
+        
         result = await mcp_tools.init_crawl(
             name=original_job.name,
             start_urls=original_job.start_urls,
@@ -320,7 +325,8 @@ async def recrawl_source(source_id: str, db: Session = Depends(get_db)) -> Dict[
                 "original_source_id": source_id,
                 "original_name": original_job.name,
                 "recrawl_started_at": datetime.utcnow().isoformat()
-            }
+            },
+            max_concurrent_crawls=max_concurrent
         )
         
         if "error" in result:

@@ -13,7 +13,7 @@ from dotenv import load_dotenv
 # Load .env file before anything else
 load_dotenv()
 
-logger = logging.getLogger(__name__)
+logger = logging.getLogger(__name__)  
 
 
 class DatabaseConfig(BaseSettings):

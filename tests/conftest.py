@@ -517,7 +517,7 @@ def multiple_crawl_jobs(db: Session) -> list[CrawlJob]:
 @pytest.fixture
 def mock_mcp_tools(monkeypatch):
     """Mock MCP tools to avoid external dependencies."""
-    async def mock_init_crawl(self, name: str, start_urls: list, max_depth: int = 1, domain_filter: str = None, metadata: dict = None):
+    async def mock_init_crawl(self, name: str, start_urls: list, max_depth: int = 1, domain_filter: str = None, metadata: dict = None, max_concurrent_crawls: int = 20):
         return {
             "job_id": str(uuid4()),
             "status": "started",

@@ -116,7 +116,6 @@ def create_browser_config(
     headless: bool = True,
     viewport_width: int = 1920,
     viewport_height: int = 1080,
-    extra_headers: Optional[Dict[str, str]] = None,
 ) -> BrowserConfig:
     """Create a BrowserConfig instance.
 
@@ -134,7 +133,5 @@ def create_browser_config(
         "viewport": {"width": viewport_width, "height": viewport_height},
     }
 
-    # BrowserConfig doesn't support extra_headers directly
-    # Headers would need to be set on individual requests
-
+   
     return BrowserConfig(**config_dict)
