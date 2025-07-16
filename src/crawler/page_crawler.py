@@ -322,6 +322,7 @@ class PageCrawler:
         """
         try:
             from uuid import UUID
+            from ..database.models import CrawlJob
 
             # Handle job_id format
             if isinstance(job_id, str):
@@ -334,6 +335,12 @@ class PageCrawler:
                 job_uuid = job_id
 
             with self.db_manager.session_scope() as session:
+                # First check if crawl job exists
+                crawl_job = session.query(CrawlJob).filter_by(id=job_uuid).first()
+                if not crawl_job:
+                    logger.warning(f"Crawl job {job_uuid} not found in database - skipping failed page recording")
+                    return
+
                 # Check if already exists
                 existing = (
                     session.query(FailedPage).filter_by(crawl_job_id=job_uuid, url=url).first()

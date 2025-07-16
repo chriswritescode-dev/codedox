@@ -42,7 +42,7 @@ class EnrichmentPipeline:
 
     def __init__(self, 
                  llm_client: Optional[LLMClient] = None,
-                 max_queue_size: int = 1000,
+                 max_queue_size: int = 5000,
                  storage_batch_size: int = 10):
         """Initialize enrichment pipeline.
         
@@ -216,11 +216,18 @@ class EnrichmentPipeline:
             )
             # Add with timeout to prevent blocking forever if queue is full
             try:
-                await asyncio.wait_for(self.enrichment_queue.put(task), timeout=30.0)
+                # First try non-blocking to check if queue is full
+                if self.enrichment_queue.full():
+                    queue_size = self.enrichment_queue.qsize()
+                    logger.warning(f"Enrichment queue is full ({queue_size}/{self.max_queue_size}). Waiting for space...")
+                    
+                await asyncio.wait_for(self.enrichment_queue.put(task), timeout=5.0)
                 task_count += 1
                 logger.debug(f"Added task {task_id} to enrichment queue")
             except asyncio.TimeoutError:
-                logger.error(f"Failed to add task {task_id} to enrichment queue - queue full!")
+                logger.error(f"Failed to add task {task_id} to enrichment queue - queue full after 5s timeout!")
+                stats = self.get_stats()
+                logger.error(f"Queue stats: {stats}")
                 # Continue with remaining tasks instead of blocking
 
         # Log detailed information about queue state

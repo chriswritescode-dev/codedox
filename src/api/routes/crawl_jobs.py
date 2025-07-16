@@ -140,6 +140,22 @@ async def delete_crawl_jobs_bulk(job_ids: List[str], db: Session = Depends(get_d
     if not jobs:
         raise HTTPException(status_code=404, detail="No deletable jobs found with provided IDs")
     
+    # Check for active crawler tasks
+    crawl_manager = CrawlManager()
+    active_jobs = []
+    for job in jobs:
+        job_id = str(job.id)
+        if hasattr(crawl_manager, '_active_crawl_tasks') and job_id in crawl_manager._active_crawl_tasks:
+            task = crawl_manager._active_crawl_tasks[job_id]
+            if not task.done():
+                active_jobs.append(job_id)
+    
+    if active_jobs:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Cannot delete jobs with active crawler tasks: {', '.join(active_jobs)}. Please cancel these jobs first."
+        )
+    
     # Delete all jobs (cascade will handle documents and snippets)
     deleted_count = len(jobs)
     for job in jobs:
@@ -167,6 +183,16 @@ async def delete_crawl_job(job_id: str, db: Session = Depends(get_db)) -> Dict[s
             status_code=400, 
             detail=f"Cannot delete job with status '{job.status}'. Only completed, failed, or cancelled jobs can be deleted."
         )
+    
+    # Check if there's an active crawler task for this job
+    crawl_manager = CrawlManager()
+    if hasattr(crawl_manager, '_active_crawl_tasks') and job_id in crawl_manager._active_crawl_tasks:
+        task = crawl_manager._active_crawl_tasks[job_id]
+        if not task.done():
+            raise HTTPException(
+                status_code=400,
+                detail=f"Cannot delete job with active crawler task. Please cancel the job first."
+            )
     
     # The cascade delete will handle documents and code snippets
     db.delete(job)
