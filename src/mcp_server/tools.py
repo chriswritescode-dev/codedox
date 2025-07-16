@@ -205,7 +205,6 @@ class MCPTools:
         self,
         library_id: str,
         query: Optional[str] = None,
-        language: Optional[str] = None,
         max_results: int = 10
     ) -> str:
         """Get content from a specific library, optionally filtered by search query.
@@ -213,7 +212,6 @@ class MCPTools:
         Args:
             library_id: Library ID (required) - obtained from search_libraries
             query: Optional search query to filter results
-            language: Optional language filter
             max_results: Maximum results to return
             
         Returns:
@@ -227,7 +225,6 @@ class MCPTools:
                 snippets, total_count = searcher.search(
                     query=query or "",  # Use empty string if query is None
                     job_id=library_id,
-                    language=language,
                     limit=max_results,
                     include_context=False  # Don't include context in search results
                 )
@@ -237,8 +234,6 @@ class MCPTools:
                         no_results_msg = f"No results found for query '{query}' in library {library_id}"
                     else:
                         no_results_msg = f"No content found in library {library_id}"
-                    if language:
-                        no_results_msg += f" with language filter '{language}'"
                     return no_results_msg
                 
                 # Format results using the specified format
@@ -252,8 +247,6 @@ class MCPTools:
                     header += f" for query '{query}' in library {library_id}"
                 else:
                     header += f" in library {library_id}"
-                if language:
-                    header += f" (language: {language})"
                 header += "\n\n"
                 
                 return header + formatted_results
