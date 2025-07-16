@@ -1,5 +1,6 @@
 """Page crawling implementation using Crawl4AI."""
 
+import asyncio
 import logging
 import hashlib
 from typing import List, Optional, Dict, Any
@@ -111,9 +112,19 @@ class PageCrawler:
 
                 return results if results else None
 
+        except asyncio.CancelledError:
+            # Re-raise cancellation to properly propagate it
+            logger.info(f"Crawl cancelled for {url}")
+            raise
         except Exception as e:
             logger.error(f"Error crawling {url}: {e}")
-            await self._record_failed_page(job_id, url, str(e))
+            # Don't try to record failed page if it's a cancellation-related error
+            if "cancelled" not in str(e).lower():
+                try:
+                    await self._record_failed_page(job_id, url, str(e))
+                except asyncio.CancelledError:
+                    # If recording fails due to cancellation, just re-raise
+                    raise
             return None
 
     async def _deep_crawl(
@@ -149,9 +160,10 @@ class PageCrawler:
         )
 
         # Configure rate limiter and dispatcher
+        max_concurrent = job_config.get("max_concurrent_crawls", 20) if job_config else 20
         rate_limiter = RateLimiter(base_delay=(1.0, 2.0), max_delay=30.0, max_retries=4)
         dispatcher = SemaphoreDispatcher(
-            max_session_permit=20,
+            max_session_permit=max_concurrent,
             rate_limiter=rate_limiter,
         )
 
@@ -162,6 +174,14 @@ class PageCrawler:
         crawl_results = await crawler.arun(url, config=config, dispatcher=dispatcher)
         async for result in crawl_results:
             crawled_count += 1
+            
+            # Check if job is cancelled
+            with self.db_manager.session_scope() as session:
+                from ..database.models import CrawlJob
+                job = session.query(CrawlJob).filter_by(id=job_id).first()
+                if job and job.status == "cancelled":
+                    logger.info(f"Crawl job {job_id} is cancelled - stopping deep crawl")
+                    raise asyncio.CancelledError("Job cancelled by user")
 
             if result.success:
                 # Get depth from metadata
@@ -195,6 +215,14 @@ class PageCrawler:
             CrawlResult or None
         """
         logger.info(f"Crawling single page: {url}")
+        
+        # Check if job is cancelled before crawling
+        with self.db_manager.session_scope() as session:
+            from ..database.models import CrawlJob
+            job = session.query(CrawlJob).filter_by(id=job_id).first()
+            if job and job.status == "cancelled":
+                logger.info(f"Crawl job {job_id} is cancelled - skipping single page crawl")
+                raise asyncio.CancelledError("Job cancelled by user")
 
         # Configure for single page
         config = create_single_page_config()
@@ -340,6 +368,11 @@ class PageCrawler:
                 if not crawl_job:
                     logger.warning(f"Crawl job {job_uuid} not found in database - skipping failed page recording")
                     return
+                
+                # Check if job is cancelled
+                if crawl_job.status == "cancelled":
+                    logger.info(f"Crawl job {job_uuid} is cancelled - stopping crawler")
+                    raise asyncio.CancelledError("Job cancelled by user")
 
                 # Check if already exists
                 existing = (

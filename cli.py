@@ -39,7 +39,8 @@ def init(drop: bool):
 @click.argument('urls', nargs=-1, required=True)
 @click.option('--depth', default=1, help='Maximum crawl depth (0-3)')
 @click.option('--domain', help='Domain restriction pattern')
-def crawl(name: str, urls: tuple, depth: int, domain: Optional[str]):
+@click.option('--concurrent', default=20, help='Maximum concurrent crawl sessions (default: 20)')
+def crawl(name: str, urls: tuple, depth: int, domain: Optional[str], concurrent: int):
     """Start a new crawl job."""
     async def run_crawl():
         tools = MCPTools()
@@ -55,7 +56,8 @@ def crawl(name: str, urls: tuple, depth: int, domain: Optional[str]):
                 name=name,
                 start_urls=list(urls),
                 max_depth=depth,
-                domain_filter=domain
+                domain_filter=domain,
+                max_concurrent_crawls=concurrent
             )
             
             if "error" in result:

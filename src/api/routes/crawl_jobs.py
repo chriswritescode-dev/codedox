@@ -23,6 +23,7 @@ class CreateCrawlJobRequest(BaseModel):
     base_url: str
     max_depth: int = 2
     domain_filter: Optional[str] = None
+    max_concurrent_crawls: int = 20
 
 
 @router.get("/crawl-jobs")
@@ -99,7 +100,8 @@ async def create_crawl_job(
         name=request.name,
         start_urls=[request.base_url],
         max_depth=request.max_depth,
-        domain_filter=request.domain_filter
+        domain_filter=request.domain_filter,
+        max_concurrent_crawls=request.max_concurrent_crawls
     )
     
     if "error" in result:

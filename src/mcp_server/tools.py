@@ -26,7 +26,8 @@ class MCPTools:
         start_urls: List[str],
         max_depth: int = 1,
         domain_filter: Optional[str] = None,
-        metadata: Optional[Dict[str, Any]] = None
+        metadata: Optional[Dict[str, Any]] = None,
+        max_concurrent_crawls: int = 20
     ) -> Dict[str, Any]:
         """Initialize a new crawl job.
         
@@ -36,6 +37,7 @@ class MCPTools:
             max_depth: Maximum crawl depth (0-3)
             domain_filter: Optional domain restriction
             metadata: Additional metadata
+            max_concurrent_crawls: Maximum concurrent crawl sessions (default: 20)
             
         Returns:
             Job initialization result
@@ -82,7 +84,8 @@ class MCPTools:
                 max_depth=max_depth,
                 domain_restrictions=domain_restrictions,
                 metadata=metadata,
-                max_pages=settings.crawling.max_pages_per_job
+                max_pages=settings.crawling.max_pages_per_job,
+                max_concurrent_crawls=max_concurrent_crawls
             )
             
             # Start crawl job

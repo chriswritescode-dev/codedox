@@ -31,6 +31,7 @@ class CrawlConfig:
     include_patterns: List[str] = field(default_factory=list)
     exclude_patterns: List[str] = field(default_factory=list)
     max_pages: int = 100
+    max_concurrent_crawls: int = 20
     respect_robots_txt: bool = False
     content_types: List[str] = field(default_factory=lambda: ["text/markdown", "text/plain"])
     min_content_length: int = 100
@@ -65,6 +66,7 @@ class CrawlManager:
             headless=True,
             viewport_width=1200,
             viewport_height=800,
+            
         )
 
         # Initialize crawler and processor
@@ -92,6 +94,7 @@ class CrawlManager:
             "exclude_patterns": config.exclude_patterns,
             "max_pages": config.max_pages,
             "metadata": config.metadata,
+            "max_concurrent_crawls": config.max_concurrent_crawls,
         }
 
         job_id = self.job_manager.get_or_create_job(
