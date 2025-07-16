@@ -46,6 +46,7 @@ class MCPServer:
                 max_depth=arguments.get("max_depth", 1),
                 domain_filter=arguments.get("domain_filter"),
                 metadata=arguments.get("metadata", {}),
+                max_concurrent_crawls=arguments.get("max_concurrent_crawls", 20),
             )
         elif name == "search_libraries":
             return await self.tools.search_libraries(
@@ -55,7 +56,6 @@ class MCPServer:
             return await self.tools.get_content(
                 library_id=arguments.get("library_id"),
                 query=arguments.get("query"),
-                language=arguments.get("language"),
                 max_results=arguments.get("max_results", 10),
             )
         elif name == "get_snippet_details":
@@ -105,6 +105,13 @@ class MCPServer:
                             "type": "object",
                             "description": "Additional metadata (repository, description, etc.)",
                         },
+                        "max_concurrent_crawls": {
+                            "type": "integer",
+                            "default": 20,
+                            "minimum": 1,
+                            "maximum": 100,
+                            "description": "Maximum concurrent page crawls",
+                        },
                     },
                     "required": ["name", "start_urls"],
                 },
@@ -143,10 +150,6 @@ class MCPServer:
                         "query": {
                             "type": "string",
                             "description": "Optional search query to filter content within the library",
-                        },
-                        "language": {
-                            "type": "string",
-                            "description": "Optional programming language filter",
                         },
                         "max_results": {
                             "type": "integer",

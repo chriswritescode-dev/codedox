@@ -182,22 +182,28 @@ This mode is only needed for specific AI integrations that don't support HTTP en
 ### Available MCP Tools
 
 1. **init_crawl** - Start documentation crawling
-   - `name`: Library/framework name
+   - `name`: Library/framework name (optional - auto-detected if not provided)
    - `start_urls`: List of URLs to crawl
    - `max_depth`: Crawl depth (0-3)
    - `domain_filter`: Optional domain restriction
+   - `max_concurrent_crawls`: Maximum concurrent page crawls (default: 20)
+   - `metadata`: Additional metadata (optional)
 
-2. **get_sources** - List available sources with statistics
-   - `job_id`: Optional filter by specific job
+2. **search_libraries** - Search for available libraries by name
+   - `query`: Search query for library names (e.g., 'react', 'nextjs', 'django')
+   - `max_results`: Maximum results to return (1-50, default: 10)
 
 3. **get_content** - Get code snippets from a library
    - `library_id`: Library ID (required) - obtained from search_libraries
    - `query`: Optional search terms to filter results
-   - `language`: Filter by programming language
-   - `max_results`: Limit results (1-50)
+   - `max_results`: Limit results (1-50, default: 10)
+
+4. **get_snippet_details** - Get detailed information about a specific code snippet
+   - `snippet_id`: The ID of the snippet (from get_content results)
 
 
 ## API Endpoints
+
 
 ### Crawling
 - `POST /crawl/init` - Start new crawl job
@@ -240,29 +246,6 @@ CodeDox includes a modern, responsive web interface built with React and TypeScr
 
 The web UI provides a user-friendly alternative to the CLI for all major operations, making it easy to manage your documentation pipeline without memorizing commands.
 
-## Configuration
-
-Edit `config.yaml` for detailed settings:
-
-```yaml
-database:
-  host: localhost
-  port: 5432
-  name: codedox
-
-crawling:
-  default_max_depth: 2
-  max_pages_per_job: 500
-  default_delay: 1.0
-
-mcp:
-  # MCP tools are served via the main API server
-  # No separate port configuration needed
-  tools:
-    - init_crawl
-    - get_sources
-    - get_content
-```
 
 ### LLM Configuration for Parallel Requests
 
@@ -334,10 +317,6 @@ codedox/
 pytest tests/
 ```
 
-### Database Migrations
-```bash
-alembic upgrade head
-```
 
 ## Performance
 
