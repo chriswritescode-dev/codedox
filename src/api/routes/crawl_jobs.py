@@ -23,6 +23,7 @@ class CreateCrawlJobRequest(BaseModel):
     base_url: str
     max_depth: int = 2
     domain_filter: Optional[str] = None
+    url_patterns: Optional[List[str]] = None
     max_concurrent_crawls: int = 20
 
 
@@ -101,6 +102,7 @@ async def create_crawl_job(
         start_urls=[request.base_url],
         max_depth=request.max_depth,
         domain_filter=request.domain_filter,
+        url_patterns=request.url_patterns,
         max_concurrent_crawls=request.max_concurrent_crawls
     )
     
