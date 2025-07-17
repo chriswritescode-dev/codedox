@@ -171,34 +171,44 @@ class TestJobCancellation:
         assert isinstance(crawl_manager._active_crawl_tasks, dict)
     
     @pytest.mark.asyncio
-    async def test_cancelled_job_stops_recording_failed_pages(self):
+    async def test_cancelled_job_stops_recording_failed_pages(self, db, monkeypatch):
         """Test that cancelled jobs don't record failed pages and raise CancelledError."""
         from src.crawler.page_crawler import PageCrawler
         from src.crawler.config import BrowserConfig
         from src.parser.code_extractor import CodeExtractor
         from src.database import get_db_manager
+        from contextlib import contextmanager
         
         # Create a cancelled job in the database
         job_id = str(uuid4())
-        db_manager = get_db_manager()
         
-        with db_manager.session_scope() as session:
-            job = CrawlJob(
-                id=job_id,
-                name="Cancelled Test",
-                domain=f"test-cancelled-{job_id}.com",
-                start_urls=[f"https://test-cancelled-{job_id}.com"],
-                status="cancelled",
-                max_depth=1,
-                processed_pages=0,
-                total_pages=1
-            )
-            session.add(job)
-            session.commit()
+        job = CrawlJob(
+            id=job_id,
+            name="Cancelled Test",
+            domain=f"test-cancelled-{job_id}.com",
+            start_urls=[f"https://test-cancelled-{job_id}.com"],
+            status="cancelled",
+            max_depth=1,
+            processed_pages=0,
+            total_pages=1
+        )
+        db.add(job)
+        db.commit()
+        
+        # Mock the db_manager to use our test session
+        mock_db_manager = Mock()
+        @contextmanager
+        def mock_session_scope():
+            yield db
+        
+        mock_db_manager.session_scope = mock_session_scope
         
         browser_config = BrowserConfig()
         code_extractor = CodeExtractor()
         page_crawler = PageCrawler(browser_config, code_extractor)
+        
+        # Patch the page crawler's db_manager
+        monkeypatch.setattr(page_crawler, "db_manager", mock_db_manager)
         
         # Recording failed page for cancelled job should raise CancelledError
         with pytest.raises(asyncio.CancelledError):
@@ -209,8 +219,7 @@ class TestJobCancellation:
             )
         
         # Verify no failed page was created
-        with db_manager.session_scope() as session:
-            failed_page = session.query(FailedPage).filter_by(
-                crawl_job_id=job_id
-            ).first()
-            assert failed_page is None
+        failed_page = db.query(FailedPage).filter_by(
+            crawl_job_id=job_id
+        ).first()
+        assert failed_page is None

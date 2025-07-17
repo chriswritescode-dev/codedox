@@ -9,6 +9,7 @@ interface NewCrawlDialogProps {
     base_url: string;
     max_depth: number;
     domain_filter?: string;
+    url_patterns?: string[];
     max_concurrent_crawls: number;
   }) => void;
   isSubmitting?: boolean;
@@ -25,6 +26,7 @@ export const NewCrawlDialog: React.FC<NewCrawlDialogProps> = ({
     base_url: '',
     max_depth: 1,
     domain_filter: '',
+    url_patterns: '',
     max_concurrent_crawls: 20,
   });
 
@@ -40,11 +42,14 @@ export const NewCrawlDialog: React.FC<NewCrawlDialogProps> = ({
       ...formData,
       name: formData.name || undefined, // Allow empty name for auto-detection
       domain_filter: formData.domain_filter || undefined,
+      url_patterns: formData.max_depth > 0 && formData.url_patterns 
+        ? formData.url_patterns.split(',').map(p => p.trim()).filter(p => p)
+        : undefined,
     });
   };
 
   const handleClose = () => {
-    setFormData({ name: '', base_url: '', max_depth: 1, domain_filter: '', max_concurrent_crawls: 20 });
+    setFormData({ name: '', base_url: '', max_depth: 1, domain_filter: '', url_patterns: '', max_concurrent_crawls: 20 });
     onClose();
   };
 
@@ -113,12 +118,15 @@ export const NewCrawlDialog: React.FC<NewCrawlDialogProps> = ({
             <select
               id="max_depth"
               value={formData.max_depth}
-              onChange={(e) =>
+              onChange={(e) => {
+                const newDepth = parseInt(e.target.value);
                 setFormData({
                   ...formData,
-                  max_depth: parseInt(e.target.value),
-                })
-              }
+                  max_depth: newDepth,
+                  // Clear URL patterns when switching to single page
+                  url_patterns: newDepth === 0 ? '' : formData.url_patterns,
+                });
+              }}
               className="w-full px-3 py-2 border border-input rounded-md bg-background focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent transition-all"
             >
               <option value={0}>Single page only</option>
@@ -147,6 +155,31 @@ export const NewCrawlDialog: React.FC<NewCrawlDialogProps> = ({
             />
             <p className="text-xs text-muted-foreground mt-1">
               Restrict crawling to this domain. Leave empty to use the domain from base URL.
+            </p>
+          </div>
+
+          <div className={formData.max_depth === 0 ? 'opacity-50' : ''}>
+            <label htmlFor="url_patterns" className="block text-sm font-medium mb-1">
+              URL Patterns <span className="text-xs text-muted-foreground">(optional)</span>
+              {formData.max_depth === 0 && (
+                <span className="text-xs text-muted-foreground ml-2">(disabled for single page)</span>
+              )}
+            </label>
+            <input
+              id="url_patterns"
+              type="text"
+              value={formData.url_patterns}
+              onChange={(e) =>
+                setFormData({ ...formData, url_patterns: e.target.value })
+              }
+              disabled={formData.max_depth === 0}
+              className="w-full px-3 py-2 border border-input rounded-md bg-background focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent transition-all disabled:cursor-not-allowed disabled:bg-secondary/50"
+              placeholder="*docs*, *guide*, *api*"
+            />
+            <p className="text-xs text-muted-foreground mt-1">
+              {formData.max_depth === 0 
+                ? "URL patterns only apply when crawling multiple pages (depth > 0)"
+                : "Filter URLs by patterns (comma-separated). Use * as wildcard. Example: *docs*, *guide*"}
             </p>
           </div>
 

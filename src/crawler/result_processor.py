@@ -59,7 +59,7 @@ class ResultProcessor:
 
             if existing_doc and existing_doc.content_hash == result.content_hash:
                 # Content unchanged
-                return int(existing_doc.id), 0
+                return int(existing_doc.id), 0, None
 
             # Create or update document
             doc = self._create_or_update_document(session, result, job_id, depth, existing_doc)
@@ -119,7 +119,7 @@ class ResultProcessor:
 
             if existing_doc and existing_doc.content_hash == result.content_hash:
                 # Content unchanged
-                return int(existing_doc.id), 0
+                return int(existing_doc.id), 0, None
 
             # Create or update document
             doc = self._create_or_update_document(session, result, job_id, depth, existing_doc)
