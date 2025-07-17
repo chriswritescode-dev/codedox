@@ -202,6 +202,54 @@ class TestResultProcessorPipeline:
             session.commit()
     
     @pytest.mark.asyncio
+    async def test_process_result_pipeline_unchanged_content(self, result_processor, sample_crawl_result, db):
+        """Test that process_result_pipeline returns proper values when content is unchanged."""
+        # Create a crawl job first
+        job_id = uuid4()
+        job = CrawlJob(
+            id=job_id,
+            name="Test Job Unchanged",
+            domain="test-unchanged-example.com",
+            start_urls=["https://test-unchanged-example.com"],
+            max_depth=0,
+            status="running",
+            created_at=datetime.utcnow()
+        )
+        db.add(job)
+        
+        # Create an existing document with same content hash
+        existing_doc = Document(
+            url=sample_crawl_result.url,
+            title=sample_crawl_result.title,
+            markdown_content=sample_crawl_result.markdown_content,
+            content_hash=sample_crawl_result.content_hash,
+            crawl_job_id=job_id,
+            crawl_depth=0,
+            created_at=datetime.utcnow(),
+            enrichment_status="completed"
+        )
+        db.add(existing_doc)
+        db.commit()
+        
+        # Process result with same content hash
+        doc_id, snippet_count, task = await result_processor.process_result_pipeline(
+            sample_crawl_result, str(job_id), 0
+        )
+        
+        # Verify return values
+        assert doc_id == existing_doc.id
+        assert snippet_count == 0  # No new snippets when content unchanged
+        assert task is None  # No task created for unchanged content
+        
+        # Verify pipeline was NOT called
+        result_processor.enrichment_pipeline.add_document.assert_not_called()
+        
+        # Cleanup
+        db.query(Document).filter_by(crawl_job_id=job_id).delete()
+        db.query(CrawlJob).filter_by(id=job_id).delete()
+        db.commit()
+    
+    @pytest.mark.asyncio
     async def test_process_batch_handles_mixed_returns(self, result_processor, sample_crawl_result, db):
         """Test that process_batch handles both 2-tuple and 3-tuple returns."""
         # Create a crawl job first

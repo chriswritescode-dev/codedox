@@ -68,6 +68,8 @@ export default function CrawlJobs() {
     base_url: string;
     max_depth: number;
     domain_filter?: string;
+    url_patterns?: string[];
+    max_concurrent_crawls?: number;
   }) => {
     createMutation.mutate(formData);
   };

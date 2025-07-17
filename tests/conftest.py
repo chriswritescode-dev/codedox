@@ -517,7 +517,7 @@ def multiple_crawl_jobs(db: Session) -> list[CrawlJob]:
 @pytest.fixture
 def mock_mcp_tools(monkeypatch):
     """Mock MCP tools to avoid external dependencies."""
-    async def mock_init_crawl(self, name: str, start_urls: list, max_depth: int = 1, domain_filter: str = None, metadata: dict = None, max_concurrent_crawls: int = 20):
+    async def mock_init_crawl(self, name: str, start_urls: list, max_depth: int = 1, domain_filter: str = None, url_patterns: list = None, metadata: dict = None, max_concurrent_crawls: int = 20):
         return {
             "job_id": str(uuid4()),
             "status": "started",
@@ -525,7 +525,8 @@ def mock_mcp_tools(monkeypatch):
             "message": f"Crawl job '{name}' initiated with {len(start_urls)} URLs at depth {max_depth}",
             "start_urls": start_urls,
             "max_depth": max_depth,
-            "domain_restrictions": []
+            "domain_restrictions": [],
+            "url_patterns": url_patterns or []
         }
     
     async def mock_search_libraries(self, query: str, max_results: int = 10):
