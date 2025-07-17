@@ -186,6 +186,7 @@ This mode is only needed for specific AI integrations that don't support HTTP en
    - `start_urls`: List of URLs to crawl
    - `max_depth`: Crawl depth (0-3)
    - `domain_filter`: Optional domain restriction
+   - `url_patterns`: Optional list of URL patterns to include (e.g., ["*docs*", "*guide*"])
    - `max_concurrent_crawls`: Maximum concurrent page crawls (default: 20)
    - `metadata`: Additional metadata (optional)
 
@@ -206,7 +207,7 @@ This mode is only needed for specific AI integrations that don't support HTTP en
 
 
 ### Crawling
-- `POST /crawl/init` - Start new crawl job
+- `POST /crawl/init` - Start new crawl job with optional URL pattern filtering
 - `GET /crawl/status/{job_id}` - Check crawl status
 - `POST /crawl/cancel/{job_id}` - Cancel running job
 

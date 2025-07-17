@@ -26,6 +26,7 @@ class MCPTools:
         start_urls: List[str],
         max_depth: int = 1,
         domain_filter: Optional[str] = None,
+        url_patterns: Optional[List[str]] = None,
         metadata: Optional[Dict[str, Any]] = None,
         max_concurrent_crawls: int = 20
     ) -> Dict[str, Any]:
@@ -36,6 +37,7 @@ class MCPTools:
             start_urls: URLs to start crawling
             max_depth: Maximum crawl depth (0-3)
             domain_filter: Optional domain restriction
+            url_patterns: Optional list of URL patterns to include (e.g., ["*docs*", "*guide*"])
             metadata: Additional metadata
             max_concurrent_crawls: Maximum concurrent crawl sessions (default: 20)
             
@@ -83,6 +85,7 @@ class MCPTools:
                 start_urls=start_urls,
                 max_depth=max_depth,
                 domain_restrictions=domain_restrictions,
+                include_patterns=url_patterns or [],
                 metadata=metadata,
                 max_pages=settings.crawling.max_pages_per_job,
                 max_concurrent_crawls=max_concurrent_crawls
@@ -99,6 +102,7 @@ class MCPTools:
                 "start_urls": start_urls,
                 "max_depth": max_depth,
                 "domain_restrictions": domain_restrictions,
+                "url_patterns": url_patterns or [],
                 "auto_detect_name": metadata.get('auto_detect_name', False)
             }
             

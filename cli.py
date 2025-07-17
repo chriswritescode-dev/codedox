@@ -39,8 +39,9 @@ def init(drop: bool):
 @click.argument('urls', nargs=-1, required=True)
 @click.option('--depth', default=1, help='Maximum crawl depth (0-3)')
 @click.option('--domain', help='Domain restriction pattern')
+@click.option('--url-patterns', multiple=True, help='URL patterns to include (e.g., "*docs*", "*guide*")')
 @click.option('--concurrent', default=20, help='Maximum concurrent crawl sessions (default: 20)')
-def crawl(name: str, urls: tuple, depth: int, domain: Optional[str], concurrent: int):
+def crawl(name: str, urls: tuple, depth: int, domain: Optional[str], url_patterns: tuple, concurrent: int):
     """Start a new crawl job."""
     async def run_crawl():
         tools = MCPTools()
@@ -57,6 +58,7 @@ def crawl(name: str, urls: tuple, depth: int, domain: Optional[str], concurrent:
                 start_urls=list(urls),
                 max_depth=depth,
                 domain_filter=domain,
+                url_patterns=list(url_patterns) if url_patterns else None,
                 max_concurrent_crawls=concurrent
             )
             
@@ -68,6 +70,8 @@ def crawl(name: str, urls: tuple, depth: int, domain: Optional[str], concurrent:
             console.print(f"Job ID: [cyan]{result['job_id']}[/cyan]")
             console.print(f"URLs: {len(urls)}")
             console.print(f"Max depth: {depth}")
+            if url_patterns:
+                console.print(f"URL patterns: {', '.join(url_patterns)}")
     
     asyncio.run(run_crawl())
 
