@@ -118,7 +118,7 @@ class MCPServer:
             ),
             Tool(
                 name="search_libraries",
-                description="You MUST call this function before 'search_content' to obtain a valid library ID UNLESS the user explicitly provides a library ID in their query.\n\nSelection Process:\n1. Analyze the query to understand what library/package the user is looking for\n2. Return the most relevant match based on:\n   - Name similarity to the query (exact matches prioritized)\n   - Description relevance to the query's intent\n   - Documentation coverage (prioritize libraries with higher Code Snippet counts)\n\nResponse Format:\n- Return the selected library ID in a clearly marked section\n- Provide a brief explanation for why this library was chosen\n- If multiple good matches exist, acknowledge this but proceed with the most relevant one\n- If no good matches exist, clearly state this and suggest query refinements\n\nFor ambiguous queries, request clarification before proceeding with a best-guess match.",
+                description="You MUST call this function before 'get_content' to obtain a valid library ID UNLESS the user explicitly provides a library ID in their query.\n\nSelection Process:\n1. Analyze the query to understand what library/package the user is looking for\n2. Return the most relevant match based on:\n   - Name similarity to the query (exact matches prioritized)\n   - Description relevance to the query's intent\n   - Documentation coverage (prioritize libraries with higher Code Snippet counts)\n\nResponse Format:\n- Return the selected library ID in a clearly marked section\n- Provide a brief explanation for why this library was chosen\n- If multiple good matches exist, acknowledge this but proceed with the most relevant one\n- If no good matches exist, clearly state this and suggest query refinements\n\nFor ambiguous queries, request clarification before proceeding with a best-guess match.",
                 inputSchema={
                     "type": "object",
                     "properties": {
@@ -139,17 +139,29 @@ class MCPServer:
             ),
             Tool(
                 name="get_content",
-                description="Get the latest code snippets and documentation from a specific library. Requires a library_id (obtained from search_libraries). Can optionally filter results with a search query. Returns code examples from the specified library's documentation.",
+                description="Get code snippets and documentation from a specific library.\n\n"
+                "**Accepts both library names and IDs:**\n"
+                "- Library name: 'nextjs', 'react', 'django', '.NET', etc.\n"
+                "- Library ID: UUID format like 'a1b2c3d4-5678-90ab-cdef-1234567890ab'\n\n"
+                "**Smart name matching:**\n"
+                "- Exact matches are prioritized (case-insensitive)\n"
+                "- Fuzzy matching finds similar names automatically\n"
+                "- Clear suggestions provided when multiple matches found\n\n"
+                "**Examples:**\n"
+                "- `library_id: 'nextjs'` - finds Next.js documentation\n"
+                "- `library_id: 'react', query: 'hooks'` - finds React hooks examples\n"
+                "- `library_id: 'django', query: 'authentication'` - finds Django auth code\n\n"
+                "Returns formatted code examples with language highlighting, descriptions, and source URLs.",
                 inputSchema={
                     "type": "object",
                     "properties": {
                         "library_id": {
                             "type": "string",
-                            "description": "Library ID (required) - obtained from search_libraries tool",
+                            "description": "Library name (e.g., 'nextjs', 'react', '.NET') or UUID. Names are matched intelligently with fuzzy search.",
                         },
                         "query": {
                             "type": "string",
-                            "description": "Optional search query to filter content within the library",
+                            "description": "Optional search query to filter content within the library (e.g., 'authentication', 'routing', 'hooks')",
                         },
                         "max_results": {
                             "type": "integer",

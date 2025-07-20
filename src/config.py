@@ -144,6 +144,12 @@ class SearchConfig(BaseSettings):
     snippet_preview_length: int = 200
     default_max_results: int = 10
     min_score: float = 0.1
+    
+    # Library name matching thresholds
+    library_exact_match_threshold: float = 1.0  # Exact match always wins
+    library_auto_select_threshold: float = 0.7  # Minimum score to auto-select
+    library_auto_select_gap: float = 0.2  # Minimum gap between 1st and 2nd match
+    library_suggestion_threshold: float = 0.3  # Minimum score to show as suggestion
 
 
 class APIConfig(BaseSettings):

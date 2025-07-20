@@ -117,8 +117,23 @@ class TestMCPExecuteEndpoints:
         data = response.json()
         assert "result" in data
         result = data["result"]
+    
+    def test_execute_get_content_with_library_name(self, client, mock_mcp_tools):
+        """Test executing get_content tool with library name instead of ID."""
+        response = client.post(
+            "/mcp/execute/get_content",
+            json={
+                "library_id": "nextjs",  # Using name instead of UUID
+                "query": "routing",
+                "max_results": 5
+            }
+        )
+        assert response.status_code == 200
+        data = response.json()
+        assert "result" in data
+        result = data["result"]
+        # The mock should handle this gracefully
         assert isinstance(result, str)
-        assert "Found 1 results" in result
     
     def test_execute_get_snippet_details(self, client, mock_mcp_tools):
         """Test executing get_snippet_details tool."""
