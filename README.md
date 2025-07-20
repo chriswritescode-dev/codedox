@@ -162,10 +162,15 @@ For direct API usage:
 # List available tools
 curl http://localhost:8000/mcp/tools
 
-# Get code snippets from a library
+# Get code snippets from a library (using library name)
 curl -X POST http://localhost:8000/mcp/execute/get_content \
   -H "Content-Type: application/json" \
-  -d '{"library_id": "library-id", "query": "authentication"}'
+  -d '{"library_id": "nextjs", "query": "authentication"}'
+
+# Or using a UUID
+curl -X POST http://localhost:8000/mcp/execute/get_content \
+  -H "Content-Type: application/json" \
+  -d '{"library_id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890", "query": "authentication"}'
 ```
 
 ### Stdio Mode (Standalone MCP Server)
@@ -195,7 +200,7 @@ This mode is only needed for specific AI integrations that don't support HTTP en
    - `max_results`: Maximum results to return (1-50, default: 10)
 
 3. **get_content** - Get code snippets from a library
-   - `library_id`: Library ID (required) - obtained from search_libraries
+   - `library_id`: Library ID (UUID) or library name (e.g., 'nextjs', 'react')
    - `query`: Optional search terms to filter results
    - `max_results`: Limit results (1-50, default: 10)
 

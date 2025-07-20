@@ -214,7 +214,7 @@ class MCPTools:
         """Get content from a specific library, optionally filtered by search query.
         
         Args:
-            library_id: Library ID (required) - obtained from search_libraries
+            library_id: Library ID (UUID) or library name - can use either format
             query: Optional search query to filter results
             max_results: Maximum results to return
             
@@ -225,19 +225,107 @@ class MCPTools:
             with self.db_manager.session_scope() as session:
                 searcher = CodeSearcher(session)
                 
-                # Search with required library_id filter
+                # Check if library_id is a valid UUID
+                import re
+                uuid_pattern = re.compile(r'^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$', re.I)
+                is_uuid = bool(uuid_pattern.match(library_id))
+                
+                actual_library_id = library_id
+                library_name = library_id  # Default to the input for display
+                
+                # If not a UUID, treat as library name and search for it
+                if not is_uuid:
+                    libraries = searcher.search_libraries(query=library_id, limit=20)
+                    
+                    if not libraries:
+                        # No matches found, try to find all libraries and suggest the most similar
+                        all_libraries = searcher.search_libraries(query="", limit=100)
+                        if all_libraries:
+                            # Calculate similarity scores for all libraries
+                            from difflib import SequenceMatcher
+                            scored_libs = []
+                            for lib in all_libraries:
+                                # Use difflib for better similarity matching
+                                similarity = SequenceMatcher(None, library_id.lower(), lib['name'].lower()).ratio()
+                                scored_libs.append((lib, similarity))
+                            
+                            # Sort by similarity and take top 5
+                            scored_libs.sort(key=lambda x: x[1], reverse=True)
+                            suggestions = []
+                            for lib, score in scored_libs[:5]:
+                                if score > self.db_manager.settings.search.library_suggestion_threshold:  # Only show somewhat similar libraries
+                                    suggestions.append(f"  - {lib['name']} (similarity: {score:.0%}, snippets: {lib['snippet_count']})")
+                            
+                            if suggestions:
+                                return (f"❌ No library found matching '{library_id}'.\n\n"
+                                       f"📚 Did you mean one of these?\n" + "\n".join(suggestions) + "\n\n"
+                                       f"💡 Tip: Use the exact library name or copy the ID from search_libraries.")
+                            else:
+                                return f"❌ No library found matching '{library_id}' and no similar libraries found.\n\n💡 Use search_libraries to find available libraries."
+                        else:
+                            return f"❌ No libraries have been crawled yet. Use init_crawl to add documentation sources."
+                    
+                    # Check for exact match first (case-insensitive)
+                    exact_match = None
+                    for lib in libraries:
+                        if lib['name'].lower() == library_id.lower():
+                            exact_match = lib
+                            break
+                    
+                    if exact_match:
+                        # Use exact match
+                        actual_library_id = exact_match['library_id']
+                        library_name = exact_match['name']
+                        logger.info(f"Exact match found: '{library_name}' for query '{library_id}'")
+                    elif len(libraries) == 1:
+                        # Single match, use it
+                        actual_library_id = libraries[0]['library_id']
+                        library_name = libraries[0]['name']
+                        logger.info(f"Single match found: '{library_name}' for query '{library_id}'")
+                    elif len(libraries) > 1:
+                        # Check if we have a clear winner
+                        first_score = libraries[0].get('similarity_score', 0)
+                        second_score = libraries[1].get('similarity_score', 0) if len(libraries) > 1 else 0
+                        
+                        # Use configurable thresholds: auto-select if first is good and significantly better than second
+                        if first_score > self.db_manager.settings.search.library_auto_select_threshold and (first_score - second_score) > self.db_manager.settings.search.library_auto_select_gap:
+                            actual_library_id = libraries[0]['library_id']
+                            library_name = libraries[0]['name']
+                            logger.info(f"Auto-selected best match: '{library_name}' (score: {first_score:.2f}) for query '{library_id}'")
+                        else:
+                            # Multiple close matches, ask user to be more specific
+                            suggestions = []
+                            for i, lib in enumerate(libraries[:5]):
+                                score = lib.get('similarity_score', 0)
+                                snippets = lib.get('snippet_count', 0)
+                                # Add emoji indicators for clarity
+                                if i == 0:
+                                    emoji = "🥇"
+                                elif i == 1:
+                                    emoji = "🥈"
+                                elif i == 2:
+                                    emoji = "🥉"
+                                else:
+                                    emoji = "  "
+                                suggestions.append(f"{emoji} {lib['name']} (match: {score:.0%}, snippets: {snippets})")
+                            
+                            return (f"🤔 Multiple libraries match '{library_id}'. Please be more specific:\n\n" + 
+                                   "\n".join(suggestions) + "\n\n"
+                                   f"💡 Tip: Use the exact library name for best results.")
+                
+                # Search with resolved library_id
                 snippets, total_count = searcher.search(
                     query=query or "",  # Use empty string if query is None
-                    job_id=library_id,
+                    job_id=actual_library_id,
                     limit=max_results,
                     include_context=False  # Don't include context in search results
                 )
                 
                 if not snippets:
                     if query:
-                        no_results_msg = f"No results found for query '{query}' in library {library_id}"
+                        no_results_msg = f"No results found for query '{query}' in library '{library_name}'"
                     else:
-                        no_results_msg = f"No content found in library {library_id}"
+                        no_results_msg = f"No content found in library '{library_name}'"
                     return no_results_msg
                 
                 # Format results using the specified format
@@ -248,9 +336,9 @@ class MCPTools:
                 if total_count > len(snippets):
                     header += f" (showing first {len(snippets)} of {total_count} total)"
                 if query:
-                    header += f" for query '{query}' in library {library_id}"
+                    header += f" for query '{query}' in library '{library_name}'"
                 else:
-                    header += f" in library {library_id}"
+                    header += f" in library '{library_name}'"
                 header += "\n\n"
                 
                 return header + formatted_results
