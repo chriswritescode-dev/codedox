@@ -63,8 +63,8 @@ temp/
 *.bak
 config/local.yaml
 user_settings.json
-CLAUDE*
-.claude/
+CL*
+.cl*
 
 # Local configuration
 .env.local
