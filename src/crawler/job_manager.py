@@ -112,10 +112,7 @@ class JobManager:
                 # Reset completion times
                 existing_job.completed_at = None
                 existing_job.crawl_completed_at = None
-                existing_job.enrichment_started_at = None
-                existing_job.enrichment_completed_at = None
                 existing_job.documents_crawled = 0
-                existing_job.documents_enriched = 0
                 existing_job.processed_pages = 0
                 existing_job.total_pages = 0
                 existing_job.snippets_extracted = 0
@@ -179,7 +176,6 @@ class JobManager:
         total_pages: Optional[int] = None,
         snippets_extracted: Optional[int] = None,
         documents_crawled: Optional[int] = None,
-        documents_enriched: Optional[int] = None,
     ) -> bool:
         """Update job progress metrics.
 
@@ -189,7 +185,6 @@ class JobManager:
             total_pages: Total pages found
             snippets_extracted: Number of snippets extracted
             documents_crawled: Number of documents crawled
-            documents_enriched: Number of documents enriched
 
         Returns:
             True if updated successfully
@@ -207,8 +202,6 @@ class JobManager:
                 job.snippets_extracted = snippets_extracted
             if documents_crawled is not None:
                 job.documents_crawled = documents_crawled
-            if documents_enriched is not None:
-                job.documents_enriched = documents_enriched
 
             job.last_heartbeat = datetime.utcnow()
             session.commit()
@@ -242,8 +235,6 @@ class JobManager:
             # Set completion timestamps
             if not job.crawl_completed_at:
                 job.crawl_completed_at = datetime.utcnow()
-            if not job.enrichment_completed_at:
-                job.enrichment_completed_at = datetime.utcnow()
 
             session.commit()
             return True
@@ -323,7 +314,7 @@ class JobManager:
         return False
 
     def mark_crawl_complete(self, job_id: str) -> bool:
-        """Mark crawl phase as complete.
+        """Mark crawl as complete.
 
         Args:
             job_id: Job ID
@@ -331,22 +322,4 @@ class JobManager:
         Returns:
             True if updated successfully
         """
-        return self.update_job_status(
-            job_id,
-            phase="enriching",
-            crawl_completed_at=datetime.utcnow(),
-            enrichment_started_at=datetime.utcnow(),
-        )
-
-    def mark_enrichment_complete(self, job_id: str) -> bool:
-        """Mark enrichment phase as complete.
-
-        Args:
-            job_id: Job ID
-
-        Returns:
-            True if updated successfully
-        """
-        return self.update_job_status(
-            job_id, phase="finalizing", enrichment_completed_at=datetime.utcnow()
-        )
+        return self.complete_job(job_id, success=True)

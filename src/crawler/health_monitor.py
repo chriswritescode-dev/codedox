@@ -12,10 +12,10 @@ logger = logging.getLogger(__name__)
 settings = get_settings()
 
 # How often to check for stalled jobs (seconds)
-HEALTH_CHECK_INTERVAL = 60
+HEALTH_CHECK_INTERVAL = 10  # Check every 10 seconds
 
 # How long without heartbeat before considering job stalled (seconds)
-STALLED_THRESHOLD = 300  # 5 minutes
+STALLED_THRESHOLD = 60  # 1 minute
 
 
 class CrawlHealthMonitor:
@@ -122,7 +122,7 @@ class CrawlHealthMonitor:
                 
                 if time_since_heartbeat > STALLED_THRESHOLD:
                     health["health_status"] = "stalled"
-                elif time_since_heartbeat > STALLED_THRESHOLD / 2:
+                elif time_since_heartbeat > 30:  # Warning at 30 seconds
                     health["health_status"] = "warning"
                 else:
                     health["health_status"] = "healthy"

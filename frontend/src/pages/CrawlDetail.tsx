@@ -12,7 +12,6 @@ import {
   Clock,
   StopCircle,
   PlayCircle,
-  RefreshCw,
   AlertTriangle,
 } from "lucide-react";
 import CrawlProgress from "../components/CrawlProgress";
@@ -89,20 +88,6 @@ export default function CrawlDetail() {
     },
   });
 
-  const restartEnrichmentMutation = useMutation({
-    mutationFn: () => api.restartEnrichment(id!),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["crawl-job", id] });
-      queryClient.invalidateQueries({ queryKey: ["crawl-jobs"] });
-    },
-    onError: (error) => {
-      console.error("Failed to restart enrichment:", error);
-      alert(
-        "Failed to restart enrichment: " +
-          (error instanceof Error ? error.message : "Unknown error")
-      );
-    },
-  });
 
   const retryFailedPagesMutation = useMutation({
     mutationFn: () => api.retryFailedPages(id!),
@@ -131,11 +116,6 @@ export default function CrawlDetail() {
     }
   };
 
-  const handleRestartEnrichment = () => {
-    if (confirm("Are you sure you want to restart the enrichment process? This will reset all enrichment progress while preserving crawled data.")) {
-      restartEnrichmentMutation.mutate();
-    }
-  };
 
   const handleRetryFailedPages = () => {
     if (confirm(`Are you sure you want to retry ${job?.failed_pages_count || 0} failed pages? This will create a new crawl job.`)) {
@@ -224,36 +204,22 @@ export default function CrawlDetail() {
                   Resume
                 </button>
               )}
-              {(job.status === "completed" || job.status === "failed") && (
-                <>
+              {(job.status === "completed" || job.status === "failed") && 
+                !!job.failed_pages_count && job.failed_pages_count > 0 && (
                   <button
-                    onClick={() => handleRestartEnrichment()}
-                    disabled={restartEnrichmentMutation.isPending}
-                    className="cursor-pointer flex items-center gap-2 px-3 py-1.5 text-blue-600 border border-blue-600 rounded-md hover:bg-blue-600/10 disabled:opacity-50 disabled:cursor-not-allowed"
+                    onClick={() => handleRetryFailedPages()}
+                    disabled={retryFailedPagesMutation.isPending}
+                    className="cursor-pointer flex items-center gap-2 px-3 py-1.5 text-orange-600 border border-orange-600 rounded-md hover:bg-orange-600/10 disabled:opacity-50 disabled:cursor-not-allowed"
                   >
-                    {restartEnrichmentMutation.isPending ? (
+                    {retryFailedPagesMutation.isPending ? (
                       <Loader2 className="h-4 w-4 animate-spin" />
                     ) : (
-                      <RefreshCw className="h-4 w-4" />
+                      <AlertTriangle className="h-4 w-4" />
                     )}
-                    Restart Enrichment
+                    Retry {job.failed_pages_count} Failed Pages
                   </button>
-                  {job.failed_pages_count && job.failed_pages_count > 0 && (
-                    <button
-                      onClick={() => handleRetryFailedPages()}
-                      disabled={retryFailedPagesMutation.isPending}
-                      className="cursor-pointer flex items-center gap-2 px-3 py-1.5 text-orange-600 border border-orange-600 rounded-md hover:bg-orange-600/10 disabled:opacity-50 disabled:cursor-not-allowed"
-                    >
-                      {retryFailedPagesMutation.isPending ? (
-                        <Loader2 className="h-4 w-4 animate-spin" />
-                      ) : (
-                        <AlertTriangle className="h-4 w-4" />
-                      )}
-                      Retry {job.failed_pages_count} Failed Pages
-                    </button>
-                  )}
-                </>
-              )}
+                )
+              }
             </div>
           </div>
         </div>

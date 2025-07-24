@@ -56,15 +56,6 @@ export function DocumentList({ documents, onDocumentClick }: DocumentListProps) 
           
           <div className="flex items-center gap-4 mt-3 text-xs text-muted-foreground">
             <span>Depth: {doc.crawl_depth}</span>
-            <span>•</span>
-            <span className={`capitalize ${
-              doc.enrichment_status === 'completed' ? 'text-green-600' :
-              doc.enrichment_status === 'failed' ? 'text-red-600' :
-              doc.enrichment_status === 'processing' ? 'text-yellow-600' :
-              'text-muted-foreground'
-            }`}>
-              {doc.enrichment_status}
-            </span>
           </div>
         </div>
       ))}

@@ -151,7 +151,7 @@ class StreamableTransport:
                             },
                             "serverInfo": {
                                 "name": "codedox-mcp",
-                                "version": "1.0.0"
+                                "version": "1.0.1"
                             }
                         }
                     }

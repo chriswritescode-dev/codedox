@@ -286,8 +286,12 @@ class TestDomainApiIntegration:
 class TestDomainUniquenessEndToEnd:
     """End-to-end tests for domain uniqueness."""
     
-    def test_create_multiple_crawls_same_domain_via_api(self, client):
+    @patch('src.crawler.crawl_manager.CrawlManager._execute_crawl')
+    def test_create_multiple_crawls_same_domain_via_api(self, mock_execute_crawl, client):
         """Test creating multiple crawls for same domain via API reuses job."""
+        # Mock the crawl execution to prevent actual crawling
+        mock_execute_crawl.return_value = None
+        
         # Create first crawl job
         response1 = client.post("/api/crawl-jobs", json={
             "name": "NextJS Docs",
@@ -316,8 +320,12 @@ class TestDomainUniquenessEndToEnd:
         assert job2_data["max_depth"] == 2  # Updated to latest depth
         assert job2_data["start_urls"] == ["https://nextjs.org/guide"]  # Updated URLs
     
-    def test_create_crawls_different_domains_via_api(self, client):
+    @patch('src.crawler.crawl_manager.CrawlManager._execute_crawl')
+    def test_create_crawls_different_domains_via_api(self, mock_execute_crawl, client):
         """Test creating crawls for different domains creates separate jobs."""
+        # Mock the crawl execution to prevent actual crawling
+        mock_execute_crawl.return_value = None
+        
         # Create NextJS crawl job
         response1 = client.post("/api/crawl-jobs", json={
             "name": "NextJS Docs",

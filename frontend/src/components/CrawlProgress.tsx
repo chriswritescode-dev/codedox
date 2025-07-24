@@ -1,6 +1,6 @@
 import { CrawlJob } from '../lib/api'
 import ProgressBar from './ProgressBar'
-import { Globe, Database, Zap } from 'lucide-react'
+import { Globe, Zap } from 'lucide-react'
 
 interface CrawlProgressProps {
   job: CrawlJob
@@ -16,11 +16,6 @@ export default function CrawlProgress({ job, currentUrl }: CrawlProgressProps) {
         label: "Crawling Pages",
         icon: <Globe className="h-4 w-4" />,
         color: "bg-blue-500 text-white",
-      },
-      enriching: {
-        label: "Enriching Content",
-        icon: <Database className="h-4 w-4" />,
-        color: "bg-purple-500 text-white",
       },
       finalizing: {
         label: "Finalizing",
@@ -69,32 +64,9 @@ export default function CrawlProgress({ job, currentUrl }: CrawlProgressProps) {
         </div>
       </div>
 
-      {/* Enrichment Progress */}
-      {job.crawl_phase === "enriching" &&
-        job.documents_crawled &&
-        job.documents_enriched !== undefined && (
-          <div>
-            <ProgressBar
-              current={
-                job.enrichment_progress ||
-                Math.min(
-                  100,
-                  Math.round(
-                    (job.documents_enriched / job.documents_crawled) * 100 || 0
-                  )
-                )
-              }
-              total={100}
-              label="Documents Enriched"
-            />
-            <div className="text-sm text-muted-foreground mt-1">
-              {job.documents_enriched} of {job.documents_crawled} documents
-            </div>
-          </div>
-        )}
 
       {/* Current URL */}
-      {currentUrl && job.status === "running" && (
+      {!!currentUrl && job.status === "running" && (
         <div className="pt-2">
           <p className="text-sm text-muted-foreground mb-1">
             Currently processing:

@@ -235,23 +235,14 @@ python generate_test_data.py
 
 ## Integration with Main Project
 
-The optimal concurrency level is automatically used through the configuration:
+The optimal concurrency level is configured through environment variables:
 
-```python
-# The LLM client automatically respects max_concurrent_requests
-from src.llm.client import LLMClient
-
-client = LLMClient()  # Uses config.yaml settings
-# Semaphore limits concurrent requests automatically
+```bash
+# Set in .env file
+CODE_LLM_NUM_PARALLEL=10  # Use optimal value from test
 ```
 
-Or update `config.yaml` directly:
-
-```yaml
-llm:
-  max_concurrent_requests: 10  # Use optimal value from test
-  request_timeout: 30.0
-  retry_attempts: 3
+This controls the number of parallel LLM extraction workers during crawling.
 ```
 
 ## Performance Tips

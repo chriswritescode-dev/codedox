@@ -1,6 +1,6 @@
-# RAG Pipeline Frontend
+# CodeDox Frontend
 
-Modern React TypeScript frontend for the RAG Pipeline API.
+Modern React TypeScript frontend for the CodeDox API.
 
 ## Features
 

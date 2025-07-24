@@ -8,7 +8,6 @@ from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from ...database import get_db
-from ...llm.client import LLMClient
 from ...crawler.health_monitor import get_health_monitor
 
 logger = logging.getLogger(__name__)
@@ -30,37 +29,6 @@ async def health_database(db: Session = Depends(get_db)) -> Dict[str, str]:
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Database error: {str(e)}")
 
-
-@router.get("/health/llm")
-async def health_llm() -> Dict[str, Any]:
-    """Check LLM service health."""
-    async with LLMClient(debug=True) as client:
-        connection_status = await client.test_connection()
-        
-        if connection_status.get("status") == "connected":
-            return {
-                "status": "healthy",
-                "message": f"Connected to {connection_status['provider']} at {connection_status['endpoint']}",
-                "details": {
-                    "provider": connection_status['provider'],
-                    "endpoint": connection_status['endpoint'],
-                    "model": client.model,
-                    "has_api_key": bool(client.api_key),
-                    "available_models": connection_status.get('models', [])
-                }
-            }
-        elif connection_status.get("status") == "connection_error":
-            return {
-                "status": "error",
-                "message": f"Cannot connect to LLM: {connection_status.get('error', 'Unknown error')}",
-                "details": connection_status
-            }
-        else:
-            return {
-                "status": "unhealthy",
-                "message": connection_status.get('error', 'LLM service is not responding correctly'),
-                "details": connection_status
-            }
 
 
 @router.get("/health/crawl-jobs")

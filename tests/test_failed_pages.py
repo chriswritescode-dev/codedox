@@ -33,8 +33,6 @@ def crawl_manager(db):
         manager.result_processor.db_manager.session_scope = mock_session_scope
     if hasattr(manager, 'page_crawler') and hasattr(manager.page_crawler, 'db_manager'):
         manager.page_crawler.db_manager.session_scope = mock_session_scope
-    if hasattr(manager, 'enrichment_manager') and hasattr(manager.enrichment_manager, 'db_manager'):
-        manager.enrichment_manager.db_manager.session_scope = mock_session_scope
     
     return manager
 
@@ -82,10 +80,8 @@ class TestFailedPagesTracking:
         # Record the failed page
         from src.crawler.page_crawler import PageCrawler
         from src.crawler.config import create_browser_config
-        from src.parser import CodeExtractor
         browser_config = create_browser_config()
-        code_extractor = CodeExtractor()
-        page_crawler = PageCrawler(browser_config, code_extractor)
+        page_crawler = PageCrawler(browser_config)
         await page_crawler._record_failed_page(job_id, url, error_message)
         
         # Verify it was saved
@@ -109,10 +105,8 @@ class TestFailedPagesTracking:
         # Record the same page twice
         from src.crawler.page_crawler import PageCrawler
         from src.crawler.config import create_browser_config
-        from src.parser import CodeExtractor
         browser_config = create_browser_config()
-        code_extractor = CodeExtractor()
-        page_crawler = PageCrawler(browser_config, code_extractor)
+        page_crawler = PageCrawler(browser_config)
         await page_crawler._record_failed_page(job_id, url, error_message)
         await page_crawler._record_failed_page(job_id, url, "Different error")
         

@@ -70,7 +70,7 @@ def test_mcp_streamable_initialize_sse(client):
             "capabilities": {},
             "clientInfo": {
                 "name": "test-client",
-                "version": "1.0.0"
+                "version": "1.0.1"
             }
         }
     }

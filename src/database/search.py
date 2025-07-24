@@ -101,6 +101,7 @@ class CodeSearcher:
             
             # Convert results to CodeSnippet objects
             results = []
+            seen_ids = set()
             for row in result:
                 snippet = self.session.query(CodeSnippet).filter(CodeSnippet.id == row.id).first()
                 if snippet and not include_context:
@@ -108,6 +109,25 @@ class CodeSearcher:
                     snippet.context_after = ""  # Clear context
                 if snippet:
                     results.append(snippet)
+                    seen_ids.add(snippet.id)
+            
+            # Use the database function to find related snippets
+            if results and len(results) < limit and self.settings.include_related_snippets:
+                # Get IDs of primary results
+                primary_ids = [s.id for s in results]
+                
+                # For now, let's use a simpler approach without the database function
+                # We'll use the existing relationship finding logic
+                related_results = self._find_related_snippets(
+                    results, 
+                    seen_ids, 
+                    limit - len(results),
+                    job_id,
+                    language,
+                    snippet_type
+                )
+                results.extend(related_results)
+                total_count += len(related_results)
             
             return results, total_count
         else:
@@ -410,6 +430,119 @@ class CodeSearcher:
             if lang  # Skip null languages
         ]
     
+    def _find_related_snippets(
+        self,
+        primary_results: List[CodeSnippet],
+        seen_ids: set,
+        max_additional: int,
+        job_id: Optional[str] = None,
+        language: Optional[str] = None,
+        snippet_type: Optional[str] = None
+    ) -> List[CodeSnippet]:
+        """Find snippets related to the primary search results using the relationship table.
+        
+        Args:
+            primary_results: Initial search results
+            seen_ids: Set of snippet IDs already in results
+            max_additional: Maximum additional snippets to return
+            job_id: Optional job filter
+            language: Optional language filter
+            snippet_type: Optional type filter
+            
+        Returns:
+            List of related snippets
+        """
+        if not primary_results or max_additional <= 0:
+            return []
+            
+        from ..database.models import SnippetRelationship
+        
+        related_snippets = []
+        related_info = {}  # Map of snippet_id to relationship info
+        
+        # Get IDs of primary results
+        primary_ids = [s.id for s in primary_results]
+        
+        # Use the database function to find related snippets
+        sql = """
+        SELECT * FROM find_related_snippets(
+            :snippet_ids,
+            NULL,  -- all relationship types
+            :limit
+        )
+        """
+        
+        result = self.session.execute(
+            text(sql), 
+            {'snippet_ids': primary_ids, 'limit': max_additional * 2}  # Get extra to account for filtering
+        )
+        
+        # Build the related_info map from database results
+        primary_map = {s.id: s for s in primary_results}
+        
+        for row in result:
+            source_id = row.snippet_id
+            target_id = row.related_snippet_id
+            
+            # Skip if already seen
+            if target_id in seen_ids:
+                continue
+                
+            # Get the primary snippet
+            primary_snippet = primary_map.get(source_id)
+            if primary_snippet:
+                if target_id not in related_info:
+                    related_info[target_id] = []
+                related_info[target_id].append({
+                    'primary_snippet': primary_snippet,
+                    'relationship': {
+                        'relationship_type': row.relationship_type,
+                        'description': row.description or f"{row.relationship_type} relationship"
+                    }
+                })
+        
+        if not related_info:
+            return []
+        
+        # Build query for related snippets
+        query = self.session.query(CodeSnippet).join(Document).join(CrawlJob)
+        
+        # Apply filters
+        filters = [
+            CodeSnippet.id.in_(list(related_info.keys())),
+            CrawlJob.status != 'cancelled'
+        ]
+        
+        if job_id:
+            filters.append(Document.crawl_job_id == job_id)
+        if language:
+            filters.append(CodeSnippet.language == language.lower())
+        if snippet_type:
+            filters.append(CodeSnippet.snippet_type == snippet_type)
+        
+        query = query.filter(and_(*filters))
+        
+        # Get related snippets
+        related = query.limit(max_additional).all()
+        
+        # Add relationship context to each related snippet
+        for rel_snippet in related:
+            if rel_snippet.id in related_info:
+                # Add context about why this was included
+                rel_snippet._search_context = []
+                for info in related_info[rel_snippet.id]:
+                    primary = info['primary_snippet']
+                    relationship = info['relationship']
+                    rel_snippet._search_context.append({
+                        'related_to': primary.title or f"Snippet {primary.id}",
+                        'relationship': relationship.get('relationship_type', 'related'),
+                        'description': relationship.get('description', 'Related code')
+                    })
+        
+        related_snippets.extend(related)
+        
+        return related_snippets
+    
     def format_search_results(self, snippets: List[CodeSnippet]) -> str:
         """Format search results in the specified output format.
         
@@ -424,7 +557,18 @@ class CodeSearcher:
         
         formatted_results = []
         
-        for snippet in snippets:
+        for i, snippet in enumerate(snippets):
+            # Add relationship context if this is a related result
+            if hasattr(snippet, '_search_context') and snippet._search_context:
+                context_lines = []
+                for ctx in snippet._search_context:
+                    rel_type = ctx['relationship']
+                    related_to = ctx['related_to']
+                    desc = ctx['description']
+                    context_lines.append(f"[Related via {rel_type} to '{related_to}': {desc}]")
+                
+                formatted_results.append("\n".join(context_lines))
+            
             formatted_results.append(snippet.format_output())
         
         return "\n".join(formatted_results)

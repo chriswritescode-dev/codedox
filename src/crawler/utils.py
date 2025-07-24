@@ -88,23 +88,6 @@ def normalize_url(url: str) -> str:
     return url
 
 
-def extract_domain(url: str) -> Optional[str]:
-    """Extract domain from URL.
-
-    Args:
-        url: URL to extract from
-
-    Returns:
-        Domain or None
-    """
-    try:
-        parsed = urlparse(url)
-        return parsed.netloc
-    except Exception as e:
-        logger.error(f"Failed to extract domain from {url}: {e}")
-        return None
-
-
 def is_valid_url(url: str) -> bool:
     """Check if URL is valid.
 

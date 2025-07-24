@@ -49,7 +49,6 @@ async def get_crawl_jobs(db: Session = Depends(get_db)) -> List[Dict[str, Any]]:
             "error_message": job.error_message,
             # Calculate progress percentages
             "crawl_progress": min(100, round((job.processed_pages / job.total_pages * 100) if job.total_pages > 0 else 0)),
-            "enrichment_progress": min(100, round((job.documents_enriched / job.documents_crawled * 100) if job.documents_crawled > 0 else 0)) if job.documents_enriched is not None else 0,
         }
         for job in jobs
     ]
@@ -84,11 +83,9 @@ async def get_crawl_job(job_id: str, db: Session = Depends(get_db)) -> Dict[str,
         "crawl_phase": job.crawl_phase,
         "last_heartbeat": job.last_heartbeat.isoformat() + "Z" if job.last_heartbeat else None,
         "documents_crawled": job.documents_crawled,
-        "documents_enriched": job.documents_enriched,
         "retry_count": job.retry_count,
         # Calculate progress percentages
         "crawl_progress": min(100, round((job.processed_pages / job.total_pages * 100) if job.total_pages > 0 else 0)),
-        "enrichment_progress": min(100, round((job.documents_enriched / job.documents_crawled * 100) if job.documents_crawled > 0 else 0)),
     }
 
 
@@ -221,24 +218,28 @@ async def cancel_crawl_job(job_id: str) -> Dict[str, str]:
 async def resume_crawl_job(job_id: str) -> Dict[str, str]:
     """Resume a failed or stalled crawl job."""
     crawl_manager = CrawlManager()
-    success = await crawl_manager.resume_job(job_id)
     
-    if not success:
-        raise HTTPException(status_code=400, detail="Job not found or cannot be resumed")
+    # Check if there are failed pages
+    from ...database import FailedPage, get_db_manager
+    db_manager = get_db_manager()
+    with db_manager.session_scope() as session:
+        failed_count = session.query(FailedPage).filter_by(crawl_job_id=job_id).count()
     
-    return {"message": "Crawl job resumed successfully", "job_id": job_id}
+    if failed_count > 0:
+        # Use retry_failed_pages which returns the new job ID
+        new_job_id = await crawl_manager.retry_failed_pages(job_id)
+        if new_job_id:
+            return {"message": f"Created new job to retry {failed_count} failed pages", "id": new_job_id}
+        else:
+            raise HTTPException(status_code=400, detail="Failed to create retry job")
+    else:
+        # Resume the existing job
+        success = await crawl_manager.resume_job(job_id)
+        if not success:
+            raise HTTPException(status_code=400, detail="Job not found or cannot be resumed")
+        
+        return {"message": "Crawl job resumed successfully", "id": job_id}
 
-
-@router.post("/crawl-jobs/{job_id}/restart-enrichment")
-async def restart_enrichment(job_id: str) -> Dict[str, str]:
-    """Restart only the enrichment process for a crawl job."""
-    crawl_manager = CrawlManager()
-    success = await crawl_manager.restart_enrichment(job_id)
-    
-    if not success:
-        raise HTTPException(status_code=400, detail="Job not found or enrichment cannot be restarted")
-    
-    return {"message": "Enrichment restarted successfully", "job_id": job_id}
 
 
 @router.post("/crawl-jobs/{job_id}/retry-failed")

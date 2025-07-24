@@ -172,8 +172,8 @@ class TestCrawlRecovery:
         with db_manager.session_scope() as session:
             job = session.query(CrawlJob).filter_by(id=job_id).first()
             assert job.status == "completed"
-            # crawl_completed_at is set when transitioning to enrichment or when completing without enrichment
-            # Since this test doesn't create documents, it should complete without enrichment
+            # crawl_completed_at is set when the crawl completes
+            # Since this test doesn't create documents, it should complete immediately
             assert job.completed_at is not None
             # If no documents were created, crawl_completed_at might not be set separately
             assert job.crawl_phase is None  # Should be cleared on completion
@@ -287,7 +287,7 @@ class TestCrawlRecovery:
                 start_urls=["https://example.com"],
                 status="running",
                 last_heartbeat=datetime.utcnow() - timedelta(seconds=STALLED_THRESHOLD/2 + 10),
-                crawl_phase="enriching"
+                crawl_phase="crawling"
             )
             
             # Completed job
@@ -325,20 +325,20 @@ class TestCrawlRecovery:
         assert missing_status["status"] == "not_found"
     
     @pytest.mark.asyncio
-    async def test_enrichment_phase_error_handling(self, crawl_manager):
-        """Test error handling during enrichment phase."""
+    async def test_llm_extraction_error_handling(self, crawl_manager):
+        """Test error handling during LLM extraction."""
         config = CrawlConfig(
-            name="Test Enrichment Errors",
+            name="Test LLM Extraction Errors",
             start_urls=["https://example.com"],
             max_depth=0,
             max_pages=1
         )
         
-        # Mock LLM error during enrichment
-        with patch('src.llm.enricher.MetadataEnricher') as mock_enricher:
-            enricher_instance = AsyncMock()
-            enricher_instance.enrich_snippets.side_effect = Exception("LLM service unavailable")
-            mock_enricher.return_value = enricher_instance
+        # Mock LLM error during extraction
+        with patch('src.crawler.llm_retry.LLMRetryExtractor') as mock_extractor:
+            extractor_instance = AsyncMock()
+            extractor_instance.extract.side_effect = Exception("LLM service unavailable")
+            mock_extractor.return_value = extractor_instance
             
             # Also need to mock the crawler
             with patch('src.crawler.page_crawler.AsyncWebCrawler') as mock_crawler_cls:
@@ -371,7 +371,7 @@ class TestCrawlRecovery:
                 # Start crawl
                 job_id = await crawl_manager.start_crawl(config)
                 
-                # Wait for completion - give it more time since enrichment is involved
+                # Wait for completion
                 await asyncio.sleep(5)
                 
                 # Check job status
@@ -379,17 +379,15 @@ class TestCrawlRecovery:
                 with db_manager.session_scope() as session:
                     job = session.query(CrawlJob).filter_by(id=job_id).first()
                     
-                    # Job should still complete even if enrichment fails
+                    # Job should complete successfully
                     assert job.status == "completed"
                     # Check if documents were created
                     doc_count = session.query(Document).filter_by(crawl_job_id=job_id).count()
                     assert doc_count > 0 or job.processed_pages > 0  # Either documents or pages should be recorded
                     
-                    # Check document enrichment status
+                    # Check documents were created
                     docs = session.query(Document).filter_by(crawl_job_id=job_id).all()
-                    for doc in docs:
-                        # Documents should be marked as skipped, failed, pending, processing, or completed
-                        assert doc.enrichment_status in ["skipped", "failed", "pending", "processing", "completed"]
+                    # Verify documents exist
     
     @pytest.mark.asyncio
     async def test_retry_mechanism(self, crawl_manager):

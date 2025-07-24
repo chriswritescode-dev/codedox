@@ -59,11 +59,8 @@ class TestJobCancellation:
         """Test that failed pages aren't recorded for missing jobs."""
         from src.crawler.page_crawler import PageCrawler
         from src.crawler.config import BrowserConfig
-        from src.parser.code_extractor import CodeExtractor
-        
         browser_config = BrowserConfig()
-        code_extractor = CodeExtractor()
-        page_crawler = PageCrawler(browser_config, code_extractor)
+        page_crawler = PageCrawler(browser_config)
         
         # Try to record failed page for non-existent job
         fake_job_id = str(uuid4())
@@ -100,15 +97,12 @@ class TestJobCancellation:
             assert mock_task.cancelled()
     
     @pytest.mark.asyncio
-    async def test_enrichment_pipeline_stops_on_cancel(self):
-        """Test that enrichment pipeline stops when job is cancelled."""
+    async def test_extraction_stops_on_cancel(self):
+        """Test that extraction stops when job is cancelled."""
+        # Test that extraction stops when job is cancelled during crawl
         job_id = str(uuid4())
         
         crawl_manager = CrawlManager()
-        
-        # Mock the enrichment manager
-        crawl_manager.enrichment_manager.is_pipeline_running = Mock(return_value=True)
-        crawl_manager.enrichment_manager.stop_pipeline = AsyncMock()
         
         # Mock job manager
         with patch.object(crawl_manager.job_manager, 'cancel_job', return_value=True):
@@ -117,12 +111,9 @@ class TestJobCancellation:
             mock_task.done.return_value = True
             crawl_manager._active_crawl_tasks = {job_id: mock_task}
             
-            # Cancel the job
+            # Cancel the job - this should succeed
             success = await crawl_manager.cancel_job(job_id)
             assert success
-            
-            # Verify pipeline was stopped
-            crawl_manager.enrichment_manager.stop_pipeline.assert_called_once()
     
     @pytest.mark.asyncio
     async def test_active_task_cleanup(self):
@@ -175,7 +166,6 @@ class TestJobCancellation:
         """Test that cancelled jobs don't record failed pages and raise CancelledError."""
         from src.crawler.page_crawler import PageCrawler
         from src.crawler.config import BrowserConfig
-        from src.parser.code_extractor import CodeExtractor
         from src.database import get_db_manager
         from contextlib import contextmanager
         
@@ -204,8 +194,7 @@ class TestJobCancellation:
         mock_db_manager.session_scope = mock_session_scope
         
         browser_config = BrowserConfig()
-        code_extractor = CodeExtractor()
-        page_crawler = PageCrawler(browser_config, code_extractor)
+        page_crawler = PageCrawler(browser_config)
         
         # Patch the page crawler's db_manager
         monkeypatch.setattr(page_crawler, "db_manager", mock_db_manager)

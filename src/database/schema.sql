@@ -30,12 +30,9 @@ CREATE TABLE IF NOT EXISTS crawl_jobs (
     
     -- New tracking fields for recovery
     last_heartbeat TIMESTAMP,
-    crawl_phase VARCHAR(20) CHECK (crawl_phase IN ('crawling', 'enriching', 'finalizing') OR crawl_phase IS NULL),
+    crawl_phase VARCHAR(20) CHECK (crawl_phase IN ('crawling', 'finalizing') OR crawl_phase IS NULL),
     crawl_completed_at TIMESTAMP,
-    enrichment_started_at TIMESTAMP,
-    enrichment_completed_at TIMESTAMP,
     documents_crawled INTEGER DEFAULT 0,
-    documents_enriched INTEGER DEFAULT 0,
     retry_count INTEGER DEFAULT 0,
     max_retries INTEGER DEFAULT 3
 );
@@ -45,7 +42,7 @@ CREATE TABLE IF NOT EXISTS documents (
     id SERIAL PRIMARY KEY,
     url TEXT UNIQUE NOT NULL,
     title TEXT,
-    content_type VARCHAR(50) DEFAULT 'html',
+    content_type VARCHAR(50) DEFAULT 'markdown',
     markdown_content TEXT,
     content_hash VARCHAR(64),
     crawl_job_id UUID REFERENCES crawl_jobs(id) ON DELETE CASCADE,
@@ -54,12 +51,7 @@ CREATE TABLE IF NOT EXISTS documents (
     last_crawled TIMESTAMP DEFAULT NOW(),
     meta_data JSONB DEFAULT '{}',
     created_at TIMESTAMP DEFAULT NOW(),
-    updated_at TIMESTAMP DEFAULT NOW(),
-    
-    -- Enrichment tracking
-    enrichment_status VARCHAR(20) DEFAULT 'pending' CHECK (enrichment_status IN ('pending', 'processing', 'completed', 'failed', 'skipped')),
-    enrichment_error TEXT,
-    enriched_at TIMESTAMP
+    updated_at TIMESTAMP DEFAULT NOW()
 );
 
 -- Code snippets extracted from documents
@@ -79,7 +71,6 @@ CREATE TABLE IF NOT EXISTS code_snippets (
     -- Enhanced context fields
     section_title TEXT,
     section_content TEXT,  -- Full section containing the code
-    related_snippets INTEGER[],  -- IDs of related code snippets
     
     functions TEXT[],
     imports TEXT[],
@@ -95,17 +86,6 @@ CREATE TABLE IF NOT EXISTS code_snippets (
     updated_at TIMESTAMP DEFAULT NOW()
 );
 
--- Link graph for crawl depth tracking
-CREATE TABLE IF NOT EXISTS page_links (
-    id SERIAL PRIMARY KEY,
-    source_url TEXT NOT NULL,
-    target_url TEXT NOT NULL,
-    link_text TEXT,
-    crawl_job_id UUID REFERENCES crawl_jobs(id) ON DELETE CASCADE,
-    depth_level INTEGER DEFAULT 1,
-    discovered_at TIMESTAMP DEFAULT NOW(),
-    UNIQUE(source_url, target_url, crawl_job_id)
-);
 
 -- Indexes for performance
 
@@ -135,9 +115,6 @@ CREATE INDEX IF NOT EXISTS idx_snippets_created_at ON code_snippets(created_at D
 CREATE INDEX IF NOT EXISTS idx_snippets_title_trgm ON code_snippets USING GIN(title gin_trgm_ops);
 CREATE INDEX IF NOT EXISTS idx_snippets_description_trgm ON code_snippets USING GIN(description gin_trgm_ops);
 
--- Page links indexes
-CREATE INDEX IF NOT EXISTS idx_page_links_crawl_job_id ON page_links(crawl_job_id);
-CREATE INDEX IF NOT EXISTS idx_page_links_depth_level ON page_links(depth_level);
 
 -- Update timestamp triggers
 CREATE OR REPLACE FUNCTION update_updated_at()
@@ -187,9 +164,10 @@ CREATE TRIGGER update_code_snippets_search_vector
 -- View for source statistics
 CREATE OR REPLACE VIEW source_statistics AS
 SELECT 
-    COALESCE(d.meta_data->>'library_name', 'Unknown') as name,
-    d.meta_data->>'repository' as repository,
-    d.meta_data->>'description' as description,
+    cj.name as name,
+    cj.domain as domain,
+    cj.config->'metadata'->>'repository' as repository,
+    cj.config->'metadata'->>'description' as description,
     cj.status,
     COUNT(DISTINCT d.id) as document_count,
     COUNT(DISTINCT cs.id) as snippet_count,
@@ -199,7 +177,7 @@ SELECT
 FROM crawl_jobs cj
 LEFT JOIN documents d ON d.crawl_job_id = cj.id
 LEFT JOIN code_snippets cs ON cs.document_id = d.id
-GROUP BY cj.id, d.meta_data->>'library_name', d.meta_data->>'repository', d.meta_data->>'description', cj.status;
+GROUP BY cj.id, cj.name, cj.domain, cj.status, cj.config;
 
 -- Function for full-text search
 CREATE OR REPLACE FUNCTION search_code_snippets(
@@ -260,6 +238,102 @@ CREATE TABLE IF NOT EXISTS failed_pages (
 
 -- Index for fast lookups by crawl job
 CREATE INDEX IF NOT EXISTS idx_failed_pages_crawl_job_id ON failed_pages(crawl_job_id);
+
+-- Snippet relationships table for tracking code dependencies
+CREATE TABLE IF NOT EXISTS snippet_relationships (
+    id SERIAL PRIMARY KEY,
+    source_snippet_id INTEGER NOT NULL REFERENCES code_snippets(id) ON DELETE CASCADE,
+    target_snippet_id INTEGER NOT NULL REFERENCES code_snippets(id) ON DELETE CASCADE,
+    relationship_type VARCHAR(50) NOT NULL CHECK (
+        relationship_type IN (
+            'imports', 'extends', 'implements', 'uses', 
+            'example_of', 'configuration_for', 'related'
+        )
+    ),
+    description TEXT,
+    created_at TIMESTAMP DEFAULT NOW(),
+    
+    -- Ensure no duplicate relationships
+    UNIQUE(source_snippet_id, target_snippet_id, relationship_type)
+);
+
+-- Create indexes for fast lookups
+CREATE INDEX IF NOT EXISTS idx_snippet_rel_source ON snippet_relationships(source_snippet_id);
+CREATE INDEX IF NOT EXISTS idx_snippet_rel_target ON snippet_relationships(target_snippet_id);
+CREATE INDEX IF NOT EXISTS idx_snippet_rel_type ON snippet_relationships(relationship_type);
+
+-- View for easy querying of relationships
+CREATE OR REPLACE VIEW snippet_relationships_view AS
+SELECT 
+    sr.id,
+    sr.relationship_type,
+    sr.description,
+    -- Source snippet info
+    s1.id as source_id,
+    s1.title as source_title,
+    s1.language as source_language,
+    s1.snippet_type as source_type,
+    -- Target snippet info
+    s2.id as target_id,
+    s2.title as target_title,
+    s2.language as target_language,
+    s2.snippet_type as target_type,
+    -- Document info
+    d1.url as source_url,
+    d2.url as target_url,
+    d1.crawl_job_id as source_job_id,
+    d2.crawl_job_id as target_job_id
+FROM snippet_relationships sr
+JOIN code_snippets s1 ON sr.source_snippet_id = s1.id
+JOIN code_snippets s2 ON sr.target_snippet_id = s2.id
+JOIN documents d1 ON s1.document_id = d1.id
+JOIN documents d2 ON s2.document_id = d2.id;
+
+-- Function to find related snippets efficiently
+DROP FUNCTION IF EXISTS find_related_snippets(INTEGER[], VARCHAR[], INTEGER);
+CREATE OR REPLACE FUNCTION find_related_snippets(
+    p_snippet_ids INTEGER[],
+    p_relationship_types VARCHAR[] DEFAULT NULL,
+    p_limit INTEGER DEFAULT 10
+)
+RETURNS TABLE (
+    snippet_id INTEGER,
+    related_snippet_id INTEGER,
+    relationship_type VARCHAR(50),
+    description TEXT
+) AS $$
+BEGIN
+    RETURN QUERY
+    SELECT DISTINCT
+        sr.source_snippet_id,
+        sr.target_snippet_id,
+        sr.relationship_type,
+        sr.description
+    FROM snippet_relationships sr
+    WHERE 
+        sr.source_snippet_id = ANY(p_snippet_ids)
+        AND (p_relationship_types IS NULL OR sr.relationship_type = ANY(p_relationship_types))
+    UNION
+    SELECT DISTINCT
+        sr.target_snippet_id,
+        sr.source_snippet_id,
+        CASE 
+            WHEN sr.relationship_type = 'imports' THEN 'imported_by'
+            WHEN sr.relationship_type = 'extends' THEN 'extended_by'
+            WHEN sr.relationship_type = 'implements' THEN 'implemented_by'
+            WHEN sr.relationship_type = 'uses' THEN 'used_by'
+            WHEN sr.relationship_type = 'example_of' THEN 'has_example'
+            WHEN sr.relationship_type = 'configuration_for' THEN 'configured_by'
+            ELSE 'related'
+        END as relationship_type,
+        sr.description
+    FROM snippet_relationships sr
+    WHERE 
+        sr.target_snippet_id = ANY(p_snippet_ids)
+        AND (p_relationship_types IS NULL OR sr.relationship_type = ANY(p_relationship_types))
+    LIMIT p_limit;
+END;
+$$ LANGUAGE plpgsql;
 
 -- Grant permissions (adjust as needed)
 -- GRANT ALL ON ALL TABLES IN SCHEMA public TO your_app_user;

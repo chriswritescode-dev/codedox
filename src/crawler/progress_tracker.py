@@ -124,7 +124,6 @@ class ProgressTracker:
         total_pages: Optional[int] = None,
         snippets_extracted: Optional[int] = None,
         documents_crawled: Optional[int] = None,
-        documents_enriched: Optional[int] = None,
         current_url: Optional[str] = None,
         send_notification: bool = True,
     ) -> None:
@@ -137,7 +136,6 @@ class ProgressTracker:
             total_pages: Total pages
             snippets_extracted: Snippets extracted
             documents_crawled: Documents crawled
-            documents_enriched: Documents enriched
             current_url: Current URL being processed
             send_notification: Whether to send WebSocket notification
         """
@@ -148,7 +146,6 @@ class ProgressTracker:
             total_pages=total_pages,
             snippets_extracted=snippets_extracted,
             documents_crawled=documents_crawled,
-            documents_enriched=documents_enriched,
         )
 
         if phase:
@@ -165,7 +162,6 @@ class ProgressTracker:
                     "snippets_extracted": job_status.get("snippets_extracted", 0),
                     "crawl_phase": job_status.get("crawl_phase"),
                     "documents_crawled": job_status.get("documents_crawled", 0),
-                    "documents_enriched": job_status.get("documents_enriched", 0),
                     "timestamp": datetime.utcnow().isoformat(),
                 }
 
@@ -180,12 +176,6 @@ class ProgressTracker:
                         100, round((processed_pages / total_pages * 100))
                     )
 
-                documents_crawled = job_status.get("documents_crawled", 0)
-                documents_enriched = job_status.get("documents_enriched", 0)
-                if documents_crawled and documents_crawled > 0:
-                    data["enrichment_progress"] = min(
-                        100, round((documents_enriched / documents_crawled * 100))
-                    )
 
                 await self.send_update(job_id, "running", data)
 
@@ -223,7 +213,6 @@ class ProgressTracker:
             "processed_pages": job_status.get("processed_pages", 0),
             "total_pages": job_status.get("total_pages", 0),
             "snippets_extracted": job_status.get("snippets_extracted", 0),
-            "documents_enriched": job_status.get("documents_enriched", 0),
             "timestamp": datetime.utcnow().isoformat(),
         }
 
@@ -247,81 +236,3 @@ class ProgressTracker:
         """
         return current_count - last_update_count >= interval or current_count == 1
 
-    async def monitor_enrichment_pipeline(
-        self, job_id: str, pipeline: Any, total_documents: int
-    ) -> None:
-        """Monitor enrichment pipeline progress.
-
-        Args:
-            job_id: Job ID
-            pipeline: Enrichment pipeline instance
-            total_documents: Total documents to enrich
-        """
-        last_update_time = time.time()
-        last_completed_count = 0
-        stall_counter = 0
-        max_stall_checks = 12  # 2 minutes of no progress
-
-        while True:
-            # Get current pipeline stats
-            stats = pipeline.get_stats()
-            enrichment_queue = stats["enrichment_queue_size"]
-            storage_queue = stats["storage_queue_size"]
-            active_tasks = stats["active_tasks"]
-            completed_count = stats["completed_count"]
-            completed_documents = stats.get("completed_documents", 0)
-            error_count = stats["error_count"]
-
-            logger.info(
-                f"Enrichment progress - "
-                f"Queue: {enrichment_queue}, "
-                f"Storage: {storage_queue}, "
-                f"Active: {active_tasks}, "
-                f"Completed: {completed_count}/{total_documents}, "
-                f"Errors: {error_count}"
-            )
-
-            # Check if enrichment is complete
-            if enrichment_queue == 0 and storage_queue == 0 and active_tasks == 0:
-                logger.info(f"Enrichment completed! Processed {completed_count} items")
-                break
-
-            # Check for stalled progress
-            if completed_count == last_completed_count:
-                stall_counter += 1
-                if stall_counter >= max_stall_checks:
-                    logger.warning("Enrichment appears stalled, proceeding...")
-                    break
-            else:
-                stall_counter = 0
-                last_completed_count = completed_count
-
-            # Send update every 10 seconds
-            current_time = time.time()
-            if current_time - last_update_time >= 10:
-                await self.update_progress(
-                    job_id, phase="enriching", documents_enriched=completed_documents
-                )
-
-                # Calculate enrichment progress
-                enrichment_progress = round(
-                    (completed_count / total_documents * 100) if total_documents > 0 else 0, 1
-                )
-
-                await self.send_update(
-                    job_id,
-                    "running",
-                    {
-                        "crawl_phase": "enriching",
-                        "enrichment_queue": enrichment_queue,
-                        "documents_enriched": completed_documents,
-                        "total_documents": total_documents,
-                        "enrichment_progress": enrichment_progress,
-                        "timestamp": datetime.utcnow().isoformat(),
-                    },
-                )
-
-                last_update_time = current_time
-
-            # Wait before next check
-            await asyncio.sleep(10)

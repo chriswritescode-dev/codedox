@@ -13,6 +13,8 @@ import {
   Trash2,
   Search,
   Check,
+  AlertCircle,
+  PlayCircle,
 } from "lucide-react";
 import ProgressBar from "../components/ProgressBar";
 import { ConfirmationDialog } from "../components/ConfirmationDialog";
@@ -178,6 +180,26 @@ export default function CrawlJobs() {
     }
   };
 
+  const resumeMutation = useMutation({
+    mutationFn: (jobId: string) => api.resumeCrawlJob(jobId),
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ["crawl-jobs"] });
+      // Navigate to the job detail page
+      navigate(`/crawl/${(data as { id: string }).id}`);
+    },
+    onError: (error) => {
+      console.error("Failed to resume job:", error);
+      alert(
+        "Failed to resume job: " +
+          (error instanceof Error ? error.message : "Unknown error")
+      );
+    },
+  });
+
+  const handleResumeClick = (job: { id: string; name: string }) => {
+    resumeMutation.mutate(job.id);
+  };
+
   const toggleSelectJob = (jobId: string) => {
     const newSelected = new Set(selectedJobs);
     if (newSelected.has(jobId)) {
@@ -197,7 +219,38 @@ export default function CrawlJobs() {
     setSelectedJobs(new Set());
   };
 
-  const getStatusIcon = (status: string) => {
+  // Check if a job is stalled (no heartbeat for 1+ minute)
+  const isJobStalled = (job: any) => {
+    if (job.status !== "running" || !job.last_heartbeat) return false;
+    
+    const lastHeartbeat = new Date(job.last_heartbeat).getTime();
+    const now = new Date().getTime();
+    const timeSinceHeartbeat = (now - lastHeartbeat) / 1000; // seconds
+    
+    return timeSinceHeartbeat > 60; // 1 minute
+  };
+
+  // Get time since last heartbeat in human-readable format
+  const getTimeSinceHeartbeat = (job: any) => {
+    if (!job.last_heartbeat) return null;
+    
+    const lastHeartbeat = new Date(job.last_heartbeat).getTime();
+    const now = new Date().getTime();
+    const seconds = Math.floor((now - lastHeartbeat) / 1000);
+    
+    if (seconds < 60) return `${seconds}s ago`;
+    const minutes = Math.floor(seconds / 60);
+    if (minutes < 60) return `${minutes}m ago`;
+    const hours = Math.floor(minutes / 60);
+    return `${hours}h ago`;
+  };
+
+  const getStatusIcon = (status: string, job: any) => {
+    // Check for stalled state
+    if (status === "running" && isJobStalled(job)) {
+      return <AlertCircle className="h-4 w-4 text-yellow-500" />;
+    }
+    
     switch (status) {
       case "completed":
         return <CheckCircle className="h-4 w-4 text-green-500" />;
@@ -205,9 +258,18 @@ export default function CrawlJobs() {
         return <XCircle className="h-4 w-4 text-destructive" />;
       case "running":
         return <Loader2 className="h-4 w-4 text-primary animate-spin" />;
+      case "cancelled":
+        return <StopCircle className="h-4 w-4 text-muted-foreground" />;
       default:
         return <Clock className="h-4 w-4 text-muted-foreground" />;
     }
+  };
+
+  const getStatusText = (status: string, job: any) => {
+    if (status === "running" && isJobStalled(job)) {
+      return "stalled";
+    }
+    return status;
   };
 
   if (isLoading) {
@@ -258,7 +320,7 @@ export default function CrawlJobs() {
             onChange={(e) => setSearchQuery(e.target.value)}
             className="w-full pl-10 pr-4 py-2 bg-secondary border border-input rounded-md focus:outline-none focus:ring-2 focus:ring-primary"
           />
-          {searchQuery && (
+          {!!searchQuery && (
             <button
               onClick={() => setSearchQuery("")}
               className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
@@ -317,7 +379,7 @@ export default function CrawlJobs() {
                 onClick={selectAll}
                 className="text-sm text-muted-foreground hover:text-foreground"
               >
-                Select all deletable {searchQuery && "matching"}
+                Select all deletable {!!searchQuery && "matching"}
               </button>
               {selectedJobs.size > 0 && (
                 <>
@@ -346,13 +408,13 @@ export default function CrawlJobs() {
         )}
       </div>
 
-      {jobs && jobs.length === 0 && (
+      {!!jobs && jobs.length === 0 && (
         <div className="text-center py-12 text-muted-foreground">
           No crawl jobs found. Create one to get started.
         </div>
       )}
 
-      {filteredJobs.length === 0 && jobs && jobs.length > 0 && (
+      {filteredJobs.length === 0 && !!jobs && jobs.length > 0 && (
         <div className="text-center py-12 text-muted-foreground">
           No jobs match your search.
         </div>
@@ -432,8 +494,15 @@ export default function CrawlJobs() {
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">
                       <div className="flex items-center gap-2">
-                        {getStatusIcon(job.status)}
-                        <span className="text-sm capitalize">{job.status}</span>
+                        {getStatusIcon(job.status, job)}
+                        <span className="text-sm capitalize">
+                          {getStatusText(job.status, job)}
+                        </span>
+                        {job.status === "running" && !!job.last_heartbeat && (
+                          <span className="text-xs text-muted-foreground">
+                            ({getTimeSinceHeartbeat(job)})
+                          </span>
+                        )}
                       </div>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">
@@ -464,8 +533,19 @@ export default function CrawlJobs() {
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm">
                       <div className="flex items-center gap-2">
-                        {(job.status === "running" ||
-                          job.status === "paused") && (
+                        {/* Show resume button for failed/stalled jobs */}
+                        {(job.status === "failed" || 
+                          (job.status === "running" && isJobStalled(job))) && (
+                          <button
+                            onClick={() => handleResumeClick(job)}
+                            className="text-primary hover:text-primary/80 flex items-center gap-1"
+                            title="Resume job"
+                          >
+                            <PlayCircle className="h-4 w-4" />
+                            Resume
+                          </button>
+                        )}
+                        {(job.status === "running" && !isJobStalled(job)) && (
                           <button
                             onClick={() => handleCancelClick(job)}
                             className="text-destructive hover:text-destructive/80 flex items-center gap-1"

@@ -386,17 +386,15 @@ class TestCrawlRestart:
                 start_urls=[unique_url_base],
                 status="failed",
                 error_message="Connection timeout after 3 retries",
-                crawl_phase="enriching",
+                crawl_phase="crawling",
                 completed_at=datetime.utcnow() - timedelta(hours=1)
             )
             session.add(error_job)
             
-            # Add document with enrichment error
+            # Add document
             doc = Document(
                 url=f"{unique_url_base}/error-doc",
-                crawl_job_id=error_job.id,
-                enrichment_status="failed",
-                enrichment_error="LLM timeout"
+                crawl_job_id=error_job.id
             )
             session.add(doc)
             session.commit()
@@ -412,12 +410,8 @@ class TestCrawlRestart:
             job.completed_at = None
             job.last_heartbeat = datetime.utcnow()
             
-            # Reset document enrichment status
+            # Reset documents
             docs = session.query(Document).filter_by(crawl_job_id=job_id).all()
-            for doc in docs:
-                if doc.enrichment_status == "failed":
-                    doc.enrichment_status = "pending"
-                    doc.enrichment_error = None
             
             session.commit()
         
@@ -428,5 +422,4 @@ class TestCrawlRestart:
             assert job.error_message is None
             
             doc = session.query(Document).filter_by(crawl_job_id=job_id).first()
-            assert doc.enrichment_status == "pending"
-            assert doc.enrichment_error is None
+            assert doc is not None  # Just verify document exists
