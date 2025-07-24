@@ -32,11 +32,6 @@ async def get_sources(db: Session = Depends(get_db)) -> List[Dict[str, Any]]:
     
     result = []
     for source in sources:
-        # Count snippets through documents
-        snippets_count = 0
-        for doc in source.documents:
-            snippets_count += len(doc.code_snippets)
-        
         result.append({
             "id": str(source.id),
             "name": source.name,
@@ -45,7 +40,7 @@ async def get_sources(db: Session = Depends(get_db)) -> List[Dict[str, Any]]:
             "created_at": source.created_at.isoformat(),
             "updated_at": source.updated_at.isoformat(),
             "documents_count": len(source.documents),
-            "snippets_count": snippets_count,
+            "snippets_count": source.snippets_extracted,
         })
     
     return result
@@ -59,11 +54,6 @@ async def get_source(source_id: str, db: Session = Depends(get_db)) -> Dict[str,
     if not source:
         raise HTTPException(status_code=404, detail="Source not found")
     
-    # Count snippets through documents
-    snippets_count = 0
-    for doc in source.documents:
-        snippets_count += len(doc.code_snippets)
-    
     return {
         "id": str(source.id),
         "name": source.name,
@@ -71,7 +61,7 @@ async def get_source(source_id: str, db: Session = Depends(get_db)) -> Dict[str,
         "created_at": source.created_at.isoformat(),
         "updated_at": source.updated_at.isoformat(),
         "documents_count": len(source.documents),
-        "snippets_count": snippets_count,
+        "snippets_count": source.snippets_extracted,
     }
 
 
@@ -107,7 +97,6 @@ async def get_source_documents(
                 "crawl_depth": doc.crawl_depth,
                 "snippets_count": len(doc.code_snippets),
                 "created_at": doc.created_at.isoformat(),
-                "enrichment_status": doc.enrichment_status,
             }
             for doc in documents
         ],
@@ -266,10 +255,6 @@ async def update_source_name(
     db.commit()
     
     # Return updated source info
-    snippets_count = 0
-    for doc in source.documents:
-        snippets_count += len(doc.code_snippets)
-    
     return {
         "id": str(source.id),
         "name": source.name,
@@ -278,7 +263,7 @@ async def update_source_name(
         "created_at": source.created_at.isoformat(),
         "updated_at": source.updated_at.isoformat(),
         "documents_count": len(source.documents),
-        "snippets_count": snippets_count,
+        "snippets_count": source.snippets_extracted,
     }
 
 

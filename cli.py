@@ -21,7 +21,7 @@ settings = get_settings()
 
 @click.group()
 def cli():
-    """RAG Pipeline CLI - Extract and search code from documentation."""
+    """CodeDox CLI - Extract and search code from documentation."""
     pass
 
 
@@ -41,7 +41,8 @@ def init(drop: bool):
 @click.option('--domain', help='Domain restriction pattern')
 @click.option('--url-patterns', multiple=True, help='URL patterns to include (e.g., "*docs*", "*guide*")')
 @click.option('--concurrent', default=20, help='Maximum concurrent crawl sessions (default: 20)')
-def crawl(name: str, urls: tuple, depth: int, domain: Optional[str], url_patterns: tuple, concurrent: int):
+def crawl(name: str, urls: tuple, depth: int, domain: Optional[str], url_patterns: tuple, 
+          concurrent: int):
     """Start a new crawl job."""
     async def run_crawl():
         tools = MCPTools()
@@ -122,7 +123,6 @@ def search(query: str, source: Optional[str], lang: Optional[str], limit: int):
             results = await tools.get_content(
                 query=query,
                 library_id=source,
-                language=lang,
                 max_results=limit
             )
         
@@ -222,7 +222,7 @@ def api():
     """Start API server only."""
     import uvicorn
 
-    console.print("[bold green]Starting RAG Pipeline API server...[/bold green]")
+    console.print("[bold green]Starting CodeDox API server...[/bold green]")
     console.print("API: http://0.0.0.0:8000")
     console.print("API Docs: http://0.0.0.0:8000/docs")
     console.print("MCP Tools: http://0.0.0.0:8000/mcp")
@@ -310,7 +310,7 @@ def all():
     import signal
     import os
 
-    console.print("[bold green]Starting RAG Pipeline (API + Web UI)...[/bold green]")
+    console.print("[bold green]Starting CodeDox (API + Web UI)...[/bold green]")
     console.print("[dim]Note: MCP server should be run separately with 'python cli.py mcp'[/dim]")
     console.print("[dim]Press Ctrl+C to stop all services[/dim]\n")
 
@@ -396,22 +396,6 @@ def crawl_resume(job_id: str):
     asyncio.run(run_resume())
 
 
-@cli.command("restart-enrichment")
-@click.argument("job_id")
-def restart_enrichment(job_id: str):
-    """Restart only the enrichment process for a completed crawl job."""
-
-    async def run_restart_enrichment():
-        manager = CrawlManager()
-        success = await manager.restart_enrichment(job_id)
-
-        if success:
-            console.print(f"[green]✓[/green] Enrichment restarted for job {job_id}")
-        else:
-            console.print(f"[red]✗[/red] Failed to restart enrichment for job {job_id}")
-            sys.exit(1)
-
-    asyncio.run(run_restart_enrichment())
 
 
 @cli.command("crawl-health")
@@ -472,7 +456,7 @@ def serve_all():
     import sys
     from multiprocessing import Process
 
-    console.print("[bold green]=== RAG Pipeline Starting ===[/bold green]")
+    console.print("[bold green]=== CodeDox Starting ===[/bold green]")
     console.print("This will start both the API/Web server and MCP server")
 
     # Check database connection
@@ -534,7 +518,7 @@ def serve_all():
         mcp_process.start()
 
         console.print("\n" + "=" * 60)
-        console.print("[bold green]🚀 RAG Pipeline is running![/bold green]")
+        console.print("[bold green]🚀 CodeDox is running![/bold green]")
         console.print("=" * 60)
         console.print("📡 API/Web UI: http://localhost:8000")
         console.print("🔌 MCP Server: localhost:8899")
@@ -552,55 +536,6 @@ def serve_all():
         cleanup()
 
 
-@cli.command("enrich-missing")
-@click.option("--job-id", help="Specific job to enrich")
-@click.option("--limit", default=100, help="Maximum documents to process")
-def enrich_missing(job_id: Optional[str], limit: int):
-    """Find and enrich documents with missing enrichment."""
-
-    async def run_enrichment():
-        from src.database.models import Document
-
-        db_manager = get_db_manager()
-        manager = CrawlManager()
-
-        with console.status("[bold green]Finding documents to enrich..."):
-            with db_manager.session_scope() as session:
-                query = session.query(Document).filter(
-                    Document.enrichment_status.in_(["pending", "failed"])
-                )
-
-                if job_id:
-                    query = query.filter(Document.crawl_job_id == job_id)
-
-                documents = query.limit(limit).all()
-
-                if not documents:
-                    console.print("No documents need enrichment")
-                    return
-
-                console.print(f"Found {len(documents)} documents to enrich")
-
-                # Group by job
-                jobs = {}
-                for doc in documents:
-                    job_id = str(doc.crawl_job_id)
-                    if job_id not in jobs:
-                        jobs[job_id] = []
-                    jobs[job_id].append(doc)
-
-                # Process each job
-                for job_id, docs in jobs.items():
-                    console.print(f"\nProcessing job {job_id} ({len(docs)} documents)")
-
-                    # Use the resume enrichment functionality
-                    success = await manager.resume_failed_job(job_id)
-                    if success:
-                        console.print(f"[green]✓[/green] Enrichment started for job {job_id}")
-                    else:
-                        console.print(f"[red]✗[/red] Failed to start enrichment for job {job_id}")
-
-    asyncio.run(run_enrichment())
 
 
 if __name__ == '__main__':

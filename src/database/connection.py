@@ -64,7 +64,7 @@ class DatabaseManager:
                 result = conn.execute(text("""
                     SELECT COUNT(*) FROM information_schema.tables 
                     WHERE table_schema = 'public' 
-                    AND table_name IN ('crawl_jobs', 'documents', 'code_snippets', 'page_links')
+                    AND table_name IN ('crawl_jobs', 'documents', 'code_snippets')
                 """))
                 table_count = result.scalar() or 0
                 
@@ -80,7 +80,6 @@ class DatabaseManager:
                 if drop_existing:
                     logger.warning("Dropping existing tables...")
                     with self.engine.connect() as conn:
-                        conn.execute(text("DROP TABLE IF EXISTS page_links CASCADE"))
                         conn.execute(text("DROP TABLE IF EXISTS code_snippets CASCADE"))
                         conn.execute(text("DROP TABLE IF EXISTS documents CASCADE"))
                         conn.execute(text("DROP TABLE IF EXISTS crawl_jobs CASCADE"))

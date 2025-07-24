@@ -47,7 +47,7 @@ class TestHealthMonitor:
                 start_urls=["https://example.com"],
                 status="running",
                 last_heartbeat=datetime.utcnow() - timedelta(seconds=STALLED_THRESHOLD + 10),
-                crawl_phase="enriching",
+                crawl_phase="crawling",
                 processed_pages=5
             )
             
@@ -77,7 +77,7 @@ class TestHealthMonitor:
             stalled = session.query(CrawlJob).filter_by(id=stalled_job_id).first()
             assert stalled.status == "failed"
             assert "stalled" in stalled.error_message.lower()
-            assert "enriching" in stalled.error_message
+            assert "crawling" in stalled.error_message
             assert stalled.completed_at is not None
             
             # Healthy job should be unchanged
@@ -180,7 +180,7 @@ class TestHealthMonitor:
         db_manager = get_db_manager()
         monitor = CrawlHealthMonitor()
         
-        phases = ["crawling", "enriching", "finalizing"]
+        phases = ["crawling", "finalizing"]
         job_ids = []
         
         with db_manager.session_scope() as session:

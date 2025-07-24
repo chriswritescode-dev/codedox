@@ -2,9 +2,11 @@
 
 import logging
 import hashlib
+import json
 from contextlib import asynccontextmanager
 from typing import List, Optional, Dict, Any, AsyncGenerator
 
+import openai
 from fastapi import FastAPI, HTTPException, Depends, Query, UploadFile, File, Request, Header
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
@@ -97,7 +99,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
 def get_application() -> FastAPI:
     """Create and configure FastAPI application."""
     app = FastAPI(
-        title="RAG Pipeline API",
+        title="CodeDox API",
         description="API for code extraction and search from documentation",
         version="1.0.0",
         lifespan=lifespan
@@ -162,8 +164,8 @@ async def health_check() -> Dict[str, str]:
     """Check API health status."""
     return {
         "status": "healthy",
-        "service": "rag-pipeline",
-        "version": "1.0.0"
+        "service": "codedox",
+        "version": "1.0.1"
     }
 
 
@@ -303,25 +305,27 @@ async def get_recent_snippets(
 # Upload endpoints
 @app.post("/upload/markdown")
 async def upload_markdown(request: UploadMarkdownRequest, db: Session = Depends(get_db)) -> Dict[str, Any]:
-    """Upload and process markdown content."""
+    """Upload and process markdown content using LLM extraction."""
     try:
-        from ..parser import CodeExtractor
-        from ..language import LanguageDetector
         from ..database.models import Document, CodeSnippet
+        from ..crawler.extraction_models import LLMExtractionResult
+        from ..crawler.result_processor import ResultProcessor
         
-        from ..config import settings
+        settings = get_settings()
         
-        extractor = CodeExtractor(
-            use_tree_sitter=getattr(settings.code_extraction, 'use_tree_sitter_validation', True),
-            min_quality_score=getattr(settings.code_extraction, 'min_ast_quality_score', 0.7)
-        )
-        detector = LanguageDetector()
+        # Get LLM API key
+        if not settings.code_extraction.llm_api_key:
+            raise HTTPException(
+                status_code=400, 
+                detail="LLM API key not configured. Please set CODE_LLM_API_KEY."
+            )
         
-        # Extract code blocks
-        code_blocks = extractor.extract_from_content(
-            request.content,
-            request.source_url,
-            "markdown"
+        api_key = settings.code_extraction.llm_api_key.get_secret_value()
+        
+        # Configure OpenAI client
+        client = openai.AsyncOpenAI(
+            api_key=api_key,
+            base_url=settings.code_extraction.llm_base_url if settings.code_extraction.llm_base_url else None
         )
         
         # Create document
@@ -336,13 +340,133 @@ async def upload_markdown(request: UploadMarkdownRequest, db: Session = Depends(
         db.add(doc)
         db.flush()
         
-        # Process code blocks
+        # Use LLM to extract code blocks
+        from ..crawler.extraction_models import EXTRACTION_INSTRUCTIONS
+        
+        prompt = f"""{EXTRACTION_INSTRUCTIONS}
+
+Content to analyze:
+{request.content}"""
+        
+        # Call LLM using the same system message as crawling
+        system_message = "You are a code extraction specialist. Your job is to find and extract ALL code snippets from documentation, no matter how small. This includes inline code, JSX components, configuration examples, and command snippets."
+        
+        response = await client.chat.completions.create(
+            model=settings.code_extraction.llm_extraction_model,
+            messages=[
+                {"role": "system", "content": system_message},
+                {"role": "user", "content": prompt}
+            ],
+            temperature=0.1,
+            max_tokens=settings.code_extraction.llm_chunk_token_threshold
+        )
+        
+        # Parse LLM response
+        llm_content = response.choices[0].message.content.strip()
+        
+        try:
+            # Parse JSON response
+            if llm_content.startswith('```json'):
+                llm_content = llm_content.strip('```json').strip('```').strip()
+            elif llm_content.startswith('```'):
+                llm_content = llm_content.strip('```').strip()
+            
+            extracted_data = json.loads(llm_content)
+            
+            # Handle different response formats
+            if isinstance(extracted_data, list):
+                # Check if it's a list with a single dict containing our expected structure
+                if len(extracted_data) == 1 and isinstance(extracted_data[0], dict):
+                    extracted_data = extracted_data[0]
+            
+            # Handle legacy format where LLM returns 'blocks' instead of 'code_blocks'
+            if isinstance(extracted_data, dict) and "blocks" in extracted_data and "code_blocks" not in extracted_data:
+                logger.warning("LLM returned 'blocks' instead of 'code_blocks', transforming...")
+                blocks = extracted_data.pop("blocks")
+                
+                # Transform each block to ensure 'code' field exists
+                transformed_blocks = []
+                for block in blocks:
+                    if isinstance(block, dict):
+                        # If block has 'content' instead of 'code', rename it
+                        if "content" in block and "code" not in block:
+                            block["code"] = block.pop("content")
+                        transformed_blocks.append(block)
+                    else:
+                        transformed_blocks.append(block)
+                
+                extracted_data["code_blocks"] = transformed_blocks
+                
+                # Also clean up page_metadata if it has unsupported fields
+                if "page_metadata" in extracted_data and isinstance(extracted_data["page_metadata"], dict):
+                    page_meta = extracted_data["page_metadata"]
+                    page_meta.pop("difficulty_level", None)
+                    page_meta.pop("estimated_time", None)
+            
+            # Try to validate with Pydantic model
+            extraction_result = None
+            try:
+                extraction_result = LLMExtractionResult(**extracted_data)
+            except ValidationError as e:
+                logger.error(f"Initial validation failed: {e}")
+                
+                # If validation fails, try direct retry with better prompting
+                logger.info("Attempting retry with improved prompt...")
+                from ..crawler.llm_retry import LLMRetryExtractor
+                
+                retry_extractor = LLMRetryExtractor()
+                extraction_result = await retry_extractor.extract_with_retry(
+                    markdown_content=request.content,
+                    url=request.source_url,
+                    title=request.title
+                )
+                
+                if not extraction_result:
+                    # If retry also fails, raise the original error
+                    raise HTTPException(
+                        status_code=500,
+                        detail=f"Failed to extract code from content: {str(e)}"
+                    )
+            
+        except (json.JSONDecodeError, Exception) as e:
+            logger.error(f"Failed to parse LLM response: {e}")
+            raise HTTPException(
+                status_code=500,
+                detail=f"Failed to extract code from content: LLM response parsing error"
+            )
+        
+        # Process code blocks using the same logic as crawling
         snippet_count = 0
-        for block in code_blocks:
-            # Detect language if needed
-            if block.language == 'unknown':
-                detection = detector.detect(block.content)
-                block.language = detection.language
+        created_snippets = []
+        
+        for i, block in enumerate(extraction_result.code_blocks):
+            # Build metadata including relationships
+            block_metadata = {
+                'purpose': block.purpose,
+                'frameworks': block.frameworks,
+                'keywords': block.keywords,
+                'dependencies': block.dependencies,
+                'section': block.section,
+                'prerequisites': block.prerequisites,
+                'relationships': [r.model_dump() for r in block.relationships],
+                'extraction_model': extraction_result.extraction_model,
+                'extraction_timestamp': extraction_result.extraction_timestamp,
+            }
+            
+            # Calculate hash for deduplication
+            code_hash = hashlib.md5(block.code.encode()).hexdigest()
+            
+            # Map purpose to snippet_type
+            purpose = block.purpose
+            snippet_type_map = {
+                'example': 'example',
+                'configuration': 'config',
+                'api_reference': 'code',
+                'tutorial': 'example',
+                'utility': 'function',
+                'test': 'code'
+            }
+            snippet_type = snippet_type_map.get(purpose, 'code')
             
             # Create snippet
             snippet = CodeSnippet(
@@ -350,26 +474,58 @@ async def upload_markdown(request: UploadMarkdownRequest, db: Session = Depends(
                 title=block.title,
                 description=block.description,
                 language=block.language,
-                code_content=block.content,
-                code_hash=block.hash,
-                source_url=request.source_url
+                code_content=block.code,
+                code_hash=code_hash,
+                line_start=None,
+                line_end=None,
+                context_before=None,
+                context_after=None,
+                section_title=block.section,
+                section_content=None,
+                functions=block.dependencies,  # Store dependencies in functions field
+                imports=[],
+                keywords=block.keywords,
+                snippet_type=snippet_type,
+                source_url=request.source_url,
+                metadata={
+                    **block_metadata,
+                    'filename': block.filename,
+                    'source': 'manual_upload',
+                    'extraction_method': 'llm'
+                },
             )
             
             # Check for duplicate
-            existing = db.query(CodeSnippet).filter_by(code_hash=block.hash).first()
+            existing = db.query(CodeSnippet).filter_by(code_hash=code_hash).first()
             if not existing:
                 db.add(snippet)
+                db.flush()  # Get the ID
+                created_snippets.append((i, snippet))
                 snippet_count += 1
+            else:
+                # Update existing snippet if needed
+                created_snippets.append((i, existing))
+        
+        # Ensure all snippets have been flushed to get their IDs before creating relationships
+        db.flush()
+        
+        # Create relationships if any
+        if created_snippets:
+            result_processor = ResultProcessor()
+            result_processor._create_snippet_relationships(db, created_snippets, extraction_result.code_blocks)
         
         db.commit()
         
         return {
             "document_id": doc.id,
             "snippets_extracted": snippet_count,
-            "total_blocks_found": len(code_blocks),
-            "message": f"Successfully processed markdown with {snippet_count} new snippets"
+            "total_blocks_found": len(extraction_result.code_blocks),
+            "message": f"Successfully processed markdown with {snippet_count} new snippets using LLM extraction"
         }
         
+    except HTTPException:
+        db.rollback()
+        raise
     except Exception as e:
         logger.error(f"Failed to upload markdown: {e}")
         db.rollback()

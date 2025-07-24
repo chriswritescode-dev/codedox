@@ -383,7 +383,7 @@ def sample_crawl_job(db: Session) -> CrawlJob:
         status="completed",
         total_pages=10,
         processed_pages=10,
-        snippets_extracted=25,
+        snippets_extracted=3,
         started_at=datetime.utcnow(),
         completed_at=datetime.utcnow(),
         created_at=datetime.utcnow(),
@@ -603,28 +603,3 @@ print('test')
     monkeypatch.setattr(MCPTools, "get_snippet_details", mock_get_snippet_details)
 
 
-@pytest.fixture
-def mock_llm_client(monkeypatch):
-    """Mock LLM client for health check tests."""
-    class MockLLMClient:
-        def __init__(self, debug=False):
-            self.model = "gpt-4"
-            self.api_key = "test-key"
-        
-        async def __aenter__(self):
-            return self
-        
-        async def __aexit__(self, exc_type, exc_val, exc_tb):
-            pass
-        
-        async def test_connection(self):
-            return {
-                "status": "connected",
-                "provider": "openai",
-                "endpoint": "https://api.openai.com",
-                "models": ["gpt-4", "gpt-3.5-turbo"]
-            }
-    
-    # Patch at the import location
-    import src.llm.client
-    monkeypatch.setattr(src.llm.client, "LLMClient", MockLLMClient)

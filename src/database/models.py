@@ -6,7 +6,7 @@ from uuid import uuid4
 from sqlalchemy import (
     Column, String, Integer, Text, DateTime, ForeignKey,
     ARRAY, CheckConstraint, UniqueConstraint,
-    Index, func
+    Index, func, Float
 )
 from sqlalchemy.dialects.postgresql import UUID, JSONB
 from sqlalchemy.orm import declarative_base
@@ -41,18 +41,14 @@ class CrawlJob(Base):  # type: ignore[misc,valid-type]
     
     # New tracking fields for recovery
     last_heartbeat = Column(DateTime)
-    crawl_phase = Column(String(20))  # 'crawling', 'enriching', 'finalizing'
+    crawl_phase = Column(String(20))  # 'crawling', 'finalizing'
     crawl_completed_at = Column(DateTime)
-    enrichment_started_at = Column(DateTime)
-    enrichment_completed_at = Column(DateTime)
     documents_crawled = Column(Integer, default=0)
-    documents_enriched = Column(Integer, default=0)
     retry_count = Column(Integer, default=0)
     max_retries = Column(Integer, default=3)
     
     # Relationships
     documents = relationship("Document", back_populates="crawl_job", cascade="all, delete-orphan")
-    page_links = relationship("PageLink", back_populates="crawl_job", cascade="all, delete-orphan")
     failed_pages = relationship("FailedPage", back_populates="crawl_job", cascade="all, delete-orphan")
     
     __table_args__ = (
@@ -62,7 +58,7 @@ class CrawlJob(Base):  # type: ignore[misc,valid-type]
             name='check_status'
         ),
         CheckConstraint(
-            "crawl_phase IN ('crawling', 'enriching', 'finalizing') OR crawl_phase IS NULL",
+            "crawl_phase IN ('crawling', 'finalizing') OR crawl_phase IS NULL",
             name='check_crawl_phase'
         ),
     )
@@ -105,11 +101,6 @@ class Document(Base):  # type: ignore[misc,valid-type]
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
     
-    # Enrichment tracking
-    enrichment_status = Column(String(20), default='pending')  # pending, processing, completed, failed, skipped
-    enrichment_error = Column(Text)
-    enriched_at = Column(DateTime)
-    
     # Relationships
     crawl_job = relationship("CrawlJob", back_populates="documents")
     code_snippets = relationship("CodeSnippet", back_populates="document", cascade="all, delete-orphan")
@@ -141,7 +132,6 @@ class CodeSnippet(Base):  # type: ignore[misc,valid-type]
     # Enhanced context fields
     section_title = Column(Text)
     section_content = Column(Text)  # Full section containing the code
-    related_snippets: Column[List[int]] = Column(ARRAY(Integer))  # IDs of related code snippets
     
     functions: Column[List[str]] = Column(ARRAY(Text))
     imports: Column[List[str]] = Column(ARRAY(Text))
@@ -156,6 +146,20 @@ class CodeSnippet(Base):  # type: ignore[misc,valid-type]
     
     # Relationships
     document = relationship("Document", back_populates="code_snippets")
+    
+    # Snippet relationships with cascade delete
+    outgoing_relationships = relationship(
+        "SnippetRelationship",
+        foreign_keys="SnippetRelationship.source_snippet_id",
+        cascade="all, delete-orphan",
+        passive_deletes=True
+    )
+    incoming_relationships = relationship(
+        "SnippetRelationship",
+        foreign_keys="SnippetRelationship.target_snippet_id",
+        cascade="all, delete-orphan",
+        passive_deletes=True
+    )
     
     __table_args__ = (
         CheckConstraint(
@@ -199,27 +203,6 @@ CODE:
 ----------------------------------------"""
 
 
-class PageLink(Base):  # type: ignore[misc,valid-type]
-    """Represents links discovered during crawling for depth tracking."""
-    
-    __tablename__ = 'page_links'
-    
-    id = Column(Integer, primary_key=True)
-    source_url = Column(Text, nullable=False)
-    target_url = Column(Text, nullable=False)
-    link_text = Column(Text)
-    crawl_job_id = Column(UUID(as_uuid=True), ForeignKey('crawl_jobs.id', ondelete='CASCADE'))
-    depth_level = Column(Integer, default=1)
-    discovered_at = Column(DateTime, default=datetime.utcnow)
-    
-    # Relationships
-    crawl_job = relationship("CrawlJob", back_populates="page_links")
-    
-    __table_args__ = (
-        UniqueConstraint('source_url', 'target_url', 'crawl_job_id', name='uq_page_links'),
-        Index('idx_page_links_crawl_job_id', 'crawl_job_id'),
-        Index('idx_page_links_depth_level', 'depth_level'),
-    )
 
 
 class FailedPage(Base):  # type: ignore[misc,valid-type]
@@ -239,4 +222,32 @@ class FailedPage(Base):  # type: ignore[misc,valid-type]
     __table_args__ = (
         UniqueConstraint('crawl_job_id', 'url', name='uq_failed_pages'),
         Index('idx_failed_pages_crawl_job_id', 'crawl_job_id'),
+    )
+
+
+class SnippetRelationship(Base):  # type: ignore[misc,valid-type]
+    """Represents relationships between code snippets."""
+    
+    __tablename__ = 'snippet_relationships'
+    
+    id = Column(Integer, primary_key=True)
+    source_snippet_id = Column(Integer, ForeignKey('code_snippets.id', ondelete='CASCADE'), nullable=False)
+    target_snippet_id = Column(Integer, ForeignKey('code_snippets.id', ondelete='CASCADE'), nullable=False)
+    relationship_type = Column(String(50), nullable=False)
+    description = Column(Text)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    
+    # Relationships with proper cascade configuration
+    source_snippet = relationship("CodeSnippet", foreign_keys=[source_snippet_id], overlaps="outgoing_relationships")
+    target_snippet = relationship("CodeSnippet", foreign_keys=[target_snippet_id], overlaps="incoming_relationships")
+    
+    __table_args__ = (
+        UniqueConstraint('source_snippet_id', 'target_snippet_id', 'relationship_type', name='uq_snippet_relationships'),
+        CheckConstraint(
+            "relationship_type IN ('imports', 'extends', 'implements', 'uses', 'example_of', 'configuration_for', 'related')",
+            name='check_relationship_type'
+        ),
+        Index('idx_snippet_rel_source', 'source_snippet_id'),
+        Index('idx_snippet_rel_target', 'target_snippet_id'),
+        Index('idx_snippet_rel_type', 'relationship_type'),
     )

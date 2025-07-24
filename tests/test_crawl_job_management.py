@@ -78,27 +78,24 @@ class TestCrawlJobManagement:
             session.add(job)
             session.commit()
         
-        # Transition to enriching
+        # Transition to finalizing
         with db_manager.session_scope() as session:
             job = session.query(CrawlJob).filter_by(id=job_id).first()
-            job.crawl_phase = "enriching"
+            job.crawl_phase = "finalizing"
             job.crawl_completed_at = datetime.utcnow()
-            job.enrichment_started_at = datetime.utcnow()
             session.commit()
         
         # Verify transition
         with db_manager.session_scope() as session:
             job = session.query(CrawlJob).filter_by(id=job_id).first()
-            assert job.crawl_phase == "enriching"
+            assert job.crawl_phase == "finalizing"
             assert job.crawl_completed_at is not None
-            assert job.enrichment_started_at is not None
         
         # Complete job
         with db_manager.session_scope() as session:
             job = session.query(CrawlJob).filter_by(id=job_id).first()
             job.status = "completed"
             job.crawl_phase = None  # Clear phase when done
-            job.enrichment_completed_at = datetime.utcnow()
             job.completed_at = datetime.utcnow()
             session.commit()
         
@@ -107,7 +104,7 @@ class TestCrawlJobManagement:
             job = session.query(CrawlJob).filter_by(id=job_id).first()
             assert job.status == "completed"
             assert job.crawl_phase is None
-            assert job.enrichment_completed_at is not None
+            assert job.completed_at is not None
     
     def test_preserve_data_on_restart(self):
         """Test that existing data is preserved when restarting a job."""
@@ -197,17 +194,15 @@ class TestCrawlJobManagement:
                 start_urls=["https://example.com"],
                 status="failed",
                 error_message="Network error: Connection refused",
-                crawl_phase="enriching",
+                crawl_phase="crawling",
                 completed_at=datetime.utcnow() - timedelta(hours=1)
             )
             session.add(job)
             
-            # Add document with enrichment failure
+            # Add document
             doc = Document(
                 url=f"https://example.com/{job_id}/failed",  # Make URL unique
-                crawl_job_id=job_id,
-                enrichment_status="failed",
-                enrichment_error="LLM timeout after 3 retries"
+                crawl_job_id=job_id
             )
             session.add(doc)
             session.commit()
@@ -220,14 +215,10 @@ class TestCrawlJobManagement:
             job.completed_at = None
             job.last_heartbeat = datetime.utcnow()
             
-            # Reset document enrichment
+            # Reset job fields
             docs = session.query(Document).filter_by(
-                crawl_job_id=job_id,
-                enrichment_status="failed"
+                crawl_job_id=job_id
             ).all()
-            for doc in docs:
-                doc.enrichment_status = "pending"
-                doc.enrichment_error = None
             
             session.commit()
         
@@ -239,8 +230,7 @@ class TestCrawlJobManagement:
             assert job.completed_at is None
             
             doc = session.query(Document).filter_by(crawl_job_id=job_id).first()
-            assert doc.enrichment_status == "pending"
-            assert doc.enrichment_error is None
+            assert doc is not None  # Just verify the document exists
     
     def test_job_statistics_tracking(self):
         """Test tracking of job statistics across restarts."""
@@ -258,7 +248,6 @@ class TestCrawlJobManagement:
                 total_pages=50,
                 processed_pages=20,
                 documents_crawled=18,
-                documents_enriched=15,
                 snippets_extracted=45
             )
             session.add(job)
@@ -276,7 +265,6 @@ class TestCrawlJobManagement:
             job = session.query(CrawlJob).filter_by(id=job_id).first()
             assert job.processed_pages == 20
             assert job.documents_crawled == 18
-            assert job.documents_enriched == 15
             assert job.snippets_extracted == 45
     
     def test_prevent_concurrent_restart(self):
@@ -360,8 +348,8 @@ class TestCrawlJobManagement:
             for i, doc in enumerate(docs):
                 assert doc.crawl_depth == i
     
-    def test_document_enrichment_tracking(self):
-        """Test that document enrichment is tracked correctly."""
+    def test_document_creation_tracking(self):
+        """Test that document creation is tracked correctly."""
         db_manager = get_db_manager()
         
         job_id = str(uuid4())
@@ -370,14 +358,13 @@ class TestCrawlJobManagement:
         with db_manager.session_scope() as session:
             job = CrawlJob(
                 id=job_id,
-                name="Enrichment Tracking Test",
+                name="Document Tracking Test",
                 start_urls=["https://example.com"],
                 status="running",
-                crawl_phase="enriching",
+                crawl_phase="crawling",
                 processed_pages=3,
                 total_pages=3,
-                documents_crawled=3,
-                documents_enriched=0
+                documents_crawled=3
             )
             session.add(job)
             
@@ -386,9 +373,9 @@ class TestCrawlJobManagement:
                 doc = Document(
                     url=f"https://example.com/{job_id}/page{i}",
                     crawl_job_id=job_id,
-                    enrichment_status="pending"
                 )
                 session.add(doc)
+                session.flush()  # Flush to get doc.id
                 
                 # Add code snippets to each document
                 for j in range(2):  # 2 snippets per document
@@ -397,48 +384,31 @@ class TestCrawlJobManagement:
                         document_id=doc.id,
                         language="python",
                         code_content=f"def func_{i}_{j}(): pass",
-                        code_hash=f"hash_{job_id}_{i}_{j}"
+                        code_hash=f"hash_{job_id}_{i}_{j}",
+                        source_url=doc.url
                     )
                     session.add(snippet)
             
             session.commit()
         
-        # Simulate enrichment progress
+        # Verify documents were created
         with db_manager.session_scope() as session:
-            # Mark first document as enriched
             docs = session.query(Document).filter_by(crawl_job_id=job_id).all()
-            docs[0].enrichment_status = "completed"
-            
-            job = session.query(CrawlJob).filter_by(id=job_id).first()
-            job.documents_enriched = 1
-            session.commit()
+            assert len(docs) == 3
         
-        # Verify enrichment tracking
+        # Verify document tracking
         with db_manager.session_scope() as session:
             job = session.query(CrawlJob).filter_by(id=job_id).first()
-            assert job.documents_enriched == 1
             assert job.documents_crawled == 3
             
-            # Calculate enrichment progress
-            enrichment_progress = min(100, round((job.documents_enriched / job.documents_crawled * 100) if job.documents_crawled > 0 else 0))
-            assert enrichment_progress == 33  # 1/3 = 33%
+            # Verify document and snippet count
+            doc_count = session.query(Document).filter_by(crawl_job_id=job_id).count()
+            snippet_count = session.query(CodeSnippet).join(Document).filter(
+                Document.crawl_job_id == job_id
+            ).count()
             
-            # Mark all documents as enriched
-            docs = session.query(Document).filter_by(crawl_job_id=job_id).all()
-            for doc in docs:
-                doc.enrichment_status = "completed"
-            job.documents_enriched = 3
-            session.commit()
-        
-        # Verify final state
-        with db_manager.session_scope() as session:
-            job = session.query(CrawlJob).filter_by(id=job_id).first()
-            assert job.documents_enriched == 3
-            assert job.documents_crawled == 3
-            
-            # Calculate final enrichment progress
-            enrichment_progress = min(100, round((job.documents_enriched / job.documents_crawled * 100) if job.documents_crawled > 0 else 0))
-            assert enrichment_progress == 100
+            assert doc_count == 3
+            assert snippet_count == 6  # 3 documents * 2 snippets each
         
         # Cleanup
         with db_manager.session_scope() as session:

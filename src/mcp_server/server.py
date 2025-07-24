@@ -22,7 +22,7 @@ class MCPServer:
 
     def __init__(self) -> None:
         """Initialize the MCP server."""
-        self.server = Server("rag-pipeline")
+        self.server = Server("codedox")
         self.db_manager = get_db_manager()
         self.tools = MCPTools()
         self._tool_definitions = []

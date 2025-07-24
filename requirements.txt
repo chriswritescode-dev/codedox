@@ -9,18 +9,6 @@ psycopg[binary,pool]==3.2.3
 sqlalchemy==2.0.36
 alembic==1.14.0
 
-# Language Detection
-tree-sitter>=0.21.0
-tree-sitter-python>=0.21.0
-tree-sitter-javascript>=0.21.0
-tree-sitter-java>=0.21.0
-tree-sitter-typescript>=0.21.0
-tree-sitter-go>=0.21.0
-tree-sitter-rust>=0.21.0
-tree-sitter-cpp>=0.21.0
-tree-sitter-c-sharp>=0.21.0
-tree-sitter-ruby>=0.21.0
-tree-sitter-php>=0.21.0
 
 # Web Crawling
 crawl4ai>=0.4.0

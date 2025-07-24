@@ -24,9 +24,8 @@ export interface CrawlJob {
   total_pages: number
   snippets_extracted: number
   failed_pages_count?: number
-  crawl_phase?: 'crawling' | 'enriching' | 'finalizing' | null
+  crawl_phase?: 'crawling' | 'finalizing' | null
   documents_crawled?: number
-  documents_enriched?: number
   created_at: string
   started_at?: string
   completed_at?: string
@@ -34,7 +33,6 @@ export interface CrawlJob {
   last_heartbeat?: string
   retry_count?: number
   crawl_progress?: number
-  enrichment_progress?: number
 }
 
 export interface CodeSnippet {
@@ -58,7 +56,6 @@ export interface Document {
   crawl_depth: number
   snippets_count: number
   created_at: string
-  enrichment_status: string
 }
 
 export interface PaginatedResponse<T> {
@@ -226,14 +223,8 @@ class APIClient {
     })
   }
 
-  async resumeCrawlJob(id: string): Promise<{ message: string }> {
-    return this.fetch<{ message: string }>(`/crawl-jobs/${id}/resume`, {
-      method: 'POST',
-    })
-  }
-
-  async restartEnrichment(id: string): Promise<{ message: string }> {
-    return this.fetch<{ message: string }>(`/crawl-jobs/${id}/restart-enrichment`, {
+  async resumeCrawlJob(id: string): Promise<{ id: string; message: string }> {
+    return this.fetch<{ id: string; message: string }>(`/crawl-jobs/${id}/resume`, {
       method: 'POST',
     })
   }

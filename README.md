@@ -5,14 +5,15 @@ A powerful system for crawling documentation websites, extracting code snippets,
 ## Features
 
 - **Controlled Web Crawling**: Manual crawling with configurable depth (0-3 levels)
-- **Smart Code Extraction**: Extracts code blocks while preserving context
+- **Smart Code Extraction**: LLM-powered extraction during crawling for intelligent code understanding
 - **Language Detection**: Context-aware language detection using LLM
 - **Fast Search**: PostgreSQL full-text search with < 100ms response time
 - **MCP Integration**: Expose tools to AI assistants via Model Context Protocol
 - **Source Management**: Track multiple documentation sources with statistics
 - **Clean Content**: Crawl4AI integration removes navigation, ads, and clutter
 - **Modern Web UI**: React-based dashboard for managing crawls, searching code, and monitoring system activity
-- **Auto Site Content Deduplication**: only updates or adds content that has changed. 
+- **Auto Site Content Deduplication**: Only updates or adds content that has changed
+
 
 ## Architecture
 
@@ -46,7 +47,7 @@ A powerful system for crawling documentation websites, extracting code snippets,
 
 1. Clone the repository:
 ```bash
-git clone https://github.com/yourusername/codedox.git
+git clone https://github.com/chriswritescode-dev/codedox.git
 cd codedox
 ```
 
@@ -252,54 +253,81 @@ CodeDox includes a modern, responsive web interface built with React and TypeScr
 
 The web UI provides a user-friendly alternative to the CLI for all major operations, making it easy to manage your documentation pipeline without memorizing commands.
 
-
-### LLM Configuration for Parallel Requests
-
-For optimal performance with your local LLM server, configure parallel request settings in your `.env` file:
-
-```bash
-# LLM Configuration
-LLM_ENDPOINT=http://localhost:8080
-LLM_MODEL=gpt-4
-LLM_API_KEY=your-api-key-here
-LLM_MAX_TOKENS=1000
-LLM_TEMPERATURE=0.1
-
-# Parallel Request Settings (adjust based on your LLM server capabilities)
-LLM_MAX_CONCURRENT_REQUESTS=20    # Max parallel requests to LLM
-LLM_REQUEST_TIMEOUT=30.0          # Request timeout in seconds
-LLM_RETRY_ATTEMPTS=3              # Number of retry attempts on failure
-```
-
-**Finding Optimal Values:**
-
-Use the included configuration test to determine the best settings for your LLM setup:
-
-```bash
-# Quick test to find optimal settings (recommended)
-python scripts/test_llm_config.py
-
-# Or run comprehensive performance analysis
-python tests/performance/test_llm_concurrency_performance.py
-python tests/performance/visualize_concurrency_results.py
-```
-
-**Configuration Guidelines:**
-
-- **Local LLM (Ollama, etc.)**: Start with `LLM_MAX_CONCURRENT_REQUESTS=5-10`
-- **GPU Server**: Can handle `LLM_MAX_CONCURRENT_REQUESTS=15-30` depending on VRAM
-- **Cloud APIs (OpenAI, Claude)**: Use `LLM_MAX_CONCURRENT_REQUESTS=20-50` based on rate limits
-- **CPU-only**: Keep `LLM_MAX_CONCURRENT_REQUESTS=2-5` to avoid overwhelming the system
-
-Monitor your LLM server's resource usage and adjust accordingly. Higher concurrency improves crawling speed but may increase latency or cause timeouts.
-
 ## Language Support
 
-Automatic detection for:
+The LLM automatically detects and understands all programming languages, including:
 - Python, JavaScript, TypeScript
 - Java, Go, Rust, C/C++, C#
 - Ruby, PHP, SQL, Bash
 - HTML, CSS, YAML, JSON, XML
+- And many more...
+
+## LLM-Powered Code Extraction
+
+CodeDox uses advanced Large Language Models to intelligently extract code from documentation:
+
+### Features
+- **Intelligent Understanding**: LLM comprehends context, purpose, and relationships
+- **Rich Metadata**: Automatically extracts titles, descriptions, dependencies, and frameworks
+- **Code Relationships**: Identifies imports, extends, implements, and usage patterns
+- **Language Detection**: Automatically detects programming languages with high accuracy
+- **Complete Examples**: Recognizes whether code blocks are complete or partial
+
+### Configuration
+
+**Environment Setup:**
+```bash
+# Required: Set your API key
+export CODE_LLM_API_KEY="sk-your-api-key-here"
+
+# Optional: Choose provider and model
+export CODE_LLM_PROVIDER="openai"  # Options: openai, anthropic, ollama, groq, gemini, deepseek
+export CODE_LLM_EXTRACTION_MODEL="gpt-4o-mini"  # Model name without provider prefix
+
+# Example configurations for different providers:
+# OpenAI (default)
+export CODE_LLM_PROVIDER="openai"
+export CODE_LLM_EXTRACTION_MODEL="gpt-4o-mini"  # or gpt-4o, o1-mini, o1-preview
+
+# Anthropic Claude
+export CODE_LLM_PROVIDER="anthropic"
+export CODE_LLM_EXTRACTION_MODEL="claude-3-5-sonnet-20240620"  # or claude-3-opus-20240229
+
+# Local Ollama
+export CODE_LLM_PROVIDER="ollama"
+export CODE_LLM_EXTRACTION_MODEL="llama3"
+export CODE_LLM_BASE_URL="http://localhost:11434/v1"
+
+# Groq
+export CODE_LLM_PROVIDER="groq"
+export CODE_LLM_EXTRACTION_MODEL="llama3-70b-8192"
+
+# Optional: Custom LLM endpoint (for proxies or custom deployments)
+export CODE_LLM_BASE_URL="https://your-custom-endpoint.com/v1"
+```
+
+**CLI Usage:**
+```bash
+# Crawl with LLM extraction (API key must be set in environment)
+python cli.py crawl "Next.js" https://nextjs.org/docs
+
+# Crawl with specific depth
+python cli.py crawl "React" https://react.dev/learn --depth 2
+
+# Crawl with URL patterns
+python cli.py crawl "Django" https://docs.djangoproject.com \
+  --url-patterns "*tutorial*" --url-patterns "*guide*"
+```
+
+**MCP Tool Usage:**
+```json
+{
+  "name": "Next.js",
+  "start_urls": ["https://nextjs.org/docs"],
+  "max_depth": 2,
+  "domain_filter": "nextjs.org"
+}
+```
 
 ## Development
 
@@ -309,8 +337,10 @@ codedox/
 ├── src/
 │   ├── api/          # FastAPI endpoints
 │   ├── crawler/      # Web crawling logic
+│   │   ├── extraction_models.py     # Pydantic models for LLM extraction
+│   │   ├── config.py                # Crawler configuration
+│   │   └── page_crawler.py          # Page crawling with LLM extraction
 │   ├── database/     # Models and search
-│   ├── language/     # Language detection
 │   ├── mcp_server/   # MCP server implementation
 │   └── parser/       # Code extraction
 ├── tests/            # Test suite
@@ -323,21 +353,117 @@ codedox/
 pytest tests/
 ```
 
+Test content hash optimization:
+```bash
+# This tests that unchanged content skips LLM extraction on re-crawls
+python test_hash_optimization.py
+```
+
 
 ## Performance
 
 - **Search Speed**: < 100ms for full-text search
 - **Storage**: ~50KB per code snippet with context
+- **Content Hash Optimization**: Automatically skips LLM extraction for unchanged content during re-crawls
+  - Saves significant time and API costs when updating documentation sources
+  - Only processes pages with changed content
+  - Tracks efficiency metrics (pages skipped vs processed)
 
 ## Troubleshooting
 
 ### Common Issues
 
 **Database connection failed**
-
    - Check PostgreSQL is running
    - Verify credentials in `.env`
 
+**LLM Extraction Issues**
+
+Common problems and solutions:
+
+1. **"'str' object has no attribute 'choices'" error**
+   - This typically occurs with non-OpenAI compatible LLMs
+   - The system will automatically fall back to markdown extraction
+   - Check that your LLM endpoint returns OpenAI-compatible responses
+
+2. **No code blocks extracted**
+   - Verify your API key is set correctly: `echo $CODE_LLM_API_KEY`
+   - Check you have API credits available
+   - Review logs for specific extraction errors
+   - The system will fall back to markdown-based extraction
+
+3. **Local LLM compatibility (Ollama, Jan, etc.)**
+   - Ensure your local LLM supports the OpenAI API format
+   - Verify the base URL is correct (e.g., `http://localhost:11434/v1`)
+   - Test with curl first:
+     ```bash
+     curl -X POST http://localhost:11434/v1/chat/completions \
+       -H "Content-Type: application/json" \
+       -d '{"model": "llama3", "messages": [{"role": "user", "content": "Hello"}]}'
+     ```
+
+**Note:** When LLM extraction fails, the page is marked as failed and can be retried later using the API:
+```bash
+# Retry failed pages from a previous job
+curl -X POST http://localhost:8000/api/crawl-jobs/{job-id}/retry-failed
+```
+
+This will create a new crawl job that attempts to re-crawl only the failed pages.
+
+
+## Upgrading
+
+If you're upgrading from an older version of CodeDox, you may need to apply database migrations:
+
+### Checking Your Current Schema
+
+First, check if you need to run migrations:
+
+```bash
+# Connect to your database
+psql -U postgres -d codedox
+
+# Check if you have the old schema elements
+\d crawl_jobs
+\d documents
+\d page_links
+```
+
+### Applying the Migration
+
+There's a single migration file that will upgrade your database to the latest schema:
+
+```bash
+# Apply the migration (this combines all updates)
+psql -U postgres -d codedox -f src/database/migrations/001_upgrade_to_latest.sql
+```
+
+This migration is safe to run multiple times - it checks for existing changes before applying them.
+
+### What Changes
+
+The migrations will:
+- Remove the enrichment phase (now handled during crawling)
+- Remove the `page_links` table (Crawl4AI handles navigation)
+- Add proper relationship tracking between code snippets
+- Update views to use crawl job metadata instead of document metadata
+- Change default content type from 'html' to 'markdown'
+
+### Backup First
+
+Always backup your database before applying migrations:
+```bash
+pg_dump -U postgres -d codedox > codedox_backup_$(date +%Y%m%d).sql
+```
+
+### Fresh Installation
+
+If you're starting fresh, just use:
+```bash
+python cli.py init
+```
+
+This will create all tables with the latest schema.
 
 ## Contributing
 

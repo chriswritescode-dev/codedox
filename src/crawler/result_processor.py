@@ -7,11 +7,8 @@ from datetime import datetime
 
 from sqlalchemy.orm import Session
 
-from ..database import Document, CodeSnippet, PageLink, get_db_manager
-from ..parser import CodeExtractor
-from ..language import LanguageDetector
-from ..llm import MetadataEnricher
-from .enrichment_pipeline import EnrichmentPipeline
+from ..database import Document, CodeSnippet, get_db_manager
+from ..config import get_settings
 
 logger = logging.getLogger(__name__)
 
@@ -19,89 +16,15 @@ logger = logging.getLogger(__name__)
 class ResultProcessor:
     """Processes crawl results and stores them in the database."""
 
-    def __init__(
-        self,
-        code_extractor: CodeExtractor,
-        language_detector: LanguageDetector,
-        metadata_enricher: Optional[MetadataEnricher] = None,
-        enrichment_pipeline: Optional[EnrichmentPipeline] = None,
-    ):
-        """Initialize result processor.
-
-        Args:
-            code_extractor: Code extractor instance
-            language_detector: Language detector instance
-            metadata_enricher: Optional metadata enricher
-            enrichment_pipeline: Optional enrichment pipeline
-        """
-        self.code_extractor = code_extractor
-        self.language_detector = language_detector
-        self.metadata_enricher = metadata_enricher
-        self.enrichment_pipeline = enrichment_pipeline
+    def __init__(self):
+        """Initialize result processor."""
         self.db_manager = get_db_manager()
+        self.settings = get_settings()
 
     async def process_result_pipeline(
         self, result: Any, job_id: str, depth: int  # CrawlResult
-    ) -> Tuple[int, int, Optional[asyncio.Task]]:
-        """Process result using enrichment pipeline (non-blocking).
-
-        Args:
-            result: Crawl result
-            job_id: Job ID
-            depth: Crawl depth
-
-        Returns:
-            Tuple of (document_id, code_blocks_submitted, submission_task)
-        """
-        with self.db_manager.session_scope() as session:
-            # Check if document exists
-            existing_doc = session.query(Document).filter_by(url=result.url).first()
-
-            if existing_doc and existing_doc.content_hash == result.content_hash:
-                # Content unchanged
-                return int(existing_doc.id), 0, None
-
-            # Create or update document
-            doc = self._create_or_update_document(session, result, job_id, depth, existing_doc)
-            doc.enrichment_status = "processing"
-            session.commit()
-
-            doc_id = int(doc.id)
-
-            # Check for auto-detect name
-            await self._check_auto_detect_name(session, job_id, result)
-
-        # Submit to pipeline if available
-        logger.debug(f"Pipeline check - exists: {self.enrichment_pipeline is not None}, code_blocks: {len(result.code_blocks) if result.code_blocks else 0}")
-        
-        if self.enrichment_pipeline and result.code_blocks:
-            logger.info(
-                f"Submitting {len(result.code_blocks)} code blocks from {result.url} to pipeline"
-            )
-            # Create task without blocking
-            task = asyncio.create_task(
-                self._submit_to_pipeline(doc_id, result.url, job_id, result.code_blocks)
-            )
-
-            # Add error handler
-            def log_error(t: asyncio.Task[None]) -> None:
-                if t.exception():
-                    logger.error(f"Failed to submit enrichment task: {t.exception()}")
-
-            task.add_done_callback(log_error)
-            return doc_id, len(result.code_blocks), task
-        else:
-            if not self.enrichment_pipeline:
-                logger.warning(f"No pipeline available to process {len(result.code_blocks) if result.code_blocks else 0} code blocks")
-            elif not result.code_blocks:
-                logger.debug("No code blocks to process")
-
-        return doc_id, 0, None
-
-    async def process_result(
-        self, result: Any, job_id: str, depth: int  # CrawlResult
     ) -> Tuple[int, int]:
-        """Process result with immediate enrichment.
+        """Process result and store directly in database.
 
         Args:
             result: Crawl result
@@ -119,11 +42,58 @@ class ResultProcessor:
 
             if existing_doc and existing_doc.content_hash == result.content_hash:
                 # Content unchanged
-                return int(existing_doc.id), 0, None
+                return int(existing_doc.id), 0
 
             # Create or update document
             doc = self._create_or_update_document(session, result, job_id, depth, existing_doc)
-            doc.enrichment_status = "processing"
+            session.commit()
+
+            doc_id = int(doc.id)
+
+            # Check for auto-detect name
+            await self._check_auto_detect_name(session, job_id, result)
+
+            # Process code blocks directly
+            if result.code_blocks:
+                snippet_count = await self._process_code_blocks(
+                    session, doc, result.code_blocks, result.url
+                )
+
+            session.commit()
+
+            return doc_id, snippet_count
+
+    async def process_result(
+        self, result: Any, job_id: str, depth: int  # CrawlResult
+    ) -> Tuple[int, int]:
+        """Process result with immediate extraction.
+
+        Args:
+            result: Crawl result
+            job_id: Job ID
+            depth: Crawl depth
+
+        Returns:
+            Tuple of (document_id, snippet_count)
+        """
+        snippet_count = 0
+
+        with self.db_manager.session_scope() as session:
+            # Check if document exists
+            existing_doc = session.query(Document).filter_by(url=result.url).first()
+
+            if existing_doc and existing_doc.content_hash == result.content_hash:
+                # Content unchanged - check if this was detected during crawl
+                if hasattr(result, 'metadata') and result.metadata.get('content_unchanged'):
+                    # Return with existing snippet count from crawl phase
+                    existing_snippet_count = result.metadata.get('existing_snippet_count', 0)
+                    return int(existing_doc.id), existing_snippet_count, None
+                else:
+                    # Legacy path - content unchanged but not detected during crawl
+                    return int(existing_doc.id), 0, None
+
+            # Create or update document
+            doc = self._create_or_update_document(session, result, job_id, depth, existing_doc)
             session.commit()
 
             # Check for auto-detect name
@@ -135,29 +105,24 @@ class ResultProcessor:
                     session, doc, result.code_blocks, result.url
                 )
 
-            # Mark document as enriched
-            doc.enrichment_status = "completed" if not doc.enrichment_error else "failed"
-            doc.enriched_at = datetime.utcnow()
-
             session.commit()
             return int(doc.id), snippet_count
 
     async def process_batch(
         self, results: List[Any], job_id: str, use_pipeline: bool = True  # List[CrawlResult]
-    ) -> Tuple[int, int, List[Dict]]:
+    ) -> Tuple[int, int]:
         """Process a batch of results.
 
         Args:
             results: List of crawl results
             job_id: Job ID
-            use_pipeline: Whether to use enrichment pipeline
+            use_pipeline: Whether to use pipeline processing
 
         Returns:
-            Tuple of (total_documents, total_snippets, all_links)
+            Tuple of (total_documents, total_snippets)
         """
         total_documents = 0
         total_snippets = 0
-        all_links = []
 
         # Process in smaller batches
         batch_size = 10
@@ -181,19 +146,11 @@ class ResultProcessor:
                 if isinstance(br, Exception):
                     logger.error(f"Error processing result: {br}")
                 else:
-                    # Handle both 2-tuple (from process_result) and 3-tuple (from process_result_pipeline)
-                    if len(br) == 3:
-                        doc_id, snippet_count, _ = br  # Ignore the task in batch processing
-                    else:
-                        doc_id, snippet_count = br
+                    doc_id, snippet_count = br
                     total_documents += 1
                     total_snippets += snippet_count
 
-                    # Extract links from this result
-                    links = self._extract_links(batch[j], batch[j].metadata.get("depth", 0))
-                    all_links.extend(links)
-
-        return total_documents, total_snippets, all_links
+        return total_documents, total_snippets
 
     def _create_or_update_document(
         self,
@@ -280,62 +237,34 @@ class ResultProcessor:
         if not title:
             return None
 
-        # If no LLM available, use fallback
-        if not self.metadata_enricher or not self.metadata_enricher.llm_client:
-            if metadata and "title" in metadata:
-                meta_title = metadata["title"]
-                if meta_title and len(meta_title) <= 50:
-                    return meta_title.strip()
-
-            # Truncate long titles
-            if len(title) > 50:
-                return title[:50].rsplit(" ", 1)[0] + "..."
-            return title.strip()
-
-        # Use LLM to extract clean name
-        try:
-            prompt = f"""Extract the name of the documentation site, library, or framework from this page title.
-
-Page Title: {title}
-Page URL: {url}
-
-Instructions:
-- Return ONLY the clean name of the library, framework, or documentation site
-- Remove any suffixes like "Documentation", "Docs", "Official Site", "Home", etc.
-- Remove version numbers
-- Use proper capitalization (e.g., "Next.js" not "nextjs")
-- Keep the name concise (under 50 characters)
-
-Examples:
-- "Getting Started | Next.js" → "Next.js"
-- "React Documentation" → "React"
-- "Django 5.0 Documentation" → "Django"
-
-Extracted name:"""
-
-            response = await self.metadata_enricher.llm_client.generate(
-                prompt=prompt,
-                max_tokens=50,
-                temperature=0.1,
-            )
-
-            extracted_name = response.content.strip().strip("\"'")
-
-            if extracted_name and len(extracted_name) <= 50:
-                logger.info(f"LLM extracted site name: {extracted_name}")
-                return extracted_name
-        except Exception as e:
-            logger.error(f"Failed to extract site name using LLM: {e}")
-
-        # Fallback
+        # Simple extraction logic
         if metadata and "title" in metadata:
-            return metadata["title"][:50].strip()
-        return title[:50].strip()
+            meta_title = metadata["title"]
+            if meta_title and len(meta_title) <= 50:
+                return meta_title.strip()
+
+        # Clean common suffixes
+        clean_title = title
+        for suffix in [" Documentation", " Docs", " | Home", " - Official Site"]:
+            if clean_title.endswith(suffix):
+                clean_title = clean_title[:-len(suffix)]
+                break
+        
+        # Handle pipe-separated titles
+        if " | " in clean_title:
+            parts = clean_title.split(" | ")
+            # Usually the library name is the last part
+            clean_title = parts[-1].strip()
+        
+        # Truncate long titles
+        if len(clean_title) > 50:
+            return clean_title[:50].rsplit(" ", 1)[0] + "..."
+        return clean_title.strip()
 
     async def _process_code_blocks(
         self, session: Session, doc: Document, code_blocks: List[Any], source_url: str
     ) -> int:
-        """Process code blocks with enrichment.
+        """Process code blocks and store directly.
 
         Args:
             session: Database session
@@ -347,115 +276,236 @@ Extracted name:"""
             Number of snippets created
         """
         snippet_count = 0
+        created_snippets = []  # Track created snippets for relationship mapping
+        
+        logger.info(f"Processing {len(code_blocks)} code blocks for document {doc.url}")
 
-        # Enrich blocks if enricher available
-        enriched_blocks = []
-        if self.metadata_enricher and code_blocks:
-            try:
-                logger.info(f"Enriching {len(code_blocks)} code blocks with LLM")
-                enriched_results = await self.metadata_enricher.enrich_batch(code_blocks)
-                enriched_blocks = enriched_results
-            except Exception as e:
-                logger.error(f"LLM enrichment failed: {e}")
-                doc.enrichment_error = str(e)
-                # Fallback to unenriched
-                enriched_blocks = [self._create_mock_enriched(block) for block in code_blocks]
-        else:
-            enriched_blocks = [self._create_mock_enriched(block) for block in code_blocks]
-
-        # Process enriched blocks
-        for enriched_block in enriched_blocks:
-            block = enriched_block.original
-
-            # Use LLM-detected language if available
-            final_language = enriched_block.detected_language or block.language
-
-            # Extract functions/imports
-            functions = []
-            imports = []
-            if hasattr(self, "settings") and self.settings.code_extraction.extract_functions:
-                functions = self.language_detector.extract_functions(block.content, final_language)
-            if hasattr(self, "settings") and self.settings.code_extraction.extract_imports:
-                imports = self.language_detector.extract_imports(block.content, final_language)
-
-            # Merge metadata
-            merged_metadata = self._merge_metadata(block, enriched_block)
-
-            # Create snippet
-            snippet = self._create_snippet(
-                doc,
-                block,
-                enriched_block,
-                final_language,
-                functions,
-                imports,
-                source_url,
-                merged_metadata,
+        # Process blocks directly
+        for i, block in enumerate(code_blocks):
+            # Debug log the block structure
+            logger.debug(f"Processing block {i}: type={type(block)}, has_dict_methods={hasattr(block, 'get')}")
+            
+            # Handle both dict (from LLM) and object (from default) formats
+            if isinstance(block, dict):
+                content = block.get('code', '')
+                language = block.get('language', 'text')
+                title = block.get('title', '')
+                description = block.get('description', '')
+                metadata = block.get('metadata', {})
+                filename = block.get('filename')
+            else:
+                # Handle object format - check what attributes it has
+                logger.debug(f"Block is object type, checking attributes: {dir(block)}")
+                content = getattr(block, 'code', '')
+                language = getattr(block, 'language', 'text')
+                title = getattr(block, 'title', '')
+                description = getattr(block, 'description', '')
+                metadata = getattr(block, 'metadata', {})
+                filename = getattr(block, 'filename', None)
+            
+            # Skip empty code blocks
+            if not content:
+                logger.warning(f"Skipping empty code block {i} with title: {title}")
+                continue
+                
+            # Calculate hash for deduplication
+            import hashlib
+            code_hash = hashlib.md5(content.encode()).hexdigest()
+            
+            # Map purpose to snippet_type
+            purpose = metadata.get('purpose', 'code')
+            snippet_type_map = {
+                'example': 'example',
+                'configuration': 'config',
+                'api_reference': 'code',
+                'tutorial': 'example',
+                'utility': 'function',
+                'test': 'code'
+            }
+            snippet_type = snippet_type_map.get(purpose, 'code')
+            
+            # Build comprehensive metadata
+            full_metadata = {
+                'filename': filename,
+                'purpose': purpose,
+                'frameworks': metadata.get('frameworks', []),
+                'prerequisites': metadata.get('prerequisites', []),
+                'relationships': metadata.get('relationships', []),
+                'extraction_model': metadata.get('extraction_model'),
+                'extraction_timestamp': metadata.get('extraction_timestamp'),
+            }
+            
+            # Create snippet with all LLM data
+            snippet = CodeSnippet(
+                document_id=doc.id,
+                title=title,
+                description=description,
+                language=language,
+                code_content=content,
+                code_hash=code_hash,
+                line_start=None,
+                line_end=None,
+                context_before=None,
+                context_after=None,
+                section_title=metadata.get('section'),
+                section_content=None,
+                functions=metadata.get('dependencies', []),  # Store dependencies in functions field
+                imports=[],  # Could extract from relationships
+                keywords=metadata.get('keywords', []),
+                snippet_type=snippet_type,
+                source_url=source_url,
+                metadata=full_metadata,
             )
 
             # Check for duplicate
-            existing = session.query(CodeSnippet).filter_by(code_hash=block.hash).first()
+            existing = session.query(CodeSnippet).filter_by(code_hash=snippet.code_hash).first()
 
             if not existing:
                 session.add(snippet)
+                session.flush()  # Flush to get the ID
+                created_snippets.append((i, snippet))  # Track index and snippet
                 snippet_count += 1
-            elif merged_metadata.get("llm_enriched"):
-                # Update existing with enriched data
+                logger.info(f"Added new snippet: {title} (language: {language})")
+            else:
+                # Update existing with new data
                 self._update_snippet(existing, snippet)
+                created_snippets.append((i, existing))  # Track existing snippet too
+                logger.info(f"Updated existing snippet: {title}")
+        
+        # Commit snippets first before creating relationships
+        session.commit()
+        
+        # Process relationships after all snippets are created and committed
+        self._create_snippet_relationships(session, created_snippets, code_blocks)
+        
+        logger.info(f"Processed {snippet_count} new snippets for document {doc.id}")
 
         return snippet_count
 
-    def _create_snippet(
-        self,
-        doc: Document,
-        block: Any,
-        enriched_block: Any,
-        language: str,
-        functions: List[str],
-        imports: List[str],
-        source_url: str,
-        metadata: Dict[str, Any],
-    ) -> CodeSnippet:
-        """Create a code snippet instance.
 
+    def _create_snippet_relationships(
+        self, session: Session, created_snippets: List[Tuple[int, CodeSnippet]], code_blocks: List[Any]
+    ) -> None:
+        """Create relationships between snippets based on LLM extraction.
+        
         Args:
-            doc: Document instance
-            block: Original code block
-            enriched_block: Enriched code block
-            language: Final language
-            functions: Extracted functions
-            imports: Extracted imports
-            source_url: Source URL
-            metadata: Merged metadata
-
-        Returns:
-            CodeSnippet instance
+            session: Database session
+            created_snippets: List of (index, snippet) tuples
+            code_blocks: Original code blocks with relationship data
         """
-        # Extract section info
-        section_title = None
-        section_content = None
-        if hasattr(block, "extraction_metadata"):
-            section_title = block.extraction_metadata.get("section_title")
-            section_content = block.extraction_metadata.get("full_section_content")
-
-        return CodeSnippet(
-            document_id=doc.id,
-            title=enriched_block.enriched_title or block.title,
-            description=enriched_block.enriched_description or block.description,
-            language=language,
-            code_content=block.content,
-            code_hash=block.hash,
-            line_start=block.line_start,
-            line_end=block.line_end,
-            context_before=block.context_before,
-            context_after=block.context_after,
-            section_title=section_title,
-            section_content=section_content,
-            functions=functions,
-            imports=imports,
-            source_url=source_url,
-            metadata=metadata,
-        )
+        from ..database.models import SnippetRelationship
+        
+        # Create a mapping of index to snippet
+        index_to_snippet = {idx: snippet for idx, snippet in created_snippets}
+        
+        # Track relationships to avoid duplicates
+        created_relationships = set()
+        
+        # Process each snippet's relationships
+        for idx, snippet in created_snippets:
+            if idx >= len(code_blocks):
+                continue
+                
+            block = code_blocks[idx]
+            
+            # Get relationships from metadata
+            relationships = []
+            if isinstance(block, dict) and 'relationships' in block:
+                relationships = block.get('relationships', [])
+            elif isinstance(block, dict) and 'metadata' in block:
+                relationships = block['metadata'].get('relationships', [])
+            elif hasattr(block, 'metadata') and block.metadata:
+                relationships = block.metadata.get('relationships', [])
+            
+            # Create relationship records
+            for rel in relationships:
+                target_idx = rel.get('related_index')
+                if target_idx is not None and target_idx in index_to_snippet:
+                    target_snippet = index_to_snippet[target_idx]
+                    
+                    # Validate that both snippets have valid IDs
+                    if snippet.id is None or target_snippet.id is None:
+                        logger.warning(f"Skipping relationship creation - snippet IDs are None: source={snippet.id}, target={target_snippet.id}")
+                        continue
+                    
+                    relationship_type = rel.get('relationship_type', 'related')
+                    
+                    # Create a unique key for this relationship
+                    relationship_key = (snippet.id, target_snippet.id, relationship_type)
+                    
+                    # Skip if we've already processed this relationship
+                    if relationship_key in created_relationships:
+                        logger.debug(f"Skipping duplicate relationship: {snippet.title} -> {target_snippet.title} ({relationship_type})")
+                        continue
+                    
+                    # Check if relationship already exists in database
+                    existing_rel = session.query(SnippetRelationship).filter_by(
+                        source_snippet_id=snippet.id,
+                        target_snippet_id=target_snippet.id,
+                        relationship_type=relationship_type
+                    ).first()
+                    
+                    if not existing_rel:
+                        relationship = SnippetRelationship(
+                            source_snippet_id=snippet.id,
+                            target_snippet_id=target_snippet.id,
+                            relationship_type=relationship_type,
+                            description=rel.get('description', '')
+                        )
+                        session.add(relationship)
+                        created_relationships.add(relationship_key)
+                        logger.debug(f"Created relationship: {snippet.title} -> {target_snippet.title} ({relationship_type})")
+                    else:
+                        created_relationships.add(relationship_key)
+                        logger.debug(f"Relationship already exists: {snippet.title} -> {target_snippet.title} ({relationship_type})")
+        
+        # Commit relationships separately to handle any remaining conflicts
+        try:
+            session.commit()
+            logger.debug(f"Successfully committed {len(created_relationships)} relationships")
+        except Exception as e:
+            logger.error(f"Error committing relationships: {e}")
+            session.rollback()
+            # Try to create relationships one by one to identify which ones are causing issues
+            for idx, snippet in created_snippets:
+                if idx >= len(code_blocks):
+                    continue
+                    
+                block = code_blocks[idx]
+                relationships = []
+                if isinstance(block, dict) and 'relationships' in block:
+                    relationships = block.get('relationships', [])
+                elif isinstance(block, dict) and 'metadata' in block:
+                    relationships = block['metadata'].get('relationships', [])
+                elif hasattr(block, 'metadata') and block.metadata:
+                    relationships = block.metadata.get('relationships', [])
+                
+                for rel in relationships:
+                    target_idx = rel.get('related_index')
+                    if target_idx is not None and target_idx in index_to_snippet:
+                        target_snippet = index_to_snippet[target_idx]
+                        relationship_type = rel.get('relationship_type', 'related')
+                        
+                        try:
+                            # Use raw SQL with ON CONFLICT DO NOTHING
+                            session.execute(
+                                """
+                                INSERT INTO snippet_relationships 
+                                (source_snippet_id, target_snippet_id, relationship_type, description, created_at)
+                                VALUES (:source_id, :target_id, :rel_type, :description, NOW())
+                                ON CONFLICT (source_snippet_id, target_snippet_id, relationship_type) DO NOTHING
+                                """,
+                                {
+                                    'source_id': snippet.id,
+                                    'target_id': target_snippet.id,
+                                    'rel_type': relationship_type,
+                                    'description': rel.get('description', '')
+                                }
+                            )
+                            session.commit()
+                        except Exception as inner_e:
+                            logger.error(f"Failed to create individual relationship: {inner_e}")
+                            session.rollback()
 
     def _update_snippet(self, existing: CodeSnippet, new: CodeSnippet) -> None:
         """Update existing snippet with new data.
@@ -477,133 +527,5 @@ Extracted name:"""
         existing.updated_at = datetime.utcnow()
         logger.debug(f"Updated existing snippet: {new.title}")
 
-    def _merge_metadata(self, block: Any, enriched_block: Any) -> Dict[str, Any]:
-        """Merge metadata from block and enriched block.
 
-        Args:
-            block: Original block
-            enriched_block: Enriched block
 
-        Returns:
-            Merged metadata
-        """
-        metadata = block.extraction_metadata.copy()
-
-        if hasattr(enriched_block, "keywords") and enriched_block.keywords:
-            metadata["keywords"] = enriched_block.keywords
-        if hasattr(enriched_block, "frameworks") and enriched_block.frameworks:
-            metadata["frameworks"] = enriched_block.frameworks
-        if hasattr(enriched_block, "purpose"):
-            metadata["purpose"] = enriched_block.purpose
-        if hasattr(enriched_block, "dependencies") and enriched_block.dependencies:
-            metadata["dependencies"] = enriched_block.dependencies
-
-        metadata["llm_enriched"] = hasattr(enriched_block, "enriched_title")
-
-        return metadata
-
-    def _create_mock_enriched(self, block: Any) -> Any:
-        """Create mock enriched block for fallback.
-
-        Args:
-            block: Original block
-
-        Returns:
-            Mock enriched block
-        """
-        from ..llm.enricher import EnrichedCodeBlock
-
-        return EnrichedCodeBlock(original=block)
-
-    async def _submit_to_pipeline(
-        self, document_id: int, document_url: str, job_id: str, code_blocks: List[Any]
-    ) -> None:
-        """Submit document to enrichment pipeline.
-
-        Args:
-            document_id: Document ID
-            document_url: Document URL
-            job_id: Job ID
-            code_blocks: Code blocks to enrich
-        """
-        try:
-            logger.debug(f"_submit_to_pipeline called - pipeline exists: {self.enrichment_pipeline is not None}")
-            logger.debug(f"Pipeline running: {self.enrichment_pipeline.is_running if self.enrichment_pipeline else 'N/A'}")
-            
-            if self.enrichment_pipeline:
-                await self.enrichment_pipeline.add_document(
-                    document_id=document_id,
-                    document_url=document_url,
-                    job_id=job_id,
-                    code_blocks=code_blocks,
-                )
-                logger.info(f"Submitted {len(code_blocks)} blocks for doc {document_id}")
-            else:
-                logger.warning(f"No enrichment pipeline available for doc {document_id} with {len(code_blocks)} blocks")
-        except Exception as e:
-            logger.error(f"Failed to submit document {document_id} to pipeline: {e}")
-
-    def _extract_links(self, result: Any, depth: int) -> List[Dict[str, Any]]:
-        """Extract links from result.
-
-        Args:
-            result: Crawl result
-            depth: Current depth
-
-        Returns:
-            List of link dictionaries
-        """
-        from urllib.parse import urljoin
-
-        links = []
-        for link_info in result.links:
-            link_url = link_info.get("url", "")
-            if link_url and not link_url.startswith(("#", "javascript:")):
-                if not link_url.startswith(("http://", "https://")):
-                    link_url = urljoin(result.url, link_url)
-
-                links.append(
-                    {
-                        "source_url": result.url,
-                        "target_url": link_url,
-                        "link_text": link_info.get("text", ""),
-                        "depth_level": depth + 1,
-                    }
-                )
-
-        return links
-
-    async def store_links_batch(self, job_id: str, links: List[Dict[str, Any]]) -> None:
-        """Store a batch of links asynchronously.
-
-        Args:
-            job_id: Job ID
-            links: List of link data
-        """
-        try:
-            with self.db_manager.session_scope() as session:
-                for link_data in links:
-                    # Check if exists
-                    existing = (
-                        session.query(PageLink)
-                        .filter_by(
-                            source_url=link_data["source_url"],
-                            target_url=link_data["target_url"],
-                            crawl_job_id=job_id,
-                        )
-                        .first()
-                    )
-
-                    if not existing:
-                        page_link = PageLink(
-                            source_url=link_data["source_url"],
-                            target_url=link_data["target_url"],
-                            link_text=link_data["link_text"],
-                            crawl_job_id=job_id,
-                            depth_level=link_data["depth_level"],
-                        )
-                        session.add(page_link)
-
-                session.commit()
-        except Exception as e:
-            logger.error(f"Failed to store links batch: {e}")

@@ -1,4 +1,4 @@
-"""Integration tests for the RAG pipeline API."""
+"""Integration tests for the CodeDox API."""
 
 import pytest
 from uuid import uuid4

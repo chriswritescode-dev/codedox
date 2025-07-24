@@ -1,6 +1,5 @@
-"""Configuration management for the RAG pipeline."""
+"""Configuration management for CodeDox."""
 
-import os
 import logging
 import logging.handlers
 from pathlib import Path
@@ -41,53 +40,6 @@ class DatabaseConfig(BaseSettings):
         return f"postgresql+psycopg://{self.user}:{encoded_password}@{self.host}:{self.port}/{self.name}"
 
 
-class LLMConfig(BaseSettings):
-    """LLM configuration for content processing."""
-    model_config = SettingsConfigDict(
-        env_prefix="LLM_",
-        env_file=".env",
-        env_file_encoding="utf-8",
-        extra="allow"
-    )
-
-    endpoint: str = "http://localhost:8080"
-    model: str = "gpt-4"
-    api_key: SecretStr = Field(default=SecretStr(""), validation_alias="LLM_API_KEY")
-    max_tokens: int = 1000
-    temperature: float = 0.1
-    max_concurrent_requests: int = 20
-    request_timeout: float = 30.0
-    retry_attempts: int = 3
-    system_prompt: str = """You are a code analysis expert. Your task is to analyze code snippets and provide structured metadata.
-
-Respond ONLY with valid JSON in this exact format:
-{
-    "language": "detected programming language",
-    "title": "Brief, descriptive title (max 100 chars)",
-    "description": "Comprehensive explanation including context, usage, and purpose (max 1000 chars)",
-    "keywords": ["keyword1", "keyword2", ...],
-    "frameworks": ["framework1", "framework2", ...],
-    "purpose": "main purpose category",
-    "dependencies": ["dependency1", "dependency2", ...]
-}
-
-Guidelines:
-- Language detection is CRITICAL - use the full context including source URL to determine the correct language
-- Language examples: javascript, typescript, python, java, go, rust, cpp, csharp, ruby, php, bash, yaml, json, xml, html, css
-- For JSX code, use "javascript"; for TSX code, use "typescript"
-- Title should be action-oriented and specific (e.g., "Bootstrap Next.js API Routes Middleware Example")
-- Description should be comprehensive and include:
-  * What the code does and its purpose
-  * How to use it (if applicable)
-  * Any prerequisites or setup required
-  * Related concepts or alternatives mentioned in the context
-  * Common use cases or scenarios
-- When multiple similar code blocks exist (e.g., npm/yarn/pnpm), explain that users can choose their preferred option
-- Keywords should include relevant technical terms, package names, and concepts
-- Frameworks should list any frameworks/libraries used or referenced
-- Purpose categories: authentication, database, api, ui, utility, configuration, testing, setup, initialization, etc.
-- Dependencies are external libraries/modules imported or referenced"""
-
 
 class MCPConfig(BaseSettings):
     """MCP server configuration.
@@ -113,7 +65,7 @@ class CrawlingConfig(BaseSettings):
     respect_robots_txt: bool = True
     max_concurrent_pages: int = 3
     content_size_limit: int = 50000
-    user_agent: str = "RAG-Pipeline/1.0 (Documentation Crawler)"
+    user_agent: str = "CodeDox/1.0 (Documentation Crawler)"
     max_concurrent_sessions: int = 20
 
 
@@ -124,14 +76,28 @@ class CodeExtractionConfig(BaseSettings):
     max_code_block_size: int = 50000
     preserve_context_chars: int = 500
     min_code_lines: int = 2
-    extract_functions: bool = True
-    extract_imports: bool = True
-    detect_frameworks: bool = True
-    supported_languages: List[str] = [
-        "python", "javascript", "typescript", "java", "go", "rust",
-        "cpp", "c", "csharp", "ruby", "php", "sql", "bash",
-        "yaml", "json", "xml", "html", "css"
-    ]
+    
+    # LLM extraction configuration
+    llm_api_key: SecretStr = Field(
+        default=SecretStr(""),
+        description="API key for LLM extraction (OpenAI-compatible)"
+    )
+    llm_extraction_model: str = Field(
+        default="gpt-4o-mini",
+        description="LLM model for code extraction"
+    )
+    llm_base_url: Optional[str] = Field(
+        default=None,
+        description="Base URL for LLM API (if using custom endpoint)"
+    )
+    enable_context_extraction: bool = Field(
+        default=True,
+        description="Extract surrounding context for code blocks"
+    )
+    max_context_length: int = Field(
+        default=1000,
+        description="Maximum characters of context to extract around code blocks"
+    )
 
 
 class SearchConfig(BaseSettings):
@@ -150,6 +116,9 @@ class SearchConfig(BaseSettings):
     library_auto_select_threshold: float = 0.7  # Minimum score to auto-select
     library_auto_select_gap: float = 0.2  # Minimum gap between 1st and 2nd match
     library_suggestion_threshold: float = 0.3  # Minimum score to show as suggestion
+    
+    # Relationship-based search
+    include_related_snippets: bool = True  # Include related snippets in search results
 
 
 class APIConfig(BaseSettings):
@@ -195,7 +164,6 @@ class Settings(BaseSettings):
         
         # Initialize sub-configurations
         self.database = DatabaseConfig()
-        self.llm = LLMConfig()
         self.mcp = MCPConfig()
         self.crawling = CrawlingConfig()
         self.code_extraction = CodeExtractionConfig()

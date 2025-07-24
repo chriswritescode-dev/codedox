@@ -1,6 +1,6 @@
-# RAG Pipeline Tests
+# CodeDox Tests
 
-This directory contains the test suite for the RAG Pipeline API.
+This directory contains the test suite for the CodeDox API.
 
 ## Running Tests
 
@@ -92,7 +92,6 @@ Key fixtures available:
 - `sample_document` - A document with content
 - `sample_code_snippets` - Multiple code snippets
 - `mock_mcp_tools` - Mocked MCP tools to avoid external calls
-- `mock_llm_client` - Mocked LLM client for health checks
 
 ## Coverage
 

@@ -6,15 +6,11 @@ from typing import Optional, List, Dict, Any, Set
 from dataclasses import dataclass, field
 
 from ..config import get_settings
-from ..parser import CodeExtractor
-from ..language import LanguageDetector
 from .config import create_browser_config
 from .job_manager import JobManager
 from .progress_tracker import ProgressTracker
 from .result_processor import ResultProcessor
 from .page_crawler import PageCrawler
-from .enrichment_manager import EnrichmentManager
-from .utils import should_crawl_url
 
 logger = logging.getLogger(__name__)
 settings = get_settings()
@@ -50,33 +46,17 @@ class CrawlManager:
         # Initialize components
         self.job_manager = JobManager()
         self.progress_tracker = ProgressTracker(self.job_manager)
-        self.enrichment_manager = EnrichmentManager()
-
-        # Initialize extractors
-        self.code_extractor = CodeExtractor(
-            context_chars=2000,
-            min_code_lines=settings.code_extraction.min_code_lines,
-            use_tree_sitter=getattr(settings.code_extraction, "use_tree_sitter_validation", True),
-            min_quality_score=getattr(settings.code_extraction, "min_ast_quality_score", 0.7),
-        )
-        self.language_detector = LanguageDetector()
 
         # Initialize browser config
         self.browser_config = create_browser_config(
             headless=True,
             viewport_width=1200,
             viewport_height=800,
-            
         )
 
         # Initialize crawler and processor
-        self.page_crawler = PageCrawler(self.browser_config, self.code_extractor)
-        self.result_processor = ResultProcessor(
-            self.code_extractor,
-            self.language_detector,
-            self.enrichment_manager.metadata_enricher,
-            self.enrichment_manager.enrichment_pipeline,
-        )
+        self.page_crawler = PageCrawler(self.browser_config)
+        self.result_processor = ResultProcessor()
 
     async def start_crawl(self, config: CrawlConfig, user_id: Optional[str] = None) -> str:
         """Start a new crawl job.
@@ -106,6 +86,19 @@ class CrawlManager:
             user_id,
         )
 
+        # Cancel any existing active task for this job
+        existing_task = self._active_crawl_tasks.get(job_id)
+        if existing_task and not existing_task.done():
+            logger.info(f"Cancelling existing crawl task for job {job_id}")
+            existing_task.cancel()
+            # Wait briefly for cancellation to complete
+            try:
+                await asyncio.wait_for(existing_task, timeout=5.0)
+            except (asyncio.CancelledError, asyncio.TimeoutError):
+                pass
+            # Remove from active tasks
+            self._active_crawl_tasks.pop(job_id, None)
+
         # Start async crawl
         task = asyncio.create_task(self._execute_crawl(job_id, config))
         self._active_crawl_tasks[job_id] = task
@@ -123,51 +116,31 @@ class CrawlManager:
             # Start tracking
             await self.progress_tracker.start_tracking(job_id)
 
-            # Initialize enrichment if needed
-            use_pipeline = await self.enrichment_manager.ensure_pipeline()
-            if use_pipeline:
-                logger.info("Enrichment pipeline ready for crawl job")
-                # Update processor to use pipeline
-                logger.debug(f"Updating result processor pipeline reference")
-                logger.debug(f"Pipeline before update: {self.result_processor.enrichment_pipeline}")
-                self.result_processor.enrichment_pipeline = (
-                    self.enrichment_manager.enrichment_pipeline
-                )
-                logger.debug(f"Pipeline after update: {self.result_processor.enrichment_pipeline}")
-                logger.debug(f"Pipeline is running: {self.result_processor.enrichment_pipeline.is_running if self.result_processor.enrichment_pipeline else 'N/A'}")
-
             # Execute crawl based on depth
             if config.max_depth > 0:
-                await self._execute_deep_crawl(job_id, config, use_pipeline)
+                await self._execute_deep_crawl(job_id, config)
             else:
-                await self._execute_single_crawl(job_id, config, use_pipeline)
+                await self._execute_single_crawl(job_id, config)
 
-            # Mark crawl phase complete
-            self.job_manager.mark_crawl_complete(job_id)
+            # Get final job status to preserve snippet count
+            final_status = self.job_manager.get_job_status(job_id)
+            final_snippet_count = final_status.get("snippets_extracted", 0) if final_status else 0
 
-            # Wait for enrichment if using pipeline
-            if use_pipeline and self.enrichment_manager.is_pipeline_running():
-                logger.info("Waiting for enrichment pipeline to complete...")
-
-                # Get total documents from job
-                job_status = self.job_manager.get_job_status(job_id)
-                total_docs = job_status.get("documents_crawled", 0) if job_status else 0
-
-                await self.progress_tracker.monitor_enrichment_pipeline(
-                    job_id, self.enrichment_manager.enrichment_pipeline, total_docs
-                )
-
-                # Stop pipeline
-                await self.enrichment_manager.stop_pipeline()
-
-            # Complete job
+            # Complete job immediately after crawl
             self.job_manager.complete_job(job_id, success=True)
+
+            # Ensure final snippet count is preserved
+            if final_snippet_count > 0:
+                self.job_manager.update_job_status(job_id, snippets_extracted=final_snippet_count)
+
             await self.progress_tracker.send_completion(job_id, success=True)
 
         except asyncio.CancelledError:
             logger.info(f"Crawl job {job_id} was cancelled")
             # Job status is already set to cancelled by cancel_job
-            await self.progress_tracker.send_completion(job_id, success=False, error="Cancelled by user")
+            await self.progress_tracker.send_completion(
+                job_id, success=False, error="Cancelled by user"
+            )
             raise  # Re-raise to properly handle task cancellation
         except Exception as e:
             logger.error(f"Crawl job {job_id} failed: {e}")
@@ -176,14 +149,10 @@ class CrawlManager:
         finally:
             # Clean up
             await self.progress_tracker.stop_tracking(job_id)
-            if self.enrichment_manager.is_pipeline_running():
-                await self.enrichment_manager.stop_pipeline()
             # Remove from active tasks
             self._active_crawl_tasks.pop(job_id, None)
 
-    async def _execute_deep_crawl(
-        self, job_id: str, config: CrawlConfig, use_pipeline: bool
-    ) -> None:
+    async def _execute_deep_crawl(self, job_id: str, config: CrawlConfig) -> None:
         """Execute deep crawl."""
         visited_urls: Set[str] = set()
         processed_count = 0
@@ -211,25 +180,22 @@ class CrawlManager:
                 raise asyncio.CancelledError("Job cancelled by user")
 
             # Crawl from this start URL
+            logger.info(f"DEBUG: About to call crawl_page for {start_url}")
             results = await self.page_crawler.crawl_page(
-                start_url, job_id, 0, config.max_depth, job_config
+                start_url, job_id, 0, config.max_depth, job_config, self.progress_tracker
             )
 
             if results:
                 logger.info(f"Deep crawl completed! Received {len(results)} pages")
 
                 # Process results
-                docs, snippets, links = await self.result_processor.process_batch(
-                    results, job_id, use_pipeline
+                docs, snippets = await self.result_processor.process_batch(
+                    results, job_id, use_pipeline=False
                 )
 
                 processed_count += len(results)
                 total_snippets += snippets
                 visited_urls.update(r.url for r in results)
-
-                # Store links
-                if links:
-                    asyncio.create_task(self.result_processor.store_links_batch(job_id, links))
 
                 # Update progress
                 await self.progress_tracker.update_progress(
@@ -246,9 +212,7 @@ class CrawlManager:
                 if self.progress_tracker.should_send_update(processed_count, last_ws_count):
                     last_ws_count = processed_count
 
-    async def _execute_single_crawl(
-        self, job_id: str, config: CrawlConfig, use_pipeline: bool
-    ) -> None:
+    async def _execute_single_crawl(self, job_id: str, config: CrawlConfig) -> None:
         """Execute single page crawl."""
         visited_urls: Set[str] = set()
         processed_count = 0
@@ -272,32 +236,28 @@ class CrawlManager:
             visited_urls.add(url)
 
             # Crawl single page
-            results = await self.page_crawler.crawl_page(url, job_id, 0, 0)
+            logger.info(f"DEBUG: About to call crawl_page for single page {url}")
+            results = await self.page_crawler.crawl_page(
+                url, job_id, 0, 0, None, self.progress_tracker
+            )
 
             if results:
-                logger.debug(f"Processing {len(results)} results, use_pipeline={use_pipeline}")
-                submission_tasks = []
-                
+                logger.debug(f"Processing {len(results)} results")
+
                 # Process results
                 for result in results:
-                    logger.debug(f"Processing result for {result.url} with {len(result.code_blocks) if result.code_blocks else 0} code blocks")
-                    
-                    if use_pipeline:
-                        doc_id, snippet_count, task = await self.result_processor.process_result_pipeline(result, job_id, 0)
-                        if task:
-                            submission_tasks.append(task)
-                    else:
-                        doc_id, snippet_count = await self.result_processor.process_result(result, job_id, 0)
-                    
+                    logger.debug(
+                        f"Processing result for {result.url} with {len(result.code_blocks) if result.code_blocks else 0} code blocks"
+                    )
+
+                    doc_id, snippet_count = await self.result_processor.process_result_pipeline(
+                        result, job_id, 0
+                    )
+
                     logger.debug(f"Result: doc_id={doc_id}, snippet_count={snippet_count}")
 
                     processed_count += 1
                     total_snippets += snippet_count
-                
-                # Wait for all submission tasks to complete before proceeding
-                if submission_tasks:
-                    logger.info(f"Waiting for {len(submission_tasks)} pipeline submissions to complete...")
-                    await asyncio.gather(*submission_tasks, return_exceptions=True)
 
                 # Update progress
                 await self.progress_tracker.update_progress(
@@ -318,7 +278,7 @@ class CrawlManager:
         """Cancel a crawl job."""
         # First update the database status
         success = self.job_manager.cancel_job(job_id)
-        
+
         if success and job_id in self._active_crawl_tasks:
             # Cancel the active crawl task
             task = self._active_crawl_tasks[job_id]
@@ -332,22 +292,18 @@ class CrawlManager:
                     pass
             # Remove from active tasks
             self._active_crawl_tasks.pop(job_id, None)
-            
-            # Also stop enrichment pipeline if running
-            if self.enrichment_manager.is_pipeline_running():
-                await self.enrichment_manager.stop_pipeline()
-        
+
         return success
 
     async def resume_job(self, job_id: str) -> bool:
-        """Resume a failed or stalled job."""
+        """Resume a failed or stalled job by retrying failed pages."""
         # Get job status to avoid DetachedInstanceError
         job_status = self.job_manager.get_job_status(job_id)
         if not job_status:
             return False
 
         # Check job state
-        if job_status["status"] not in ["failed", "running"]:
+        if job_status["status"] not in ["failed", "running", "cancelled"]:
             logger.error(f"Job {job_id} is in {job_status['status']} state, cannot resume")
             return False
 
@@ -355,33 +311,55 @@ class CrawlManager:
         if job_status["status"] == "running" and job_status.get("last_heartbeat"):
             from datetime import datetime
 
-            last_heartbeat = datetime.fromisoformat(job_status["last_heartbeat"].replace('Z', '+00:00'))
+            last_heartbeat = datetime.fromisoformat(
+                job_status["last_heartbeat"].replace("Z", "+00:00")
+            )
             time_since_heartbeat = (datetime.utcnow() - last_heartbeat).total_seconds()
-            if time_since_heartbeat < 300:  # 5 minutes
+            if time_since_heartbeat < 60:  # 1 minute
                 logger.info(f"Job {job_id} is still active")
                 return False
 
-        # Determine resume point
-        if not job_status.get("crawl_completed_at"):
-            # Resume crawl
-            logger.info(f"Resuming job {job_id} from crawl phase")
+        # Check if there are failed pages to retry
+        from ..database import FailedPage
+        from ..database import get_db_manager
+
+        db_manager = get_db_manager()
+        with db_manager.session_scope() as session:
+            failed_count = session.query(FailedPage).filter_by(crawl_job_id=job_id).count()
+
+        if failed_count > 0:
+            # Retry failed pages instead of restarting the entire crawl
+            logger.info(f"Found {failed_count} failed pages for job {job_id}, retrying them")
+            new_job_id = await self.retry_failed_pages(job_id)
+            if new_job_id:
+                # Update the original job to running state with the new job as continuation
+                self.job_manager.update_job_status(
+                    job_id,
+                    status="running",
+                    error_message=f"Resumed with new job {new_job_id} for {failed_count} failed pages",
+                )
+                return True
+            else:
+                logger.error(f"Failed to create retry job for {job_id}")
+                return False
+        else:
+            # No failed pages, restart the entire crawl
+            logger.info(f"No failed pages found for job {job_id}, restarting entire crawl")
+
+            # Reset job status
+            self.job_manager.update_job_status(
+                job_id,
+                status="running",
+                error_message=None,
+                processed_pages=job_status.get("processed_pages", 0),
+                retry_count=job_status.get("retry_count", 0) + 1,
+            )
+
+            # Restart crawl
             config = self._reconstruct_config(job_status)
             task = asyncio.create_task(self._execute_crawl(job_id, config))
             self._active_crawl_tasks[job_id] = task
-        else:
-            # Resume enrichment
-            logger.info(f"Resuming job {job_id} from enrichment phase")
-            task = asyncio.create_task(self._resume_enrichment(job_id))
-            self._active_crawl_tasks[job_id] = task
-
-        return True
-
-    async def restart_enrichment(self, job_id: str) -> bool:
-        """Restart enrichment for a completed job."""
-        success = await self.enrichment_manager.resume_job_enrichment(job_id)
-        if success:
-            self.job_manager.complete_job(job_id, success=True)
-        return success
+            return True
 
     async def retry_failed_pages(self, job_id: str, user_id: Optional[str] = None) -> Optional[str]:
         """Create a new job to retry failed pages."""
@@ -406,7 +384,7 @@ class CrawlManager:
 
             # Convert to dict while still in session
             job_dict = job.to_dict()
-            
+
             # Extract URLs before session closes
             failed_urls = [str(fp.url) for fp in failed_pages]
             failed_count = len(failed_pages)
@@ -444,28 +422,3 @@ class CrawlManager:
             max_pages=config_data.get("max_pages", 100),
             metadata=config_data.get("metadata", {}),
         )
-
-    async def _resume_enrichment(self, job_id: str) -> None:
-        """Resume enrichment for a job."""
-        try:
-            # Start tracking
-            await self.progress_tracker.start_tracking(job_id)
-
-            # Update status
-            self.job_manager.update_job_status(job_id, phase="enriching")
-
-            # Resume enrichment
-            success = await self.enrichment_manager.resume_job_enrichment(job_id)
-
-            if success:
-                self.job_manager.complete_job(job_id, success=True)
-                await self.progress_tracker.send_completion(job_id, success=True)
-            else:
-                raise Exception("Failed to resume enrichment")
-
-        except Exception as e:
-            logger.error(f"Resume enrichment failed: {e}")
-            self.job_manager.complete_job(job_id, success=False, error_message=str(e))
-            await self.progress_tracker.send_completion(job_id, success=False, error=str(e))
-        finally:
-            await self.progress_tracker.stop_tracking(job_id)
