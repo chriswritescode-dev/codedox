@@ -3,6 +3,7 @@
 import logging
 import hashlib
 import json
+from datetime import datetime
 from contextlib import asynccontextmanager
 from typing import List, Optional, Dict, Any, AsyncGenerator
 
@@ -341,15 +342,24 @@ async def upload_markdown(request: UploadMarkdownRequest, db: Session = Depends(
         db.flush()
         
         # Use LLM to extract code blocks
-        from ..crawler.extraction_models import EXTRACTION_INSTRUCTIONS
+        from ..crawler.extraction_models import EXTRACTION_INSTRUCTIONS, get_extraction_schema
         
         prompt = f"""{EXTRACTION_INSTRUCTIONS}
+
+Page URL: {request.source_url}
+Page Title: {request.title or 'Uploaded Markdown'}
 
 Content to analyze:
 {request.content}"""
         
-        # Call LLM using the same system message as crawling
-        system_message = "You are a code extraction specialist. Your job is to find and extract ALL code snippets from documentation, no matter how small. This includes inline code, JSX components, configuration examples, and command snippets."
+        # System prompt for structured output
+        system_message = """You are a code extraction specialist. Your job is to extract ALL code snippets from documentation.
+
+Extract every piece of code found, including inline snippets, examples, configurations, and commands.
+Provide comprehensive metadata for each code block to enhance searchability and understanding."""
+        
+        # Get the JSON schema
+        schema = get_extraction_schema()
         
         response = await client.chat.completions.create(
             model=settings.code_extraction.llm_extraction_model,
@@ -358,75 +368,28 @@ Content to analyze:
                 {"role": "user", "content": prompt}
             ],
             temperature=0.1,
-            max_tokens=settings.code_extraction.llm_chunk_token_threshold
+            response_format={
+                "type": "json_schema",
+                "json_schema": {
+                    "name": "code_extraction",
+                    "schema": schema,
+                    "strict": True
+                }
+            }
         )
         
-        # Parse LLM response
+        # Parse LLM response (structured output guarantees valid JSON)
         llm_content = response.choices[0].message.content.strip()
         
         try:
-            # Parse JSON response
-            if llm_content.startswith('```json'):
-                llm_content = llm_content.strip('```json').strip('```').strip()
-            elif llm_content.startswith('```'):
-                llm_content = llm_content.strip('```').strip()
-            
             extracted_data = json.loads(llm_content)
             
-            # Handle different response formats
-            if isinstance(extracted_data, list):
-                # Check if it's a list with a single dict containing our expected structure
-                if len(extracted_data) == 1 and isinstance(extracted_data[0], dict):
-                    extracted_data = extracted_data[0]
+            # Add extraction metadata
+            extracted_data["extraction_timestamp"] = datetime.utcnow().isoformat()
+            extracted_data["extraction_model"] = settings.code_extraction.llm_extraction_model
             
-            # Handle legacy format where LLM returns 'blocks' instead of 'code_blocks'
-            if isinstance(extracted_data, dict) and "blocks" in extracted_data and "code_blocks" not in extracted_data:
-                logger.warning("LLM returned 'blocks' instead of 'code_blocks', transforming...")
-                blocks = extracted_data.pop("blocks")
-                
-                # Transform each block to ensure 'code' field exists
-                transformed_blocks = []
-                for block in blocks:
-                    if isinstance(block, dict):
-                        # If block has 'content' instead of 'code', rename it
-                        if "content" in block and "code" not in block:
-                            block["code"] = block.pop("content")
-                        transformed_blocks.append(block)
-                    else:
-                        transformed_blocks.append(block)
-                
-                extracted_data["code_blocks"] = transformed_blocks
-                
-                # Also clean up page_metadata if it has unsupported fields
-                if "page_metadata" in extracted_data and isinstance(extracted_data["page_metadata"], dict):
-                    page_meta = extracted_data["page_metadata"]
-                    page_meta.pop("difficulty_level", None)
-                    page_meta.pop("estimated_time", None)
-            
-            # Try to validate with Pydantic model
-            extraction_result = None
-            try:
-                extraction_result = LLMExtractionResult(**extracted_data)
-            except ValidationError as e:
-                logger.error(f"Initial validation failed: {e}")
-                
-                # If validation fails, try direct retry with better prompting
-                logger.info("Attempting retry with improved prompt...")
-                from ..crawler.llm_retry import LLMRetryExtractor
-                
-                retry_extractor = LLMRetryExtractor()
-                extraction_result = await retry_extractor.extract_with_retry(
-                    markdown_content=request.content,
-                    url=request.source_url,
-                    title=request.title
-                )
-                
-                if not extraction_result:
-                    # If retry also fails, raise the original error
-                    raise HTTPException(
-                        status_code=500,
-                        detail=f"Failed to extract code from content: {str(e)}"
-                    )
+            # Validate with Pydantic model
+            extraction_result = LLMExtractionResult(**extracted_data)
             
         except (json.JSONDecodeError, Exception) as e:
             logger.error(f"Failed to parse LLM response: {e}")

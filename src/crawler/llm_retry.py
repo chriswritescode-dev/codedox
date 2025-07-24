@@ -62,12 +62,11 @@ class LLMRetryExtractor:
         # Get the JSON schema
         schema = get_extraction_schema()
         
-        # Enhanced system prompt with schema
+        # System prompt for structured output
         system_prompt = """You are a code extraction specialist. Your job is to extract ALL code snippets from documentation.
 
-CRITICAL: You MUST return a response that EXACTLY matches the provided JSON schema. 
-The response must be valid JSON with the exact field names specified.
-Do NOT use 'blocks' - use 'code_blocks' as specified in the schema."""
+Extract every piece of code found, including inline snippets, examples, configurations, and commands.
+Provide comprehensive metadata for each code block to enhance searchability and understanding."""
         
         # Create user prompt with schema
         user_prompt = f"""{EXTRACTION_INSTRUCTIONS}
@@ -82,7 +81,7 @@ Content to analyze:
             try:
                 logger.info(f"LLM extraction attempt {attempt + 1} for {url}")
                 
-                # Make the API call
+                # Make the API call with structured output
                 response = await self.client.chat.completions.create(
                     model=self.settings.code_extraction.llm_extraction_model,
                     messages=[
@@ -90,36 +89,25 @@ Content to analyze:
                         {"role": "user", "content": user_prompt}
                     ],
                     temperature=0.1,
-                    response_format={"type": "json_object"}  # Force JSON response
+                    response_format={
+                        "type": "json_schema",
+                        "json_schema": {
+                            "name": "code_extraction",
+                            "schema": schema,
+                            "strict": True
+                        }
+                    }
                 )
                 
                 # Extract and parse response
                 llm_content = response.choices[0].message.content.strip()
                 
-                # Try to parse JSON
+                # Parse JSON response (structured output guarantees valid JSON)
                 try:
                     extracted_data = json.loads(llm_content)
                 except json.JSONDecodeError as e:
                     logger.error(f"Failed to parse LLM JSON response: {e}")
                     continue
-                
-                # Handle legacy format where LLM returns 'blocks' instead of 'code_blocks'
-                if isinstance(extracted_data, dict) and "blocks" in extracted_data and "code_blocks" not in extracted_data:
-                    logger.warning("LLM returned 'blocks' instead of 'code_blocks', transforming...")
-                    blocks = extracted_data.pop("blocks")
-                    
-                    # Transform each block to ensure 'code' field exists
-                    transformed_blocks = []
-                    for block in blocks:
-                        if isinstance(block, dict):
-                            # If block has 'content' instead of 'code', rename it
-                            if "content" in block and "code" not in block:
-                                block["code"] = block.pop("content")
-                            transformed_blocks.append(block)
-                        else:
-                            transformed_blocks.append(block)
-                    
-                    extracted_data["code_blocks"] = transformed_blocks
                 
                 # Add extraction metadata
                 extracted_data["extraction_timestamp"] = datetime.utcnow().isoformat()
