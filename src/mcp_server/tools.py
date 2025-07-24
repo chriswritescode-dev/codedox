@@ -117,34 +117,75 @@ class MCPTools:
     
     async def search_libraries(
         self,
-        query: str,
-        max_results: int = 10
+        query: str = "",
+        limit: int = 20,
+        page: int = 1
     ) -> Dict[str, Any]:
-        """Search for available libraries by name or keyword.
+        """Search for available libraries by name or keyword, or list all libraries.
         
         Args:
-            query: Search query for library names
-            max_results: Maximum results to return
+            query: Search query for library names (empty string returns all)
+            limit: Maximum results per page (default: 20)
+            page: Page number for paginated results (1-indexed)
             
         Returns:
-            Dictionary with selected library and explanation
+            Dictionary with libraries and search results
         """
         try:
             with self.db_manager.session_scope() as session:
                 searcher = CodeSearcher(session)
-                libraries = searcher.search_libraries(
+                
+                # Calculate offset for pagination
+                offset = (page - 1) * limit
+                
+                libraries, total_count = searcher.search_libraries(
                     query=query,
-                    limit=max_results
+                    limit=limit,
+                    offset=offset
                 )
                 
                 if not libraries:
+                    if query:
+                        return {
+                            "status": "no_matches",
+                            "message": f"No libraries found matching '{query}'",
+                            "suggestion": "Try a different search term or check if the library has been crawled"
+                        }
+                    else:
+                        return {
+                            "status": "empty",
+                            "message": "No libraries have been crawled yet",
+                            "suggestion": "Use init_crawl to add documentation sources"
+                        }
+                
+                # Calculate total pages
+                import math
+                total_pages = math.ceil(total_count / limit) if total_count > 0 else 0
+                
+                # If no query provided, return all libraries
+                if not query:
+                    message = f"Found {total_count} available libraries"
+                    if total_pages > 1:
+                        message += f" (showing page {page} of {total_pages})"
+                    
                     return {
-                        "status": "no_matches",
-                        "message": f"No libraries found matching '{query}'",
-                        "suggestion": "Try a different search term or check if the library has been crawled"
+                        "status": "success",
+                        "libraries": [
+                            {
+                                "library_id": lib['library_id'],
+                                "name": lib['name'],
+                                "description": lib['description'],
+                                "snippet_count": lib['snippet_count']
+                            }
+                            for lib in libraries
+                        ],
+                        "total_count": total_count,
+                        "page": page,
+                        "total_pages": total_pages,
+                        "message": message
                     }
                 
-                # Find the best match
+                # For searches with query, find the best match
                 best_match = libraries[0]  # Already sorted by relevance
                 other_matches = libraries[1:5] if len(libraries) > 1 else []
                 
@@ -189,7 +230,16 @@ class MCPTools:
                         }
                         for lib in other_matches
                     ]
-                    response["note"] = f"Found {len(libraries)} total matches. Showing the most relevant."
+                    response["note"] = f"Found {total_count} total matches."
+                    if total_pages > 1:
+                        response["note"] += f" Showing page {page} of {total_pages}."
+                    else:
+                        response["note"] += " Showing the most relevant."
+                
+                # Add pagination info
+                response["page"] = page
+                response["total_pages"] = total_pages
+                response["total_count"] = total_count
                 
                 # Add warning for low snippet count
                 if best_match['snippet_count'] < 10:
@@ -209,14 +259,16 @@ class MCPTools:
         self,
         library_id: str,
         query: Optional[str] = None,
-        max_results: int = 10
+        limit: int = 20,
+        page: int = 1
     ) -> str:
         """Get content from a specific library, optionally filtered by search query.
         
         Args:
             library_id: Library ID (UUID) or library name - can use either format
             query: Optional search query to filter results
-            max_results: Maximum results to return
+            limit: Maximum results per page (default: 20)
+            page: Page number for paginated results (1-indexed)
             
         Returns:
             Formatted search results as string
@@ -313,11 +365,15 @@ class MCPTools:
                                    "\n".join(suggestions) + "\n\n"
                                    f"💡 Tip: Use the exact library name for best results.")
                 
+                # Calculate offset for pagination
+                offset = (page - 1) * limit
+                
                 # Search with resolved library_id
                 snippets, total_count = searcher.search(
                     query=query or "",  # Use empty string if query is None
                     job_id=actual_library_id,
-                    limit=max_results,
+                    limit=limit,
+                    offset=offset,
                     include_context=False  # Don't include context in search results
                 )
                 
@@ -331,10 +387,14 @@ class MCPTools:
                 # Format results using the specified format
                 formatted_results = searcher.format_search_results(snippets)
                 
+                # Calculate total pages
+                import math
+                total_pages = math.ceil(total_count / limit) if total_count > 0 else 0
+                
                 # Add summary header
-                header = f"Found {len(snippets)} results"
-                if total_count > len(snippets):
-                    header += f" (showing first {len(snippets)} of {total_count} total)"
+                header = f"Found {total_count} results"
+                if total_pages > 1:
+                    header += f" (showing page {page} of {total_pages})"
                 if query:
                     header += f" for query '{query}' in library '{library_name}'"
                 else:

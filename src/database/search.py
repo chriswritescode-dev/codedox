@@ -235,16 +235,18 @@ class CodeSearcher:
     def search_libraries(
         self,
         query: str,
-        limit: int = 10
-    ) -> List[Dict[str, Any]]:
+        limit: int = 10,
+        offset: int = 0
+    ) -> Tuple[List[Dict[str, Any]], int]:
         """Search for libraries by name using fuzzy matching.
         
         Args:
             query: Search query for library names
             limit: Maximum results to return
+            offset: Pagination offset
             
         Returns:
-            List of library information dictionaries
+            Tuple of (list of library information dictionaries, total count)
         """
         # Use PostgreSQL's similarity function for fuzzy matching
         sql_query = """
@@ -268,15 +270,31 @@ class CodeSearcher:
             CASE WHEN LOWER(cj.name) = LOWER(:query) THEN 0 ELSE 1 END,
             name_similarity DESC,
             snippet_count DESC
-        LIMIT :limit
+        LIMIT :limit OFFSET :offset
+        """
+        
+        # First get total count
+        count_query = """
+        SELECT COUNT(DISTINCT cj.id)
+        FROM crawl_jobs cj
+        WHERE cj.status != 'cancelled'
+        AND (
+            LOWER(cj.name) LIKE LOWER(:pattern)
+            OR similarity(LOWER(cj.name), LOWER(:query)) > 0.1
+        )
         """
         
         params = {
             'query': query,
             'pattern': f'%{query}%',
-            'limit': limit
+            'limit': limit,
+            'offset': offset
         }
         
+        # Get total count
+        total_count = self.session.execute(text(count_query), {'query': query, 'pattern': f'%{query}%'}).scalar() or 0
+        
+        # Get paginated results
         result = self.session.execute(text(sql_query), params)
         
         libraries = []
@@ -301,7 +319,7 @@ class CodeSearcher:
             
             libraries.append(library)
         
-        return libraries
+        return libraries, total_count
     
     def get_sources(self, job_id: Optional[str] = None) -> List[Dict[str, Any]]:
         """Get list of crawled sources with statistics.

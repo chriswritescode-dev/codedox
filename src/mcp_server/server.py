@@ -50,13 +50,16 @@ class MCPServer:
             )
         elif name == "search_libraries":
             return await self.tools.search_libraries(
-                query=arguments.get("query"), max_results=arguments.get("max_results", 10)
+                query=arguments.get("query", ""), 
+                limit=arguments.get("limit", 20),
+                page=arguments.get("page", 1)
             )
         elif name == "get_content":
             return await self.tools.get_content(
                 library_id=arguments.get("library_id"),
                 query=arguments.get("query"),
-                max_results=arguments.get("max_results", 10),
+                limit=arguments.get("limit", 20),
+                page=arguments.get("page", 1),
             )
         elif name == "get_snippet_details":
             return await self.tools.get_snippet_details(snippet_id=arguments.get("snippet_id"))
@@ -118,23 +121,52 @@ class MCPServer:
             ),
             Tool(
                 name="search_libraries",
-                description="You MUST call this function before 'get_content' to obtain a valid library ID UNLESS the user explicitly provides a library ID in their query.\n\nSelection Process:\n1. Analyze the query to understand what library/package the user is looking for\n2. Return the most relevant match based on:\n   - Name similarity to the query (exact matches prioritized)\n   - Description relevance to the query's intent\n   - Documentation coverage (prioritize libraries with higher Code Snippet counts)\n\nResponse Format:\n- Return the selected library ID in a clearly marked section\n- Provide a brief explanation for why this library was chosen\n- If multiple good matches exist, acknowledge this but proceed with the most relevant one\n- If no good matches exist, clearly state this and suggest query refinements\n\nFor ambiguous queries, request clarification before proceeding with a best-guess match.",
+                description="Search for available libraries or list all libraries in the system.\n\n"
+                "**Usage:**\n"
+                "- With query: Returns libraries matching the search term\n"
+                "- Without query: Returns all available libraries\n\n"
+                "**When searching with a query:**\n"
+                "1. Analyzes the query to find matching libraries\n"
+                "2. Returns matches based on:\n"
+                "   - Name similarity (exact matches prioritized)\n"
+                "   - Description relevance\n"
+                "   - Documentation coverage (higher snippet counts preferred)\n\n"
+                "**Response includes:**\n"
+                "- Library ID (use this with get_content)\n"
+                "- Library name\n"
+                "- Description\n"
+                "- Snippet count\n"
+                "- Match confidence (when searching)\n\n"
+                "**Pagination:**\n"
+                "- Use `page` parameter to navigate through results\n"
+                "- Use `limit` parameter to control page size (default: 20)\n\n"
+                "**Examples:**\n"
+                "- `query: 'react'` - finds React-related libraries\n"
+                "- `query: ''` or no query - lists all libraries\n"
+                "- `query: 'next'` - finds Next.js and similar libraries\n"
+                "- `page: 2, limit: 30` - get page 2 with 30 results per page",
                 inputSchema={
                     "type": "object",
                     "properties": {
                         "query": {
                             "type": "string",
-                            "description": "Search query for library names (e.g., 'react', 'nextjs', 'django')",
+                            "description": "Optional search query for library names. If omitted or empty, returns all libraries.",
                         },
-                        "max_results": {
+                        "limit": {
                             "type": "integer",
-                            "default": 10,
+                            "default": 20,
                             "minimum": 1,
-                            "maximum": 50,
-                            "description": "Maximum results to return",
+                            "maximum": 100,
+                            "description": "Maximum results per page (default: 20)",
+                        },
+                        "page": {
+                            "type": "integer",
+                            "default": 1,
+                            "minimum": 1,
+                            "description": "Page number for paginated results (1-indexed). Use with limit to control pagination.",
                         },
                     },
-                    "required": ["query"],
+                    "required": [],
                 },
             ),
             Tool(
@@ -147,10 +179,15 @@ class MCPServer:
                 "- Exact matches are prioritized (case-insensitive)\n"
                 "- Fuzzy matching finds similar names automatically\n"
                 "- Clear suggestions provided when multiple matches found\n\n"
+                "**Pagination:**\n"
+                "- Use `page` parameter to navigate through results\n"
+                "- Use `limit` parameter to control page size (default: 20)\n"
+                "- Results show current page and total pages available\n\n"
                 "**Examples:**\n"
                 "- `library_id: 'nextjs'` - finds Next.js documentation\n"
                 "- `library_id: 'react', query: 'hooks'` - finds React hooks examples\n"
-                "- `library_id: 'django', query: 'authentication'` - finds Django auth code\n\n"
+                "- `library_id: 'django', query: 'authentication'` - finds Django auth code\n"
+                "- `library_id: 'nextjs', page: 2, limit: 30` - get page 2 with 30 results per page\n\n"
                 "Returns formatted code examples with language highlighting, descriptions, and source URLs.",
                 inputSchema={
                     "type": "object",
@@ -163,12 +200,18 @@ class MCPServer:
                             "type": "string",
                             "description": "Optional search query to filter content within the library (e.g., 'authentication', 'routing', 'hooks')",
                         },
-                        "max_results": {
+                        "limit": {
                             "type": "integer",
-                            "default": 10,
+                            "default": 20,
                             "minimum": 1,
-                            "maximum": 50,
-                            "description": "Maximum results to return",
+                            "maximum": 100,
+                            "description": "Maximum results per page (default: 20)",
+                        },
+                        "page": {
+                            "type": "integer",
+                            "default": 1,
+                            "minimum": 1,
+                            "description": "Page number for paginated results (1-indexed). Use with limit to control pagination.",
                         },
                     },
                     "required": ["library_id"],
