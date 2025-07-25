@@ -50,8 +50,8 @@ class TestLibraryNameResolution:
         with patch.object(tools.db_manager, 'session_scope', return_value=mock_context):
             mock_searcher = Mock()
             
-            # Mock search_libraries to return exact match
-            mock_searcher.search_libraries.return_value = [
+            # Mock search_libraries to return exact match with tuple
+            mock_searcher.search_libraries.return_value = ([
                 {
                     'library_id': 'test-uuid-123',
                     'name': 'NextJS',
@@ -59,7 +59,7 @@ class TestLibraryNameResolution:
                     'snippet_count': 100,
                     'similarity_score': 1.0
                 }
-            ]
+            ], 1)
             
             # Mock search to return some results
             mock_searcher.search.return_value = ([Mock(id=1)], 1)
@@ -93,8 +93,8 @@ class TestLibraryNameResolution:
         with patch.object(tools.db_manager, 'session_scope', return_value=mock_context):
             mock_searcher = Mock()
             
-            # Mock search_libraries to return fuzzy match
-            mock_searcher.search_libraries.return_value = [
+            # Mock search_libraries to return fuzzy match with tuple
+            mock_searcher.search_libraries.return_value = ([
                 {
                     'library_id': 'react-uuid-456',
                     'name': 'React',
@@ -102,7 +102,7 @@ class TestLibraryNameResolution:
                     'snippet_count': 200,
                     'similarity_score': 0.85
                 }
-            ]
+            ], 1)
             
             # Mock search to return some results
             mock_searcher.search.return_value = ([Mock(id=1)], 1)
@@ -119,11 +119,10 @@ class TestLibraryNameResolution:
         """Test get_content with multiple similar library matches."""
         tools = MCPTools()
         
-        # Mock settings
+        # Mock settings - these are accessed from the module level
         mock_settings = MagicMock()
         mock_settings.search.library_auto_select_threshold = 0.7
         mock_settings.search.library_auto_select_gap = 0.2
-        tools.db_manager.settings = mock_settings
         
         # Create a proper context manager mock
         mock_session = MagicMock()
@@ -131,11 +130,12 @@ class TestLibraryNameResolution:
         mock_context.__enter__.return_value = mock_session
         mock_context.__exit__.return_value = None
         
-        with patch.object(tools.db_manager, 'session_scope', return_value=mock_context):
+        with patch.object(tools.db_manager, 'session_scope', return_value=mock_context), \
+             patch('src.mcp_server.tools.settings', mock_settings):
             mock_searcher = Mock()
             
-            # Mock search_libraries to return multiple similar matches (no exact match)
-            mock_searcher.search_libraries.return_value = [
+            # Mock search_libraries to return multiple similar matches (no exact match) with tuple
+            mock_searcher.search_libraries.return_value = ([
                 {
                     'library_id': 'react-lib-uuid-1',
                     'name': 'React Library',
@@ -150,7 +150,7 @@ class TestLibraryNameResolution:
                     'snippet_count': 150,
                     'similarity_score': 0.65
                 }
-            ]
+            ], 2)
             
             with patch('src.mcp_server.tools.CodeSearcher', return_value=mock_searcher):
                 result = await tools.get_content(library_id="react", query="test")
@@ -165,10 +165,9 @@ class TestLibraryNameResolution:
         """Test get_content with no library matches."""
         tools = MCPTools()
         
-        # Mock settings
+        # Mock settings - these are accessed from the module level
         mock_settings = MagicMock()
         mock_settings.search.library_suggestion_threshold = 0.5
-        tools.db_manager.settings = mock_settings
         
         # Create a proper context manager mock
         mock_session = MagicMock()
@@ -176,16 +175,17 @@ class TestLibraryNameResolution:
         mock_context.__enter__.return_value = mock_session
         mock_context.__exit__.return_value = None
         
-        with patch.object(tools.db_manager, 'session_scope', return_value=mock_context):
+        with patch.object(tools.db_manager, 'session_scope', return_value=mock_context), \
+             patch('src.mcp_server.tools.settings', mock_settings):
             mock_searcher = Mock()
             
-            # Mock search_libraries to return no matches
+            # Mock search_libraries to return no matches with tuple
             mock_searcher.search_libraries.side_effect = [
-                [],  # No matches for the query
-                [    # Some available libraries for suggestions
+                ([], 0),  # No matches for the query
+                ([    # Some available libraries for suggestions
                     {'library_id': 'vue-uuid', 'name': 'Vue.js', 'snippet_count': 100},
                     {'library_id': 'angular-uuid', 'name': 'Angular', 'snippet_count': 120}
-                ]
+                ], 2)
             ]
             
             with patch('src.mcp_server.tools.CodeSearcher', return_value=mock_searcher):
@@ -202,11 +202,10 @@ class TestLibraryNameResolution:
         """Test get_content with one strong match and weaker alternatives."""
         tools = MCPTools()
         
-        # Mock settings
+        # Mock settings - these are accessed from the module level
         mock_settings = MagicMock()
         mock_settings.search.library_auto_select_threshold = 0.7
         mock_settings.search.library_auto_select_gap = 0.2
-        tools.db_manager.settings = mock_settings
         
         # Create a proper context manager mock
         mock_session = MagicMock()
@@ -214,11 +213,12 @@ class TestLibraryNameResolution:
         mock_context.__enter__.return_value = mock_session
         mock_context.__exit__.return_value = None
         
-        with patch.object(tools.db_manager, 'session_scope', return_value=mock_context):
+        with patch.object(tools.db_manager, 'session_scope', return_value=mock_context), \
+             patch('src.mcp_server.tools.settings', mock_settings):
             mock_searcher = Mock()
             
-            # Mock search_libraries with one strong match
-            mock_searcher.search_libraries.return_value = [
+            # Mock search_libraries with one strong match with tuple
+            mock_searcher.search_libraries.return_value = ([
                 {
                     'library_id': 'nextjs-uuid',
                     'name': 'Next.js',
@@ -233,7 +233,7 @@ class TestLibraryNameResolution:
                     'snippet_count': 100,
                     'similarity_score': 0.4
                 }
-            ]
+            ], 2)
             
             # Mock search to return results
             mock_searcher.search.return_value = ([Mock(id=1)], 1)
