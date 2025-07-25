@@ -81,7 +81,7 @@ class TestMCPExecuteEndpoints:
             json={
                 "library_id": "test-lib-id",
                 "query": "authentication",
-                "max_results": 5
+                "limit": 5
             }
         )
         assert response.status_code == 200
@@ -97,7 +97,7 @@ class TestMCPExecuteEndpoints:
             "/mcp/execute/get_content",
             json={
                 "query": "authentication",
-                "max_results": 5
+                "limit": 5
             }
         )
         assert response.status_code == 422
@@ -110,7 +110,7 @@ class TestMCPExecuteEndpoints:
             "/mcp/execute/get_content",
             json={
                 "library_id": "test-lib-id",
-                "max_results": 5
+                "limit": 5
             }
         )
         assert response.status_code == 200
@@ -125,7 +125,7 @@ class TestMCPExecuteEndpoints:
             json={
                 "library_id": "nextjs",  # Using name instead of UUID
                 "query": "routing",
-                "max_results": 5
+                "limit": 5
             }
         )
         assert response.status_code == 200
@@ -265,7 +265,7 @@ class TestMCPStreamEndpoints:
             json={
                 "library_id": "test-lib-id",
                 "query": "test query",
-                "max_results": 3
+                "limit": 3
             }
         )
         assert response.status_code == 200

@@ -3,6 +3,7 @@
 import asyncio
 import logging
 import json
+import os
 from typing import Optional, Dict, Any
 from datetime import datetime
 
@@ -136,19 +137,24 @@ Content to analyze:
     async def extract_batch(
         self,
         failed_extractions: list[Dict[str, Any]],
-        max_concurrent: int = 5
+        max_concurrent: Optional[int] = None
     ) -> Dict[str, Optional[LLMExtractionResult]]:
         """
         Extract from multiple failed pages concurrently.
         
         Args:
             failed_extractions: List of dicts with 'url', 'markdown_content', 'title'
-            max_concurrent: Maximum concurrent extractions
+            max_concurrent: Maximum concurrent extractions (defaults to CODE_LLM_NUM_PARALLEL env var or 5)
             
         Returns:
             Dict mapping URL to extraction result (or None if failed)
         """
         results = {}
+        
+        # Use environment variable if max_concurrent not provided
+        if max_concurrent is None:
+            max_concurrent = int(os.getenv('CODE_LLM_NUM_PARALLEL', '5'))
+            logger.info(f"Using CODE_LLM_NUM_PARALLEL={max_concurrent} for batch extraction")
         
         # Create semaphore for concurrency control
         semaphore = asyncio.Semaphore(max_concurrent)
