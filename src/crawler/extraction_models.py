@@ -69,10 +69,7 @@ class LLMExtractionResult(BaseModel):
         default_factory=list,
         description="Key concepts explained on this page"
     )
-    external_links: List[Dict[str, str]] = Field(
-        default_factory=list,
-        description="External links referenced (url, title, description)"
-    )
+  
     
     # Extraction metadata
     extraction_timestamp: Optional[str] = Field(None, description="When extraction occurred")

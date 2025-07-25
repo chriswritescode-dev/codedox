@@ -32,6 +32,11 @@ async def get_sources(db: Session = Depends(get_db)) -> List[Dict[str, Any]]:
     
     result = []
     for source in sources:
+        # Count actual snippets in database
+        snippet_count = db.query(CodeSnippet).join(Document).filter(
+            Document.crawl_job_id == source.id
+        ).count()
+        
         result.append({
             "id": str(source.id),
             "name": source.name,
@@ -40,7 +45,7 @@ async def get_sources(db: Session = Depends(get_db)) -> List[Dict[str, Any]]:
             "created_at": source.created_at.isoformat(),
             "updated_at": source.updated_at.isoformat(),
             "documents_count": len(source.documents),
-            "snippets_count": source.snippets_extracted,
+            "snippets_count": snippet_count,
         })
     
     return result
@@ -54,6 +59,11 @@ async def get_source(source_id: str, db: Session = Depends(get_db)) -> Dict[str,
     if not source:
         raise HTTPException(status_code=404, detail="Source not found")
     
+    # Count actual snippets in database
+    snippet_count = db.query(CodeSnippet).join(Document).filter(
+        Document.crawl_job_id == source.id
+    ).count()
+    
     return {
         "id": str(source.id),
         "name": source.name,
@@ -61,7 +71,7 @@ async def get_source(source_id: str, db: Session = Depends(get_db)) -> Dict[str,
         "created_at": source.created_at.isoformat(),
         "updated_at": source.updated_at.isoformat(),
         "documents_count": len(source.documents),
-        "snippets_count": source.snippets_extracted,
+        "snippets_count": snippet_count,
     }
 
 

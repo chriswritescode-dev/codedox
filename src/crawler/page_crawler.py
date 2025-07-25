@@ -14,6 +14,7 @@ from crawl4ai import (
     SemaphoreDispatcher,
 )
 from .llm_retry import LLMRetryExtractor
+from .html_code_extractor import HTMLCodeExtractor
 
 from .config import create_crawler_config, BrowserConfig
 from ..database import FailedPage, get_db_manager
@@ -49,6 +50,7 @@ class PageCrawler:
         self.db_manager = get_db_manager()
         self.settings = get_settings()
         self.llm_extractor = LLMRetryExtractor()
+        self.html_extractor = HTMLCodeExtractor()
 
     async def crawl_page(
         self,
@@ -102,7 +104,14 @@ class PageCrawler:
         )
 
         try:
+            # Check job status before starting
+            if await self._is_job_cancelled(job_id):
+                logger.info(f"Job {job_id} is already cancelled before starting crawl")
+                raise asyncio.CancelledError("Job cancelled before crawl started")
+            
+            logger.info(f"Creating AsyncWebCrawler with config: {self.browser_config}")
             async with AsyncWebCrawler(config=self.browser_config) as crawler:
+                logger.info(f"AsyncWebCrawler created successfully")
                 results = []
 
                 # Configure rate limiter and dispatcher
@@ -274,7 +283,12 @@ class PageCrawler:
         with self.db_manager.session_scope() as session:
             from ..database.models import CrawlJob
             job = session.query(CrawlJob).filter_by(id=job_id).first()
-            return job and job.status == "cancelled"
+            if job:
+                logger.debug(f"Job {job_id} status: {job.status}")
+                return job.status == "cancelled"
+            else:
+                logger.warning(f"Job {job_id} not found in database")
+                return False
     
     async def _extraction_worker(
         self,
@@ -352,9 +366,14 @@ class PageCrawler:
         depth: int
     ) -> Optional[CrawlResult]:
         """Process a single crawl result with LLM extraction."""
-        if not result.success:
-            logger.error(f"Failed to crawl {result.url}: {result.error_message}")
-            await self._record_failed_page(job_id, result.url, result.error_message)
+        try:
+            if not result.success:
+                logger.error(f"Failed to crawl {result.url}: {result.error_message}")
+                await self._record_failed_page(job_id, result.url, result.error_message)
+                return None
+        except AttributeError as e:
+            logger.error(f"Result object missing expected attributes: {e}")
+            logger.error(f"Result type: {type(result)}, Result: {result}")
             return None
             
         # Get depth from metadata if available
@@ -367,6 +386,26 @@ class PageCrawler:
         if not markdown_content:
             logger.warning(f"No markdown content extracted from {result.url}")
             return None
+        
+        # Test HTML extraction (debug mode)
+        logger.info(f"Checking for HTML content in result for {result.url}")
+        if hasattr(result, 'html') and result.html:
+            logger.info(f"HTML content found, length: {len(result.html)} chars. Testing HTML code extraction for {result.url}")
+            try:
+                html_blocks = self.html_extractor.extract_code_blocks(
+                    result.html, 
+                    result.url
+                )
+                if html_blocks:
+                    # Save to JSON file for analysis
+                    self._save_html_extraction_debug(result.url, html_blocks, job_id)
+                    logger.info(f"Found {len(html_blocks)} code blocks via HTML extraction for {result.url}")
+                else:
+                    logger.info(f"No code blocks found by HTML extractor for {result.url}")
+            except Exception as e:
+                logger.error(f"HTML extraction error: {e}", exc_info=True)
+        else:
+            logger.debug(f"No html available for {result.url}")
         
         # Extract title
         title = ""
@@ -406,6 +445,9 @@ class PageCrawler:
         logger.info(f"Content changed/new for {result.url}, performing LLM extraction")
         
         # Use LLM to extract code blocks
+        logger.debug(f"Sending {len(markdown_content)} chars to LLM for {result.url}")
+        logger.debug(f"First 500 chars of content being sent to LLM: {markdown_content[:500]}...")
+        
         extraction_result = await self.llm_extractor.extract_with_retry(
             markdown_content=markdown_content,
             url=result.url,
@@ -429,7 +471,6 @@ class PageCrawler:
             "success": True,
             "llm_page_metadata": extraction_result.page_metadata.model_dump(),
             "key_concepts": extraction_result.key_concepts,
-            "external_links": extraction_result.external_links,
             "extraction_method": "llm",
             "extraction_model": extraction_result.extraction_model,
             "extraction_timestamp": extraction_result.extraction_timestamp,
@@ -594,7 +635,6 @@ class PageCrawler:
             code_blocks=extracted_data.get("code_blocks", []),
             page_metadata=extracted_data["page_metadata"],
             key_concepts=extracted_data.get("key_concepts", []),
-            external_links=extracted_data.get("external_links", []),
             extraction_timestamp=extracted_data.get("extraction_timestamp"),
             extraction_model=extracted_data.get("extraction_model")
         )
@@ -627,7 +667,6 @@ class PageCrawler:
         # Add page metadata
         metadata["llm_page_metadata"] = extraction_result.page_metadata.model_dump()
         metadata["key_concepts"] = extraction_result.key_concepts
-        metadata["external_links"] = extraction_result.external_links
 
         return code_blocks
 
@@ -660,10 +699,77 @@ class PageCrawler:
         """Extract markdown content from result."""
         if hasattr(result, "markdown") and result.markdown:
             if isinstance(result.markdown, dict):
-                return result.markdown.get("fit_markdown", "")
+                # Prefer fit_markdown, fall back to raw_markdown
+                fit_markdown = result.markdown.get("fit_markdown")
+                raw_markdown = result.markdown.get("raw_markdown", "")
+                
+                if fit_markdown:
+                    logger.debug(f"Using fit_markdown for {result.url}")
+                    logger.debug(f"Fit markdown length: {len(fit_markdown)} chars")
+                    logger.debug(f"Raw markdown length: {len(raw_markdown)} chars (for comparison)")
+                    logger.debug(f"Reduction: {((len(raw_markdown) - len(fit_markdown)) / len(raw_markdown) * 100):.1f}%")
+                    return fit_markdown
+                else:
+                    logger.debug(f"No fit_markdown found for {result.url}, using raw_markdown")
+                    return raw_markdown
             elif isinstance(result.markdown, str):
+                logger.debug(f"Markdown is string type for {result.url}, length: {len(result.markdown)} chars")
                 return result.markdown
+        logger.debug(f"No markdown content found for {result.url}")
         return None
+
+    def _save_html_extraction_debug(self, url: str, html_blocks: List[Any], job_id: str) -> None:
+        """Save HTML extraction results to JSON file for analysis."""
+        import json
+        from pathlib import Path
+        from urllib.parse import urlparse
+        
+        # Create debug output directory in logs
+        debug_dir = Path("logs/html_extraction_debug")
+        debug_dir.mkdir(parents=True, exist_ok=True)
+        
+        # Create job-specific subdirectory
+        job_dir = debug_dir / job_id
+        job_dir.mkdir(exist_ok=True)
+        
+        # Create filename from URL
+        parsed_url = urlparse(url)
+        filename = f"{parsed_url.netloc}_{parsed_url.path.replace('/', '_')}.json"
+        filename = filename.replace("__", "_").strip("_")
+        if not filename or filename == ".json":
+            filename = "index.json"
+        
+        # Convert ExtractedCodeBlock objects to dict
+        blocks_data = []
+        for block in html_blocks:
+            blocks_data.append({
+                "code": block.code,
+                "language": block.language,
+                "container_hierarchy": block.container_hierarchy,
+                "context_before": block.context_before,
+                "context_after": block.context_after,
+                "container_type": block.container_type,
+                "title": block.title,
+                "description": block.description,
+                "code_length": len(block.code),
+                "has_context": bool(block.context_before or block.context_after)
+            })
+        
+        # Create output data
+        output_data = {
+            "url": url,
+            "extraction_timestamp": datetime.now(timezone.utc).isoformat(),
+            "total_blocks": len(html_blocks),
+            "blocks": blocks_data,
+            "stats": self.html_extractor.stats
+        }
+        
+        # Save to file
+        output_path = job_dir / filename
+        with open(output_path, 'w', encoding='utf-8') as f:
+            json.dump(output_data, f, indent=2, ensure_ascii=False)
+        
+        logger.info(f"Saved HTML extraction debug to: {output_path}")
 
     async def _record_failed_page(self, job_id: str, url: str, error_message: str) -> None:
         """Record a failed page.
