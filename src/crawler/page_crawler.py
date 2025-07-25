@@ -731,13 +731,16 @@ class PageCrawler:
                 "has_context": bool(block.context_before or block.context_after)
             })
         
-        # Create output data
+        # Create output data with JSON-serializable stats
+        stats_serializable = self.html_extractor.stats.copy()
+        stats_serializable['languages_found'] = list(stats_serializable['languages_found'])
+        
         output_data = {
             "url": url,
             "extraction_timestamp": datetime.now(timezone.utc).isoformat(),
             "total_blocks": len(html_blocks),
             "blocks": blocks_data,
-            "stats": self.html_extractor.stats
+            "stats": stats_serializable
         }
         
         # Save to file
