@@ -21,7 +21,7 @@ class SimpleCodeBlock:
 
 # Simple LLM prompt for getting descriptions
 DESCRIPTION_PROMPT = """
-Provide a concise, direct description (10-15 words max) of what this code does. Focus on the main action or purpose.
+Provide a concise, direct description (10-30 words max) of what this code does. Focus on the main action or purpose. Use the context provided to help you understand the purpose of the code.
 
 DO NOT start with "The code..." or "This code...". Be direct and specific.
 
@@ -29,7 +29,7 @@ Examples:
 - "Tests page title contains 'Playwright' text"  
 - "Clicks Get started link and verifies Installation heading"
 - "Creates isolated browser context for each test"
-- "Navigates to Playwright homepage"
+- "Demonstrates how to use implement Next.js Route Handlers"
 
 Context: {context}
 

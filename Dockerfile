@@ -22,11 +22,17 @@ RUN pip install --no-cache-dir --upgrade pip \
 # Runtime stage
 FROM python:3.10-slim
 
+# Install Node.js repository
+RUN apt-get update && apt-get install -y \
+    curl \
+    gnupg \
+    && curl -fsSL https://deb.nodesource.com/setup_18.x | bash -
+
 # Install runtime dependencies and Playwright requirements
 RUN apt-get update && apt-get install -y \
     libpq5 \
     wget \
-    gnupg \
+    nodejs \
     # Dependencies for Chromium/Playwright
     libnss3 \
     libnspr4 \
@@ -64,6 +70,11 @@ COPY --chown=codedox:codedox . .
 
 # Create necessary directories
 RUN mkdir -p logs && chown codedox:codedox logs
+
+# Install VS Code language detection dependencies
+WORKDIR /app/src/language_detector
+RUN npm install
+WORKDIR /app
 
 # Install Playwright browsers as root with proper setup
 USER root

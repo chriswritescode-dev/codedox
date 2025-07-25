@@ -449,7 +449,7 @@ class PageCrawler:
         html_blocks = []
         try:
             logger.info(f"HTML content found, extracting code blocks for {result.url}")
-            extracted_blocks = self.html_extractor.extract_code_blocks(
+            extracted_blocks = await self.html_extractor.extract_code_blocks(
                 html_content, 
                 result.url
             )
