@@ -2,10 +2,11 @@
 
 import logging
 import re
-from typing import List, Dict, Any, Optional, Tuple
+from typing import List, Dict, Any, Optional
 from bs4 import BeautifulSoup, NavigableString, Tag
 from dataclasses import dataclass, field
 from .code_formatter import CodeFormatter
+import os
 
 logger = logging.getLogger(__name__)
 
@@ -81,7 +82,7 @@ class HTMLCodeExtractor:
         }
         self.formatter = CodeFormatter()
     
-    def extract_code_blocks(self, html: str, url: str) -> List[ExtractedCodeBlock]:
+    async def extract_code_blocks(self, html: str, url: str) -> List[ExtractedCodeBlock]:
         """
         Extract all code blocks from HTML with their documentation context.
         
@@ -117,7 +118,7 @@ class HTMLCodeExtractor:
                     continue
                 
                 # Detect language first (needed for formatting)
-                language = self._detect_language(block)
+                language = await self._detect_language_async(block)
                 
                 # Format the code using language-specific rules
                 code_text = self.formatter.format_code(raw_code_text, language)
@@ -232,12 +233,322 @@ class HTMLCodeExtractor:
         return '\n'.join(cleaned_lines).strip()
     
     def _detect_language(self, element: Tag) -> Optional[str]:
-        """Detect programming language using content analysis."""
+        """Detect programming language using HTML classes and content analysis."""
         code_text = self._extract_code_text(element)
         if not code_text or len(code_text.strip()) < 10:
             return None
         
-        # Use simple but reliable pattern matching
+        # First check if language is specified in HTML classes
+        classes = element.get('class', [])
+        if classes:
+            for cls in classes:
+                # Common patterns: language-python, lang-js, highlight-java, etc.
+                if 'language-' in cls:
+                    lang = cls.split('language-')[-1].split()[0]
+                    return self._normalize_language_name(lang)
+                elif 'lang-' in cls:
+                    lang = cls.split('lang-')[-1].split()[0]
+                    return self._normalize_language_name(lang)
+        
+        # Check parent elements for language hints
+        parent = element.parent
+        while parent and parent.name != 'body':
+            parent_classes = parent.get('class', [])
+            if parent_classes:
+                for cls in parent_classes:
+                    if 'language-' in cls or 'lang-' in cls:
+                        lang = cls.split('-')[-1].split()[0]
+                        return self._normalize_language_name(lang)
+            parent = parent.parent
+        
+        # Use pattern-based detection
+        return self._pattern_based_detection(code_text)
+    
+    async def _detect_language_async(self, element: Tag) -> Optional[str]:
+        """Detect programming language using VS Code detection service if available."""
+        code_text = self._extract_code_text(element)
+        if not code_text or len(code_text.strip()) < 10:
+            return None
+        
+        # First check if language is specified in HTML classes
+        classes = element.get('class', [])
+        if classes:
+            for cls in classes:
+                # Common patterns: language-python, lang-js, highlight-java, etc.
+                if 'language-' in cls:
+                    lang = cls.split('language-')[-1].split()[0]
+                    return self._normalize_language_name(lang)
+                elif 'lang-' in cls:
+                    lang = cls.split('lang-')[-1].split()[0]
+                    return self._normalize_language_name(lang)
+        
+        # Check parent elements for language hints
+        parent = element.parent
+        while parent and parent.name != 'body':
+            parent_classes = parent.get('class', [])
+            if parent_classes:
+                for cls in parent_classes:
+                    if 'language-' in cls or 'lang-' in cls:
+                        lang = cls.split('-')[-1].split()[0]
+                        return self._normalize_language_name(lang)
+            parent = parent.parent
+        
+        # Extract context to get filename
+        context = self._extract_context(element)
+        filename = context.get('filename')
+        
+        # Check filename hints before VS Code detection
+        if filename:
+            lang_from_filename = self._get_language_from_filename(filename)
+            if lang_from_filename:
+                logger.debug(f"Language from filename '{filename}': {lang_from_filename}")
+                return lang_from_filename
+        
+        # Use VS Code detection
+        try:
+            from .vscode_language_detector import detect_language
+            
+            result = await detect_language(code_text)
+            if result.get('success') and result.get('topResult'):
+                top_result = result['topResult']
+                confidence = top_result.get('confidence', 0)
+                detected_lang = top_result['language']
+                
+                # Log all detections for debugging
+                logger.debug(f"VS Code result: {detected_lang} (confidence: {confidence:.3f})")
+                
+                # Use VS Code result if confidence is above threshold or if it's not plaintext
+                if confidence > 0.1 or (detected_lang != 'plaintext' and confidence > 0):
+                    logger.debug(f"VS Code detected: {detected_lang} (confidence: {confidence:.2f})")
+                    return self._normalize_language_name(detected_lang)
+                else:
+                    logger.debug(f"VS Code confidence too low: {confidence:.3f}, using pattern detection")
+        except Exception as e:
+            logger.error(f"VS Code language detection failed: {e}", exc_info=True)
+        
+        # Fall back to pattern-based detection
+        logger.debug("Falling back to pattern-based detection")
+        return self._pattern_based_detection(code_text)
+    
+    def _normalize_language_name(self, lang: str) -> str:
+        """Normalize language name to a standard format."""
+        lang = lang.lower().strip()
+        
+        # Common normalizations
+        language_map = {
+            'js': 'javascript',
+            'jsx': 'javascript',
+            'ts': 'typescript',
+            'tsx': 'typescript',
+            'py': 'python',
+            'py3': 'python',
+            'python3': 'python',
+            'sh': 'bash',
+            'shell': 'bash',
+            'zsh': 'bash',
+            'fish': 'bash',
+            'yml': 'yaml',
+            'c++': 'cpp',
+            'c#': 'csharp',
+            'objective-c': 'objc',
+            'objectivec': 'objc',
+            'golang': 'go',
+            'htm': 'html',
+            'xhtml': 'html',
+            'xml': 'html',
+            'rb': 'ruby',
+            'pl': 'perl',
+            'ps1': 'powershell',
+            'psm1': 'powershell',
+            'kt': 'kotlin',
+            'rs': 'rust',
+            'md': 'markdown',
+            'tex': 'latex',
+            'r': 'r',
+            'sql': 'sql',
+            'postgresql': 'sql',
+            'mysql': 'sql',
+            'sqlite': 'sql',
+            'shellscript': 'shell',
+            'bat': 'batch',
+            'cmd': 'batch',
+        }
+        
+        return language_map.get(lang, lang)
+    
+    def _get_language_from_filename(self, filename: str) -> Optional[str]:
+        """Determine language from filename or extension."""
+        if not filename:
+            return None
+        
+        filename = filename.strip().lower()
+        
+        # Special filenames without extensions
+        special_files = {
+            'dockerfile': 'dockerfile',
+            'makefile': 'makefile',
+            'gemfile': 'ruby',
+            'rakefile': 'ruby',
+            'gulpfile': 'javascript',
+            'gruntfile': 'javascript',
+            'vagrantfile': 'ruby',
+            'jenkinsfile': 'groovy',
+            'podfile': 'ruby',
+            'cartfile': 'swift',
+            'appfile': 'ruby',
+            'fastfile': 'ruby',
+            'snapfile': 'ruby',
+            'scanfile': 'ruby',
+            '.gitignore': 'gitignore',
+            '.dockerignore': 'dockerignore',
+            '.env': 'env',
+            '.babelrc': 'json',
+            '.eslintrc': 'json',
+            '.prettierrc': 'json',
+            'tsconfig.json': 'json',
+            'package.json': 'json',
+            'composer.json': 'json',
+            'cargo.toml': 'toml',
+            'pyproject.toml': 'toml',
+            'go.mod': 'go',
+            'go.sum': 'go',
+            'requirements.txt': 'text',
+            'readme.md': 'markdown',
+            'changelog.md': 'markdown',
+        }
+        
+        # Check special filenames first
+        base_name = os.path.basename(filename)
+        if base_name in special_files:
+            return special_files[base_name]
+        
+        # Extract extension
+        ext_match = re.search(r'\.([a-zA-Z0-9]+)$', filename)
+        if not ext_match:
+            return None
+        
+        ext = ext_match.group(1)
+        
+        # Extension to language mapping
+        ext_map = {
+            # JavaScript/TypeScript
+            'js': 'javascript',
+            'jsx': 'javascript',
+            'ts': 'typescript',
+            'tsx': 'typescript',
+            'mjs': 'javascript',
+            'cjs': 'javascript',
+            
+            # Python
+            'py': 'python',
+            'pyw': 'python',
+            'pyx': 'python',
+            'pxd': 'python',
+            'pyi': 'python',
+            
+            # Web
+            'html': 'html',
+            'htm': 'html',
+            'xhtml': 'html',
+            'xml': 'xml',
+            'css': 'css',
+            'scss': 'scss',
+            'sass': 'sass',
+            'less': 'less',
+            
+            # Data formats
+            'json': 'json',
+            'yaml': 'yaml',
+            'yml': 'yaml',
+            'toml': 'toml',
+            'ini': 'ini',
+            'cfg': 'ini',
+            'conf': 'conf',
+            
+            # Shell
+            'sh': 'shell',
+            'bash': 'bash',
+            'zsh': 'zsh',
+            'fish': 'fish',
+            'ps1': 'powershell',
+            'psm1': 'powershell',
+            'psd1': 'powershell',
+            'bat': 'batch',
+            'cmd': 'batch',
+            
+            # Systems languages
+            'c': 'c',
+            'h': 'c',
+            'cpp': 'cpp',
+            'cxx': 'cpp',
+            'cc': 'cpp',
+            'hpp': 'cpp',
+            'hxx': 'cpp',
+            'hh': 'cpp',
+            'rs': 'rust',
+            'go': 'go',
+            'zig': 'zig',
+            
+            # JVM languages
+            'java': 'java',
+            'kt': 'kotlin',
+            'kts': 'kotlin',
+            'scala': 'scala',
+            'clj': 'clojure',
+            'cljs': 'clojure',
+            'groovy': 'groovy',
+            
+            # .NET languages
+            'cs': 'csharp',
+            'fs': 'fsharp',
+            'vb': 'vbnet',
+            
+            # Mobile
+            'swift': 'swift',
+            'm': 'objc',
+            'mm': 'objc',
+            
+            # Database
+            'sql': 'sql',
+            'psql': 'sql',
+            'mysql': 'sql',
+            
+            # Others
+            'rb': 'ruby',
+            'php': 'php',
+            'pl': 'perl',
+            'lua': 'lua',
+            'r': 'r',
+            'R': 'r',
+            'jl': 'julia',
+            'ex': 'elixir',
+            'exs': 'elixir',
+            'erl': 'erlang',
+            'hrl': 'erlang',
+            'nim': 'nim',
+            'nims': 'nim',
+            'dart': 'dart',
+            'pas': 'pascal',
+            'pp': 'pascal',
+            'asm': 'asm',
+            's': 'asm',
+            
+            # Documentation
+            'md': 'markdown',
+            'mdx': 'mdx',
+            'rst': 'rst',
+            'tex': 'latex',
+            'adoc': 'asciidoc',
+            
+            # Config files
+            'nginx': 'nginx',
+            'htaccess': 'apache',
+        }
+        
+        return ext_map.get(ext)
+    
+    def _pattern_based_detection(self, code_text: str) -> str:
+        """Pattern-based detection for programming languages."""
         code_lower = code_text.lower()
         
         # Shell/Bash patterns (check first to avoid conflicts with 'export')
@@ -259,14 +570,6 @@ class HTMLCodeExtractor:
         # Python patterns
         elif any(pattern in code_text for pattern in ['def ', 'import ', 'from ', 'class ', 'if __name__']):
             return 'python'
-        
-        # HTML patterns
-        elif any(pattern in code_lower for pattern in ['<html', '<div', '<span', '<p>', '</div>', '</html>']):
-            return 'html'
-        
-        # CSS patterns
-        elif any(pattern in code_text for pattern in ['{', '}', ': ', ';']) and any(prop in code_lower for prop in ['color:', 'margin:', 'padding:', 'display:']):
-            return 'css'
         
         # Default to text if no patterns match
         return 'text'
@@ -296,7 +599,8 @@ class HTMLCodeExtractor:
             'after': [],
             'hierarchy': [],
             'title': None,
-            'description': None
+            'description': None,
+            'filename': None
         }
         
         # Walk up the DOM tree to find context
@@ -325,6 +629,30 @@ class HTMLCodeExtractor:
                     title_text = title_elem.get_text(separator=' ', strip=True)
                     if title_text:
                         context['title'] = title_text
+            
+            # Look for filename in this container
+            if not context['filename']:
+                # Check for common filename indicators
+                filename_elem = None
+                
+                # Check for elements with filename-related classes
+                for elem in parent.find_all(['div', 'span', 'code']):
+                    elem_classes = elem.get('class', [])
+                    if any('filename' in cls.lower() or 'file-name' in cls.lower() 
+                           or 'code-title' in cls.lower() for cls in elem_classes):
+                        filename_elem = elem
+                        break
+                
+                # Check for data attributes
+                if not filename_elem and parent.get('data-filename'):
+                    context['filename'] = parent.get('data-filename')
+                elif not filename_elem and parent.get('title') and '.' in parent.get('title'):
+                    # Sometimes filename is in title attribute
+                    context['filename'] = parent.get('title')
+                elif filename_elem:
+                    filename_text = filename_elem.get_text(strip=True)
+                    if filename_text and ('.' in filename_text or filename_text in ['Dockerfile', 'Makefile']):
+                        context['filename'] = filename_text
             
             # Get context from siblings at this level
             # Previous siblings (context before)
@@ -355,6 +683,19 @@ class HTMLCodeExtractor:
             
             current = parent
             levels_up += 1
+        
+        # Extract filename from context if not found
+        if not context['filename'] and context['before']:
+            # Look for filename patterns in context
+            for text in context['before']:
+                # Common patterns: "app/page.tsx", "src/index.js", "package.json"
+                if ('/' in text or '.' in text) and len(text) < 100:
+                    # Check if it looks like a filename
+                    import re
+                    filename_pattern = r'^[\w\-/]+\.\w+$|^Dockerfile$|^Makefile$|^\.[\w]+$'
+                    if re.match(filename_pattern, text.strip()):
+                        context['filename'] = text.strip()
+                        break
         
         # Set description from first paragraph in context
         if context['before'] and not context['description']:
