@@ -6,6 +6,7 @@ import {
   Briefcase,
   Menu,
   X,
+  Upload,
 } from "lucide-react";
 import { useState } from "react";
 
@@ -14,6 +15,7 @@ const navigation = [
   { name: "Search", href: "/search", icon: Search },
   { name: "Sources", href: "/sources", icon: Database },
   { name: "Crawl Jobs", href: "/crawl", icon: Briefcase },
+  { name: "Upload", href: "/upload", icon: Upload },
 ];
 
 export default function Layout() {
