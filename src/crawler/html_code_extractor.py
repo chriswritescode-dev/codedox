@@ -5,6 +5,7 @@ import re
 from typing import List, Dict, Any, Optional, Tuple
 from bs4 import BeautifulSoup, NavigableString, Tag
 from dataclasses import dataclass, field
+from .code_formatter import CodeFormatter
 
 logger = logging.getLogger(__name__)
 
@@ -78,6 +79,7 @@ class HTMLCodeExtractor:
             'blocks_by_type': {},
             'languages_found': set()
         }
+        self.formatter = CodeFormatter()
     
     def extract_code_blocks(self, html: str, url: str) -> List[ExtractedCodeBlock]:
         """
@@ -108,18 +110,21 @@ class HTMLCodeExtractor:
                 block['data-processed'] = 'true'
                 
                 # Extract the code content
-                code_text = self._extract_code_text(block)
+                raw_code_text = self._extract_code_text(block)
                 
                 # Skip empty or very short code blocks (likely inline code)
-                if not code_text or len(code_text.strip()) < 10:
+                if not raw_code_text or len(raw_code_text.strip()) < 10:
                     continue
                 
-                # Skip inline code in sentences (unless it's multi-line)
+                # Detect language first (needed for formatting)
+                language = self._detect_language(block)
+                
+                # Format the code using language-specific rules
+                code_text = self.formatter.format_code(raw_code_text, language)
+                
+                # Skip inline code in sentences (unless it's multi-line after formatting)
                 if self._is_inline_code(block) and '\n' not in code_text:
                     continue
-                
-                # Detect language
-                language = self._detect_language(block)
                 
                 # Extract surrounding context
                 context = self._extract_context(block)
@@ -227,34 +232,44 @@ class HTMLCodeExtractor:
         return '\n'.join(cleaned_lines).strip()
     
     def _detect_language(self, element: Tag) -> Optional[str]:
-        """Detect programming language from element classes."""
-        # Check element and its parents for language classes
-        parents_list = list(element.parents)[:3]  # Convert generator to list
-        for elem in [element] + parents_list:
-            if not isinstance(elem, Tag):
-                continue
-                
-            classes = elem.get('class', []) if elem else []
-            
-            # Common patterns: language-python, lang-js, highlight-javascript
-            for cls in classes:
-                # Direct language class
-                match = re.search(r'(?:language|lang|highlight)[-_](\w+)', cls)
-                if match:
-                    return match.group(1).lower()
-                
-                # Some systems just use the language name as class
-                common_langs = {'python', 'javascript', 'java', 'go', 'rust', 'typescript', 
-                               'bash', 'shell', 'json', 'yaml', 'xml', 'html', 'css'}
-                if cls.lower() in common_langs:
-                    return cls.lower()
+        """Detect programming language using content analysis."""
+        code_text = self._extract_code_text(element)
+        if not code_text or len(code_text.strip()) < 10:
+            return None
         
-        # Check data attributes
-        lang_attr = element.get('data-language') or element.get('data-lang')
-        if lang_attr:
-            return lang_attr.lower()
+        # Use simple but reliable pattern matching
+        code_lower = code_text.lower()
         
-        return None
+        # Shell/Bash patterns (check first to avoid conflicts with 'export')
+        if any(pattern in code_text for pattern in ['#!/bin/bash', '#!/bin/sh']) or (code_text.startswith('#!') and 'bash' in code_lower):
+            return 'bash'
+        elif 'echo ' in code_text and ('$' in code_text or code_text.strip().startswith('export ')):
+            return 'bash'
+        
+        # JSON pattern (check early as it's very specific)
+        elif code_text.strip().startswith('{') and code_text.strip().endswith('}') and '"' in code_text:
+            return 'json'
+        
+        # TypeScript/JavaScript patterns
+        elif any(pattern in code_text for pattern in [': string', ': number', ': boolean', 'interface ', 'type ']):
+            return 'typescript'
+        elif any(pattern in code_text for pattern in ['function ', 'const ', 'let ', 'var ', '=>', 'export ', 'import ']):
+            return 'javascript'
+        
+        # Python patterns
+        elif any(pattern in code_text for pattern in ['def ', 'import ', 'from ', 'class ', 'if __name__']):
+            return 'python'
+        
+        # HTML patterns
+        elif any(pattern in code_lower for pattern in ['<html', '<div', '<span', '<p>', '</div>', '</html>']):
+            return 'html'
+        
+        # CSS patterns
+        elif any(pattern in code_text for pattern in ['{', '}', ': ', ';']) and any(prop in code_lower for prop in ['color:', 'margin:', 'padding:', 'display:']):
+            return 'css'
+        
+        # Default to text if no patterns match
+        return 'text'
     
     def _is_inline_code(self, element: Tag) -> bool:
         """Check if this is inline code (not a block)."""

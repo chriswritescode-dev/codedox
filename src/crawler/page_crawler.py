@@ -13,8 +13,9 @@ from crawl4ai import (
     RateLimiter,
     SemaphoreDispatcher,
 )
-from .llm_retry import LLMRetryExtractor
+from .llm_retry import LLMDescriptionGenerator
 from .html_code_extractor import HTMLCodeExtractor
+from .extraction_models import SimpleCodeBlock
 
 from .config import create_crawler_config, BrowserConfig
 from ..database import FailedPage, get_db_manager
@@ -49,7 +50,7 @@ class PageCrawler:
         self.browser_config = browser_config
         self.db_manager = get_db_manager()
         self.settings = get_settings()
-        self.llm_extractor = LLMRetryExtractor()
+        self.description_generator = LLMDescriptionGenerator()
         self.html_extractor = HTMLCodeExtractor()
 
     async def crawl_page(
@@ -142,7 +143,9 @@ class PageCrawler:
                 logger.info(f"Starting {worker_count} LLM extraction workers with semaphore limit {llm_parallel_limit}")
                 
                 workers = []
+                logger.info(f"Creating {worker_count} extraction workers")
                 for i in range(worker_count):
+                    logger.debug(f"Creating worker {i+1}")
                     worker = asyncio.create_task(
                         self._extraction_worker(
                             extraction_queue, 
@@ -154,6 +157,7 @@ class PageCrawler:
                         )
                     )
                     workers.append(worker)
+                logger.info(f"All {worker_count} workers created")
                 
                 # Track progress
                 crawl_progress = {
@@ -169,6 +173,14 @@ class PageCrawler:
                 )
 
                 try:
+                    # Create crawler run config
+                    crawler_run_config = create_crawler_config(
+                        max_depth=max_depth,
+                        domain_restrictions=job_config.get("domain_restrictions") if job_config else None,
+                        include_patterns=job_config.get("include_patterns") if job_config else None,
+                        exclude_patterns=job_config.get("exclude_patterns") if job_config else None,
+                    )
+                    
                     # Check if streaming is supported
                     result_container = await crawler.arun(
                         url, config=crawler_run_config, dispatcher=dispatcher
@@ -269,11 +281,14 @@ class PageCrawler:
 
                 return results if results else None
 
-        except asyncio.CancelledError:
-            logger.info(f"Crawl cancelled for {url}")
+        except asyncio.CancelledError as e:
+            logger.info(f"Crawl cancelled for {url}: {e}")
+            # Let's see the full stack trace for debugging
+            import traceback
+            logger.info(f"Cancellation stack trace: {traceback.format_exc()}")
             raise
         except Exception as e:
-            logger.error(f"Error crawling {url}: {e}")
+            logger.error(f"Error crawling {url}: {e}", exc_info=True)
             if "cancelled" not in str(e).lower():
                 await self._record_failed_page(job_id, url, str(e))
             return None
@@ -284,11 +299,12 @@ class PageCrawler:
             from ..database.models import CrawlJob
             job = session.query(CrawlJob).filter_by(id=job_id).first()
             if job:
-                logger.debug(f"Job {job_id} status: {job.status}")
-                return job.status == "cancelled"
+                is_cancelled = bool(job.status == "cancelled")
+                logger.info(f"Job {job_id} status: {job.status}, is_cancelled: {is_cancelled}")
+                return is_cancelled
             else:
                 logger.warning(f"Job {job_id} not found in database")
-                return False
+                return True  # If job not found, consider it cancelled to stop processing
     
     async def _extraction_worker(
         self,
@@ -300,20 +316,20 @@ class PageCrawler:
         progress_tracker: Optional[Any] = None
     ) -> None:
         """Worker that extracts code from markdown content."""
+        logger.info(f"Extraction worker started for job {job_id}")
         while True:
             try:
                 result = await extraction_queue.get()
                 if result is None:  # Shutdown signal
                     break
                 
-                async with semaphore:
-                    # Process the crawl result
-                    processed_result = await self._process_crawl_result_with_llm(
-                        result, job_id, depth
-                    )
-                    
-                    if processed_result:
-                        await processed_results.put(processed_result)
+                # Process the crawl result (semaphore used internally for LLM calls)
+                processed_result = await self._process_crawl_result_with_html_extraction(
+                    result, job_id, depth, llm_semaphore=semaphore
+                )
+                
+                if processed_result:
+                    await processed_results.put(processed_result)
                         
             except Exception as e:
                 logger.error(f"Error in extraction worker: {e}")
@@ -359,13 +375,14 @@ class PageCrawler:
                         send_notification=True
                     )
 
-    async def _process_crawl_result_with_llm(
+    async def _process_crawl_result_with_html_extraction(
         self, 
         result: Any, 
         job_id: str, 
-        depth: int
+        depth: int,
+        llm_semaphore: Optional[asyncio.Semaphore] = None
     ) -> Optional[CrawlResult]:
-        """Process a single crawl result with LLM extraction."""
+        """Process a single crawl result with HTML extraction + LLM descriptions."""
         try:
             if not result.success:
                 logger.error(f"Failed to crawl {result.url}: {result.error_message}")
@@ -381,31 +398,17 @@ class PageCrawler:
         if hasattr(result, "metadata") and result.metadata and "depth" in result.metadata:
             page_depth = result.metadata["depth"]
 
-        # Extract markdown content
-        markdown_content = self._extract_markdown_content(result)
-        if not markdown_content:
-            logger.warning(f"No markdown content extracted from {result.url}")
+        # Extract HTML content for HTML-based extraction
+        html_content = getattr(result, 'html', None)
+        if not html_content:
+            logger.warning(f"No HTML content found in result for {result.url}")
             return None
         
-        # Test HTML extraction (debug mode)
-        logger.info(f"Checking for HTML content in result for {result.url}")
-        if hasattr(result, 'html') and result.html:
-            logger.info(f"HTML content found, length: {len(result.html)} chars. Testing HTML code extraction for {result.url}")
-            try:
-                html_blocks = self.html_extractor.extract_code_blocks(
-                    result.html, 
-                    result.url
-                )
-                if html_blocks:
-                    # Save to JSON file for analysis
-                    self._save_html_extraction_debug(result.url, html_blocks, job_id)
-                    logger.info(f"Found {len(html_blocks)} code blocks via HTML extraction for {result.url}")
-                else:
-                    logger.info(f"No code blocks found by HTML extractor for {result.url}")
-            except Exception as e:
-                logger.error(f"HTML extraction error: {e}", exc_info=True)
-        else:
-            logger.debug(f"No html available for {result.url}")
+        # Also get markdown for content hash comparison (for change detection)
+        markdown_content = self._extract_markdown_content(result)
+        if not markdown_content:
+            logger.warning(f"No markdown content for content hash from {result.url}")
+            return None
         
         # Extract title
         title = ""
@@ -423,71 +426,151 @@ class PageCrawler:
             )
             
             if content_unchanged:
-                logger.info(f"Content unchanged for {result.url}, skipping LLM extraction. "
+                logger.info(f"Content unchanged for {result.url}, skipping extraction. "
                            f"Using {existing_snippet_count} existing snippets.")
                 
-                # Create result without LLM extraction
                 return CrawlResult(
                     url=result.url,
                     title=title,
                     content=markdown_content,
                     content_hash=content_hash,
-                    code_blocks=[],  # Empty since we're reusing existing
+                    code_blocks=[],
                     metadata={
                         "depth": page_depth,
                         "content_unchanged": True,
                         "existing_snippet_count": existing_snippet_count,
-                        "skipped_llm_extraction": True
+                        "skipped_extraction": True
                     }
                 )
         
-        # Content changed or new - proceed with LLM extraction
-        logger.info(f"Content changed/new for {result.url}, performing LLM extraction")
+        # Content changed or new - extract code blocks from HTML
+        logger.info(f"Content changed/new for {result.url}, performing HTML extraction")
         
-        # Use LLM to extract code blocks
-        logger.debug(f"Sending {len(markdown_content)} chars to LLM for {result.url}")
-        logger.debug(f"First 500 chars of content being sent to LLM: {markdown_content[:500]}...")
+        html_blocks = []
+        try:
+            logger.info(f"HTML content found, extracting code blocks for {result.url}")
+            extracted_blocks = self.html_extractor.extract_code_blocks(
+                html_content, 
+                result.url
+            )
+                
+            # Convert to SimpleCodeBlock format
+            for block in extracted_blocks:
+                simple_block = SimpleCodeBlock(
+                    code=block.code,
+                    language=block.language,
+                    container_type=block.container_type,
+                    context_before=block.context_before,
+                    context_after=block.context_after,
+                    source_url=result.url
+                )
+                html_blocks.append(simple_block)
+                
+            logger.info(f"Found {len(html_blocks)} code blocks via HTML extraction for {result.url}")
+            
+            # Save debug output
+            self._save_html_extraction_debug(result.url, extracted_blocks, job_id)
+                
+        except Exception as e:
+            logger.error(f"HTML extraction error for {result.url}: {e}", exc_info=True)
         
-        extraction_result = await self.llm_extractor.extract_with_retry(
-            markdown_content=markdown_content,
-            url=result.url,
-            title=title
-        )
+        if not html_blocks:
+            logger.info(f"No code blocks found for {result.url}")
+            return CrawlResult(
+                url=result.url,
+                title=title,
+                content=markdown_content,
+                content_hash=content_hash,
+                code_blocks=[],
+                metadata={
+                    "depth": page_depth,
+                    "extraction_method": "html",
+                    "blocks_found": 0
+                },
+                markdown_content=markdown_content
+            )
         
-        if not extraction_result:
-            logger.error(f"LLM extraction failed for {result.url}")
-            await self._record_failed_page(job_id, result.url, "LLM extraction failed")
-            # Mark job as failed if this is a critical error
-            # The job manager will handle this through health monitoring
-            return None
-        
-        # Convert extraction result to code blocks format
-        code_blocks = self._convert_extraction_to_blocks(extraction_result)
-        
-        # Create CrawlResult with extracted code blocks
-        metadata = {
-            "depth": page_depth,
-            "status_code": 200,
-            "success": True,
-            "llm_page_metadata": extraction_result.page_metadata.model_dump(),
-            "key_concepts": extraction_result.key_concepts,
-            "extraction_method": "llm",
-            "extraction_model": extraction_result.extraction_model,
-            "extraction_timestamp": extraction_result.extraction_timestamp,
-        }
-        
-        crawl_result = CrawlResult(
-            url=result.url,
-            title=title,
-            content=markdown_content,
-            content_hash=content_hash,
-            code_blocks=code_blocks,
-            metadata=metadata,
-            markdown_content=markdown_content,
-        )
-        
-        logger.info(f"Successfully extracted {len(code_blocks)} code blocks from {result.url}")
-        return crawl_result
+        # Generate LLM descriptions for code blocks
+        logger.info(f"Generating descriptions for {len(html_blocks)} code blocks from {result.url}")
+        try:
+            # Use the provided semaphore or create one if not provided
+            if llm_semaphore is None:
+                llm_parallel_limit = int(os.getenv('CODE_LLM_NUM_PARALLEL', '5'))
+                llm_semaphore = asyncio.Semaphore(llm_parallel_limit)
+            
+            blocks_with_descriptions = await self.description_generator.generate_descriptions_batch(
+                html_blocks, result.url, semaphore=llm_semaphore
+            )
+            
+            # Convert to the format expected by result processor
+            processed_blocks = []
+            for block in blocks_with_descriptions:
+                # Generate title from description if not provided
+                if not block.title and block.description:
+                    # Use first few words of description as title
+                    words = block.description.split()[:5]
+                    block.title = " ".join(words)
+                    if len(block.description.split()) > 5:
+                        block.title += "..."
+                
+                processed_blocks.append({
+                    'code': block.code,
+                    'language': block.language or 'text',
+                    'title': block.title or 'Code Block',
+                    'description': block.description or 'No description available',
+                    'source_url': block.source_url,
+                    'metadata': {
+                        'container_type': block.container_type,
+                        'extraction_method': 'html_llm'
+                    }
+                })
+            
+            logger.info(f"Successfully processed {len(processed_blocks)} code blocks for {result.url}")
+            
+            return CrawlResult(
+                url=result.url,
+                title=title,
+                content=markdown_content,
+                content_hash=content_hash,
+                code_blocks=processed_blocks,
+                metadata={
+                    "depth": page_depth,
+                    "extraction_method": "html_llm",
+                    "blocks_found": len(processed_blocks)
+                },
+                markdown_content=markdown_content
+            )
+            
+        except Exception as e:
+            logger.error(f"Error generating descriptions for {result.url}: {e}")
+            # Fall back to blocks without descriptions
+            fallback_blocks = []
+            for block in html_blocks:
+                fallback_blocks.append({
+                    'code': block.code,
+                    'language': block.language or 'text',
+                    'title': 'Code Block',
+                    'description': f"Code block in {block.language or 'unknown'} language",
+                    'source_url': block.source_url,
+                    'metadata': {
+                        'container_type': block.container_type,
+                        'extraction_method': 'html_only'
+                    }
+                })
+            
+            return CrawlResult(
+                url=result.url,
+                title=title,
+                content=markdown_content,
+                content_hash=content_hash,
+                code_blocks=fallback_blocks,
+                metadata={
+                    "depth": page_depth,
+                    "extraction_method": "html_only",
+                    "blocks_found": len(fallback_blocks)
+                },
+                markdown_content=markdown_content
+            )
 
 
     async def _process_crawl_result(
@@ -546,7 +629,9 @@ class PageCrawler:
             code_blocks = []
             if hasattr(result, "extracted_content") and result.extracted_content:
                 try:
-                    code_blocks = self._process_llm_extraction(result.extracted_content, metadata)
+                    # Legacy method - this path should not be used anymore
+                    logger.warning(f"Legacy extraction path used for {result.url} - this should be updated")
+                    code_blocks = []
                 except Exception as e:
                     logger.error(f"Error processing LLM extracted content: {e}")
                     metadata["llm_extraction_failed"] = True
@@ -585,115 +670,6 @@ class PageCrawler:
             logger.error(f"Error converting result: {e}")
             return None
 
-    def _process_llm_extraction(self, extracted_content: Any, metadata: Dict[str, Any]) -> List[Dict[str, Any]]:
-        """Process LLM extracted content into code blocks."""
-        import json
-        from .extraction_models import LLMExtractionResult
-
-        # Parse extracted content
-        if isinstance(extracted_content, str):
-            extracted_data: Dict[str, Any] = json.loads(extracted_content)
-        else:
-            extracted_data: Dict[str, Any] = extracted_content
-
-        # Handle error responses
-        if isinstance(extracted_data, list) and len(extracted_data) > 0:
-            first_item = extracted_data[0]
-            if isinstance(first_item, dict) and first_item.get("error") == True:
-                error_msg = first_item.get("content", "Unknown extraction error")
-                raise ValueError(f"LLM extraction failed: {error_msg}")
-
-        # Handle different response formats
-        if isinstance(extracted_data, list) and len(extracted_data) == 1:
-            extracted_data = extracted_data[0]
-
-        # Handle legacy format
-        if isinstance(extracted_data, dict) and "blocks" in extracted_data and "code_blocks" not in extracted_data:
-            logger.warning("LLM returned 'blocks' instead of 'code_blocks', transforming...")
-            blocks = extracted_data.pop("blocks")
-            extracted_data["code_blocks"] = [
-                {**block, "code": block.pop("content")} if "content" in block and "code" not in block else block
-                for block in blocks
-            ]
-
-        # Ensure required fields
-        if "extraction_timestamp" not in extracted_data:
-            extracted_data["extraction_timestamp"] = datetime.now().isoformat()
-        if "extraction_model" not in extracted_data:
-            extracted_data["extraction_model"] = self.settings.code_extraction.llm_extraction_model
-        
-        # Ensure page_metadata exists with required fields
-        if "page_metadata" not in extracted_data:
-            extracted_data["page_metadata"] = {
-                "main_topic": "Unknown",
-                "page_type": "unknown",
-                "technologies": []
-            }
-
-        # Validate with Pydantic
-        extraction_result = LLMExtractionResult(
-            code_blocks=extracted_data.get("code_blocks", []),
-            page_metadata=extracted_data["page_metadata"],
-            key_concepts=extracted_data.get("key_concepts", []),
-            extraction_timestamp=extracted_data.get("extraction_timestamp"),
-            extraction_model=extracted_data.get("extraction_model")
-        )
-
-        logger.info(f"LLM extraction result: {len(extraction_result.code_blocks)} code blocks found")
-
-        # Convert to our format
-        code_blocks = []
-        for block in extraction_result.code_blocks:
-            code_blocks.append({
-                'code': block.code,
-                'language': block.language,
-                'title': block.title,
-                'filename': block.filename,
-                'description': block.description,
-                'extraction_method': 'llm',
-                'metadata': {
-                    'purpose': block.purpose,
-                    'frameworks': block.frameworks,
-                    'keywords': block.keywords,
-                    'dependencies': block.dependencies,
-                    'section': block.section,
-                    'prerequisites': block.prerequisites,
-                    'relationships': [r.model_dump() for r in block.relationships],
-                    'extraction_model': extraction_result.extraction_model,
-                    'extraction_timestamp': extraction_result.extraction_timestamp,
-                },
-            })
-
-        # Add page metadata
-        metadata["llm_page_metadata"] = extraction_result.page_metadata.model_dump()
-        metadata["key_concepts"] = extraction_result.key_concepts
-
-        return code_blocks
-
-    def _convert_extraction_to_blocks(self, extraction_result) -> List[Dict[str, Any]]:
-        """Convert LLMExtractionResult to code blocks format."""
-        code_blocks = []
-        for block in extraction_result.code_blocks:
-            code_blocks.append({
-                'code': block.code,
-                'language': block.language,
-                'title': block.title,
-                'filename': block.filename,
-                'description': block.description,
-                'extraction_method': 'llm',
-                'metadata': {
-                    'purpose': block.purpose,
-                    'frameworks': block.frameworks,
-                    'keywords': block.keywords,
-                    'dependencies': block.dependencies,
-                    'section': block.section,
-                    'prerequisites': block.prerequisites,
-                    'relationships': [r.model_dump() for r in block.relationships],
-                    'extraction_model': extraction_result.extraction_model,
-                    'extraction_timestamp': extraction_result.extraction_timestamp,
-                },
-            })
-        return code_blocks
 
     def _extract_markdown_content(self, result: Any) -> Optional[str]:
         """Extract markdown content from result."""
