@@ -7,6 +7,7 @@ import SourceDetail from './pages/SourceDetail'
 import CrawlJobs from './pages/CrawlJobs'
 import CrawlDetail from './pages/CrawlDetail'
 import SnippetDetail from './pages/SnippetDetail'
+import Upload from './pages/Upload'
 
 function App() {
   return (
@@ -19,6 +20,7 @@ function App() {
         <Route path="crawl" element={<CrawlJobs />} />
         <Route path="crawl/:id" element={<CrawlDetail />} />
         <Route path="snippets/:id" element={<SnippetDetail />} />
+        <Route path="upload" element={<Upload />} />
       </Route>
     </Routes>
   )

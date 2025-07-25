@@ -270,6 +270,51 @@ class APIClient {
   async getSnippet(id: string): Promise<CodeSnippet> {
     return this.fetch<CodeSnippet>(`/snippets/${id}`)
   }
+
+  // Upload
+  async uploadMarkdown(data: {
+    content: string
+    source_url: string
+    title?: string
+  }): Promise<{
+    status: string
+    document_id: string
+    snippets_count: number
+    message: string
+  }> {
+    return this.fetch('/upload/markdown', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify(data)
+    })
+  }
+
+  async uploadFile(
+    file: File,
+    sourceUrl: string,
+    title?: string
+  ): Promise<{
+    status: string
+    document_id: string
+    snippets_count: number
+    message: string
+  }> {
+    const formData = new FormData()
+    formData.append('file', file)
+    if (sourceUrl) formData.append('source_url', sourceUrl)
+    if (title) formData.append('title', title)
+
+    return this.fetch('/upload/file', {
+      method: 'POST',
+      body: formData
+    })
+  }
 }
 
 export const api = new APIClient()
+
+// Export individual methods for convenience
+export const uploadMarkdown = api.uploadMarkdown.bind(api)
+export const uploadFile = api.uploadFile.bind(api)
