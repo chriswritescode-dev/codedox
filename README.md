@@ -16,34 +16,49 @@ A powerful system for crawling documentation websites, extracting code snippets,
 
 ## Architecture
 
-```
-┌─────────────────┐     ┌─────────────────┐     ┌─────────────────┐
-│    Web UI       │────▶│   FastAPI       │────▶│   PostgreSQL    │
-│ (React + Vite)  │     │   Server        │     │  (Full-Text)    │
-└─────────────────┘     └─────────────────┘     └─────────────────┘
-                              │
-┌─────────────────┐           │
-│   MCP Client    │────▶│ MCP Tools │
-│  (AI Assistant) │     │           │
-└─────────────────┘     └───────────┘
-                              │
-                              ▼
-                       ┌─────────────────┐
-                       │   Crawl4AI      │
-                       │  (Web Crawler)  │
-                       └─────────────────┘
-                              │
-                              ▼
-                       ┌─────────────────┐
-                       │ HTML Extraction │
-                       │ (BeautifulSoup) │
-                       └─────────────────┘
-                              │
-                              ▼
-                       ┌─────────────────┐
-                       │ LLM Description │
-                       │   Generator     │
-                       └─────────────────┘
+```mermaid
+graph TB
+    subgraph "Frontend"
+        UI[Web UI<br/>React + Vite + TypeScript]
+    end
+    
+    subgraph "API Layer"
+        API[FastAPI Server]
+        MCP[MCP Tools]
+    end
+    
+    subgraph "Processing Pipeline"
+        Crawl[Crawl4AI<br/>Web Crawler]
+        HTML[HTML Extraction<br/>BeautifulSoup]
+        LLM[LLM Description<br/>Generator]
+        VSD[VS Code<br/>Language Detection]
+    end
+    
+    subgraph "Storage"
+        PG[(PostgreSQL<br/>Full-Text Search)]
+    end
+    
+    subgraph "External"
+        AI[AI Assistant<br/>MCP Client]
+        WEB[Documentation<br/>Websites]
+    end
+    
+    UI --> API
+    AI --> MCP
+    MCP --> API
+    API --> PG
+    API --> Crawl
+    Crawl --> WEB
+    Crawl --> HTML
+    HTML --> VSD
+    HTML --> LLM
+    LLM --> PG
+    
+    style UI fill:#3b82f6,color:#fff
+    style API fill:#10b981,color:#fff
+    style PG fill:#f59e0b,color:#fff
+    style AI fill:#8b5cf6,color:#fff
+    style WEB fill:#6b7280,color:#fff
 ```
 
 ### Two-Step Code Extraction Process
@@ -140,7 +155,6 @@ curl -X POST http://localhost:8000/mcp/execute/get_content \
 1. **init_crawl** - Start documentation crawling
 2. **search_libraries** - Search for available libraries  
 3. **get_content** - Get code snippets from a library
-4. **get_snippet_details** - Get detailed snippet information
 
 See full tool documentation at `/mcp/tools` endpoint.
 
@@ -217,22 +231,29 @@ python cli.py search "authentication" --limit 10
 ## Development
 
 ### Project Structure
+
 ```
 codedox/
 ├── src/
-│   ├── api/          # FastAPI endpoints
-│   ├── crawler/      # Web crawling logic
-│   │   ├── extraction_models.py     # Data models for code extraction
-│   │   ├── config.py                # Crawler configuration
-│   │   ├── page_crawler.py          # Page crawling orchestration
-│   │   ├── html_code_extractor.py   # HTML-based code extraction
-│   │   └── llm_description_generator.py  # LLM description generation
-│   ├── database/     # Models and search
-│   ├── mcp_server/   # MCP server implementation
-│   └── parser/       # Code extraction
-├── tests/            # Test suite
-├── config.yaml       # Configuration
-└── requirements.txt  # Dependencies
+│   ├── api/                    # FastAPI server & endpoints
+│   ├── crawler/                # Web crawling & extraction
+│   │   ├── html_code_extractor.py     # HTML-based code extraction
+│   │   ├── vscode_language_detector.py # VS Code language detection client
+│   │   ├── llm_description_generator.py # AI description generation
+│   │   ├── page_crawler.py            # Page crawling orchestration
+│   │   ├── extraction_models.py       # Data models
+│   │   └── code_formatter.py          # Code formatting utilities
+│   ├── language_detector/      # VS Code language detection (Node.js)
+│   │   ├── detect.js          # Language detection CLI
+│   │   └── package.json       # Node dependencies
+│   ├── database/              # PostgreSQL models & search
+│   ├── mcp_server/            # MCP tools implementation
+│   └── utils/                 # Shared utilities
+├── frontend/                  # React web UI
+├── tests/                     # Test suite
+├── setup.sh                   # Automated setup script
+├── docker-compose.yml         # Docker services
+└── .env.example              # Environment template
 ```
 
 ### Running Tests
@@ -294,6 +315,9 @@ pg_dump -U postgres -d codedox > backup.sql
 
 # Apply migrations
 psql -U postgres -d codedox -f src/database/migrations/001_upgrade_to_latest.sql
+
+# Remove markdown_content column (saves storage)
+psql -U postgres -d codedox -f src/database/migrations/003_remove_markdown_content.sql
 ```
 
 ## Contributing

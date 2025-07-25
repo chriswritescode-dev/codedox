@@ -19,21 +19,27 @@ class SimpleCodeBlock:
     context_after: List[str] = field(default_factory=list)
 
 
-# Simple LLM prompt for getting descriptions
-DESCRIPTION_PROMPT = """
-Provide a concise, direct description (10-30 words max) of what this code does. Focus on the main action or purpose. Use the context provided to help you understand the purpose of the code.
+# LLM prompt for getting both title and description
+TITLE_AND_DESCRIPTION_PROMPT = """
+Analyze the code snippet below and generate a title and description based on what the code actually does.
 
-DO NOT start with "The code..." or "This code...". Be direct and specific.
+FORMAT YOUR RESPONSE EXACTLY AS:
+TITLE: [5-10 words describing what this specific code does]
+DESCRIPTION: [10-30 words explaining what this specific code accomplishes]
 
-Examples:
-- "Tests page title contains 'Playwright' text"  
-- "Clicks Get started link and verifies Installation heading"
-- "Creates isolated browser context for each test"
-- "Demonstrates how to use implement Next.js Route Handlers"
+Guidelines:
+- Focus ONLY on the code provided below, not the examples
+- TITLE should describe the specific action or purpose of the code
+- DESCRIPTION should explain what this code does and how it works
+- DO NOT start description with "The code..." or "This code..."
+- Be direct and specific to the actual code provided
+
+=== ACTUAL CODE TO ANALYZE ===
 
 Context: {context}
 
-Code:
+Code to analyze:
 {code}
 
-Description:"""
+Analyze the above code and respond with TITLE and DESCRIPTION for it.
+"""

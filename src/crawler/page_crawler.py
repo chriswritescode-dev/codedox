@@ -35,7 +35,6 @@ class CrawlResult:
     code_blocks: List[Any]
     error: Optional[str] = None
     metadata: Dict[str, Any] = field(default_factory=dict)
-    markdown_content: Optional[str] = None
 
 
 class PageCrawler:
@@ -449,7 +448,7 @@ class PageCrawler:
         html_blocks = []
         try:
             logger.info(f"HTML content found, extracting code blocks for {result.url}")
-            extracted_blocks = await self.html_extractor.extract_code_blocks(
+            extracted_blocks = await self.html_extractor.extract_code_blocks_async(
                 html_content, 
                 result.url
             )
@@ -486,8 +485,7 @@ class PageCrawler:
                     "depth": page_depth,
                     "extraction_method": "html",
                     "blocks_found": 0
-                },
-                markdown_content=markdown_content
+                }
             )
         
         # Generate LLM descriptions for code blocks
@@ -498,14 +496,14 @@ class PageCrawler:
                 llm_parallel_limit = int(os.getenv('CODE_LLM_NUM_PARALLEL', '5'))
                 llm_semaphore = asyncio.Semaphore(llm_parallel_limit)
             
-            blocks_with_descriptions = await self.description_generator.generate_descriptions_batch(
+            blocks_with_descriptions = await self.description_generator.generate_titles_and_descriptions_batch(
                 html_blocks, result.url, semaphore=llm_semaphore
             )
             
             # Convert to the format expected by result processor
             processed_blocks = []
             for block in blocks_with_descriptions:
-                # Generate title from description if not provided
+                # Fallback: generate title from description if LLM didn't provide one
                 if not block.title and block.description:
                     # Use first few words of description as title
                     words = block.description.split()[:5]
@@ -537,8 +535,7 @@ class PageCrawler:
                     "depth": page_depth,
                     "extraction_method": "html_llm",
                     "blocks_found": len(processed_blocks)
-                },
-                markdown_content=markdown_content
+                }
             )
             
         except Exception as e:
@@ -568,8 +565,7 @@ class PageCrawler:
                     "depth": page_depth,
                     "extraction_method": "html_only",
                     "blocks_found": len(fallback_blocks)
-                },
-                markdown_content=markdown_content
+                }
             )
 
 
@@ -662,8 +658,7 @@ class PageCrawler:
                 content=markdown_content or "",
                 content_hash=content_hash,
                 code_blocks=code_blocks,
-                metadata=metadata,
-                markdown_content=markdown_content,
+                metadata=metadata
             )
 
         except Exception as e:

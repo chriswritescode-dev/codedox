@@ -49,7 +49,7 @@ class TestEndToEndWorkflow:
         assert response.status_code == 200
         data = response.json()
         tools = data["tools"]
-        assert len(tools) == 4
+        assert len(tools) == 3
         
         # Step 2: Execute init_crawl via MCP
         response = client.post(

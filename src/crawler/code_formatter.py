@@ -28,7 +28,7 @@ class CodeFormatter:
     
     def __init__(self):
         """Initialize the code formatter."""
-        # Configure jsbeautifier options for better formatting
+        # Configure jsbeautifier options for better JSX formatting
         self.js_options = {
             'indent_size': 2,
             'indent_char': ' ',
@@ -42,11 +42,13 @@ class CodeFormatter:
             'unescape_strings': False,
             'jslint_happy': False,
             'end_with_newline': False,
-            'wrap_line_length': 80,
+            'wrap_line_length': 120,  # Increased to prevent breaking JSX tags
             'indent_inner_html': False,
             'comma_first': False,
-            'e4x': False,
-            'indent_empty_lines': False
+            'e4x': True,  # Enable E4X support for JSX
+            'indent_empty_lines': False,
+            'unformatted': [],  # Don't preserve unformatted sections
+            'extra_liners': []  # Don't add extra lines around certain elements
         }
     
     def format_code(self, code: str, language: Optional[str] = None) -> str:

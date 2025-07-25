@@ -179,7 +179,6 @@ class ResultProcessor:
             # Update existing
             doc = existing_doc
             doc.title = result.title
-            doc.markdown_content = result.markdown_content
             doc.content_hash = result.content_hash
             doc.crawl_job_id = job_id
             doc.last_crawled = datetime.utcnow()
@@ -188,7 +187,6 @@ class ResultProcessor:
             doc = Document(
                 url=result.url,
                 title=result.title,
-                markdown_content=result.markdown_content,
                 content_hash=result.content_hash,
                 crawl_job_id=job_id,
                 crawl_depth=depth,
