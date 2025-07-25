@@ -287,11 +287,11 @@ class MCPTools:
                 
                 # If not a UUID, treat as library name and search for it
                 if not is_uuid:
-                    libraries = searcher.search_libraries(query=library_id, limit=20)
+                    libraries, _ = searcher.search_libraries(query=library_id, limit=20)
                     
                     if not libraries:
                         # No matches found, try to find all libraries and suggest the most similar
-                        all_libraries = searcher.search_libraries(query="", limit=100)
+                        all_libraries, _ = searcher.search_libraries(query="", limit=100)
                         if all_libraries:
                             # Calculate similarity scores for all libraries
                             from difflib import SequenceMatcher
@@ -305,7 +305,7 @@ class MCPTools:
                             scored_libs.sort(key=lambda x: x[1], reverse=True)
                             suggestions = []
                             for lib, score in scored_libs[:5]:
-                                if score > self.db_manager.settings.search.library_suggestion_threshold:  # Only show somewhat similar libraries
+                                if score > settings.search.library_suggestion_threshold:  # Only show somewhat similar libraries
                                     suggestions.append(f"  - {lib['name']} (similarity: {score:.0%}, snippets: {lib['snippet_count']})")
                             
                             if suggestions:
@@ -340,7 +340,7 @@ class MCPTools:
                         second_score = libraries[1].get('similarity_score', 0) if len(libraries) > 1 else 0
                         
                         # Use configurable thresholds: auto-select if first is good and significantly better than second
-                        if first_score > self.db_manager.settings.search.library_auto_select_threshold and (first_score - second_score) > self.db_manager.settings.search.library_auto_select_gap:
+                        if first_score > settings.search.library_auto_select_threshold and (first_score - second_score) > settings.search.library_auto_select_gap:
                             actual_library_id = libraries[0]['library_id']
                             library_name = libraries[0]['name']
                             logger.info(f"Auto-selected best match: '{library_name}' (score: {first_score:.2f}) for query '{library_id}'")
