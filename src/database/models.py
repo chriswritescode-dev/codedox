@@ -189,14 +189,13 @@ class CodeSnippet(Base):  # type: ignore[misc,valid-type]
     
     def format_output(self) -> str:
         """Format snippet for search output in the required format."""
-        return f"""ID: {self.id}
-TITLE: {self.title or 'Untitled'}
+        return f"""TITLE: {self.title or 'Untitled'}
 DESCRIPTION: {self.description or 'No description available'}
 SOURCE: {self.source_url}
 
 LANGUAGE: {self.language or 'unknown'}
 CODE:
-```{self.language or ''}
+```
 {self.code_content}
 ```
 

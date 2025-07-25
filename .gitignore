@@ -75,6 +75,10 @@ config.local.yaml
 debug_*.py
 clear_old_data.py
 
+# HTML extraction debug output
+html_extraction_debug/
+test_extraction_output/
+
 # Frontend
 frontend/node_modules/
 frontend/dist/

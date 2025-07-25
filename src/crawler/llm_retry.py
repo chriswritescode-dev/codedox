@@ -81,6 +81,8 @@ Content to analyze:
         for attempt in range(max_retries):
             try:
                 logger.info(f"LLM extraction attempt {attempt + 1} for {url}")
+                logger.debug(f"Processing markdown content of length: {len(markdown_content)} chars")
+                logger.debug(f"Content preview (first 300 chars): {markdown_content[:300]}...")
                 
                 # Make the API call with structured output
                 response = await self.client.chat.completions.create(
