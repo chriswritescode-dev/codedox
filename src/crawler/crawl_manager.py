@@ -389,19 +389,23 @@ class CrawlManager:
             failed_urls = [str(fp.url) for fp in failed_pages]
             failed_count = len(failed_pages)
 
-        # Create retry config outside session
+        # Create retry config outside session, preserving max_concurrent_crawls
+        original_config = job_dict.get("config", {})
+        max_concurrent = original_config.get("max_concurrent_crawls", 20)
+        
         retry_config = CrawlConfig(
             name=f"{job_dict['name']} - Retry Failed Pages",
             start_urls=failed_urls,
             max_depth=0,
             domain_restrictions=job_dict.get("domain_restrictions", []),
             max_pages=failed_count,
+            max_concurrent_crawls=max_concurrent,
             metadata={"retry_of_job": job_id, "original_job_name": job_dict["name"]},
         )
 
         # Start new job
         new_job_id = await self.start_crawl(retry_config, user_id)
-        logger.info(f"Created retry job {new_job_id} for {failed_count} failed pages")
+        logger.info(f"Created retry job {new_job_id} for {failed_count} failed pages with max_concurrent_crawls={max_concurrent}")
 
         return new_job_id
 
@@ -420,5 +424,6 @@ class CrawlManager:
             include_patterns=config_data.get("include_patterns", []),
             exclude_patterns=config_data.get("exclude_patterns", []),
             max_pages=config_data.get("max_pages", 100),
+            max_concurrent_crawls=config_data.get("max_concurrent_crawls", 20),
             metadata=config_data.get("metadata", {}),
         )

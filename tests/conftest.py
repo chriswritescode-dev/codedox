@@ -529,7 +529,7 @@ def mock_mcp_tools(monkeypatch):
             "url_patterns": url_patterns or []
         }
     
-    async def mock_search_libraries(self, query: str, max_results: int = 10):
+    async def mock_search_libraries(self, query: str = "", limit: int = 20, page: int = 1):
         return {
             "status": "success",
             "selected_library": {
@@ -541,7 +541,7 @@ def mock_mcp_tools(monkeypatch):
             "explanation": "Exact match found for 'test'"
         }
     
-    async def mock_get_content(self, library_id: str, query: str = None, language: str = None, max_results: int = 10):
+    async def mock_get_content(self, library_id: str, query: str = None, limit: int = 20, page: int = 1):
         return """Found 1 results in Test Source
 
 TITLE: Test Result

@@ -32,7 +32,8 @@ class TestLibraryNameResolution:
                 mock_searcher.search.assert_called_once_with(
                     query="test",
                     job_id=test_uuid,
-                    limit=10,
+                    limit=20,
+                    offset=0,
                     include_context=False
                 )
     
@@ -72,7 +73,8 @@ class TestLibraryNameResolution:
                 mock_searcher.search.assert_called_once_with(
                     query="test",
                     job_id='test-uuid-123',
-                    limit=10,
+                    limit=20,
+                    offset=0,
                     include_context=False
                 )
                 assert "Found 1 results" in result
@@ -244,7 +246,8 @@ class TestLibraryNameResolution:
                 mock_searcher.search.assert_called_once_with(
                     query="routing",
                     job_id='nextjs-uuid',
-                    limit=10,
+                    limit=20,
+                    offset=0,
                     include_context=False
                 )
                 assert "Found 1 results" in result
