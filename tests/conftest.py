@@ -556,50 +556,11 @@ print('test')
 
 ----------------------------------------"""
     
-    async def mock_get_snippet_details(self, snippet_id: int):
-        if snippet_id == 123:
-            return {
-                "id": 123,
-                "title": "Test Snippet",
-                "description": "A test code snippet",
-                "language": "python",
-                "source_url": "https://example.com/test",
-                "code": "def test():\n    print('Hello, World!')",
-                "line_start": 10,
-                "line_end": 12,
-                "functions": ["test"],
-                "imports": [],
-                "keywords": [],
-                "snippet_type": "function",
-                "context_before": "# This is a test function",
-                "context_after": "# End of test",
-                "section_title": "Testing Functions",
-                "section_content": None,
-                "related_snippets": [],
-                "metadata": {},
-                "created_at": "2024-01-01T00:00:00",
-                "updated_at": None,
-                "document": {
-                    "id": 1,
-                    "url": "https://example.com/test",
-                    "title": "Test Document",
-                    "crawl_depth": 1,
-                    "parent_url": "https://example.com",
-                    "last_crawled": "2024-01-01T00:00:00",
-                    "markdown_content": "# Test Document\n\nThis is a test document with code:\n\n```python\nprint('hello')\n```"
-                }
-            }
-        else:
-            return {
-                "error": "Snippet not found",
-                "snippet_id": snippet_id
-            }
     
     # Patch the MCPTools methods
     from src.mcp_server.tools import MCPTools
     monkeypatch.setattr(MCPTools, "init_crawl", mock_init_crawl)
     monkeypatch.setattr(MCPTools, "search_libraries", mock_search_libraries)
     monkeypatch.setattr(MCPTools, "get_content", mock_get_content)
-    monkeypatch.setattr(MCPTools, "get_snippet_details", mock_get_snippet_details)
 
 

@@ -27,12 +27,11 @@ class TestMCPToolsEndpoint:
         data = response.json()
         tools = data["tools"]
         
-        assert len(tools) == 4
+        assert len(tools) == 3
         tool_names = [tool["name"] for tool in tools]
         assert "init_crawl" in tool_names
         assert "search_libraries" in tool_names
         assert "get_content" in tool_names
-        assert "get_snippet_details" in tool_names
         
         # Check tool structure
         for tool in tools:
@@ -135,49 +134,6 @@ class TestMCPExecuteEndpoints:
         # The mock should handle this gracefully
         assert isinstance(result, str)
     
-    def test_execute_get_snippet_details(self, client, mock_mcp_tools):
-        """Test executing get_snippet_details tool."""
-        response = client.post(
-            "/mcp/execute/get_snippet_details",
-            json={
-                "snippet_id": 123
-            }
-        )
-        assert response.status_code == 200
-        data = response.json()
-        assert "result" in data
-        result = data["result"]
-        assert result["id"] == 123
-        assert result["title"] == "Test Snippet"
-        assert result["language"] == "python"
-        assert "document" in result
-        assert result["document"]["title"] == "Test Document"
-    
-    def test_execute_get_snippet_details_not_found(self, client, mock_mcp_tools):
-        """Test executing get_snippet_details tool with non-existent ID."""
-        response = client.post(
-            "/mcp/execute/get_snippet_details",
-            json={
-                "snippet_id": 999
-            }
-        )
-        assert response.status_code == 200
-        data = response.json()
-        assert "result" in data
-        result = data["result"]
-        assert "error" in result
-        assert result["error"] == "Snippet not found"
-        assert result["snippet_id"] == 999
-    
-    def test_execute_get_snippet_details_missing_id(self, client, mock_mcp_tools):
-        """Test executing get_snippet_details tool without required snippet_id param."""
-        response = client.post(
-            "/mcp/execute/get_snippet_details",
-            json={}
-        )
-        assert response.status_code == 422
-        data = response.json()
-        assert "Missing required parameter: snippet_id" in data["detail"]
     
     def test_execute_invalid_tool(self, client):
         """Test executing non-existent tool."""
@@ -219,7 +175,7 @@ class TestMCPStreamEndpoints:
         json_data = json.loads(content[6:].strip())  # Remove "data: " prefix
         assert "tools" in json_data
         assert isinstance(json_data["tools"], list)
-        assert len(json_data["tools"]) == 4  # init_crawl, search_libraries, get_content, get_snippet_details
+        assert len(json_data["tools"]) == 3  # init_crawl, search_libraries, get_content
     
     def test_stream_execute_tool(self, client, mock_mcp_tools):
         """Test streaming tool execution."""

@@ -3,12 +3,9 @@
 from typing import Optional, List
 
 from crawl4ai import (
-    BM25ContentFilter,
     CrawlerRunConfig,
     BrowserConfig,
-    DefaultMarkdownGenerator,
     CacheMode,
-    PruningContentFilter,
 )
 from crawl4ai.deep_crawling import BFSDeepCrawlStrategy
 from crawl4ai.deep_crawling.filters import FilterChain, DomainFilter, URLPatternFilter

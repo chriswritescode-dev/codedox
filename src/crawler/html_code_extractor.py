@@ -4,6 +4,7 @@ import logging
 import re
 from typing import List, Dict, Any, Optional
 from bs4 import BeautifulSoup, NavigableString, Tag
+from bs4.formatter import HTMLFormatter
 from dataclasses import dataclass, field
 from .code_formatter import CodeFormatter
 import os
@@ -82,9 +83,85 @@ class HTMLCodeExtractor:
         }
         self.formatter = CodeFormatter()
     
-    async def extract_code_blocks(self, html: str, url: str) -> List[ExtractedCodeBlock]:
+    def extract_code_blocks(self, html: str, url: str) -> List[ExtractedCodeBlock]:
         """
-        Extract all code blocks from HTML with their documentation context.
+        Extract all code blocks from HTML with their documentation context (synchronous version).
+        
+        Args:
+            html: Raw HTML content
+            url: URL of the page (for logging)
+            
+        Returns:
+            List of ExtractedCodeBlock objects
+        """
+        soup = BeautifulSoup(html, 'html.parser')
+        extracted_blocks = []
+        
+        # Note: We don't remove any elements to avoid missing code blocks
+        # self._remove_skip_elements(soup)
+        
+        # Find all code blocks
+        for selector, selector_type in self.CODE_SELECTORS:
+            blocks = soup.select(selector)
+            
+            for block in blocks:
+                # Skip if already processed (nested selectors might match same element)
+                if block.get('data-processed'):
+                    continue
+                    
+                block['data-processed'] = 'true'
+                
+                # Extract the code content
+                raw_code_text = self._extract_code_text(block)
+                
+                # Skip empty or very short code blocks (likely inline code)
+                if not raw_code_text or len(raw_code_text.strip()) < 10:
+                    continue
+                
+                # Detect language first (needed for formatting)
+                language = self._detect_language(block)
+                
+                # Format the code using language-specific rules
+                code_text = self.formatter.format_code(raw_code_text, language)
+                
+                # Skip inline code in sentences (unless it's multi-line after formatting)
+                if self._is_inline_code(block) and '\n' not in code_text:
+                    continue
+                
+                # Extract surrounding context
+                context = self._extract_context(block)
+                
+                # Classify container type
+                container_type = self._classify_container(context['hierarchy'])
+                
+                # Create extracted block
+                extracted = ExtractedCodeBlock(
+                    code=code_text,
+                    language=language,
+                    container_hierarchy=context['hierarchy'],
+                    context_before=context['before'],
+                    context_after=context['after'],
+                    container_type=container_type,
+                    title=context.get('title'),
+                    description=context.get('description')
+                )
+                
+                extracted_blocks.append(extracted)
+                
+                # Update stats
+                self.stats['total_blocks'] += 1
+                self.stats['blocks_by_type'][selector_type] = self.stats['blocks_by_type'].get(selector_type, 0) + 1
+                if language:
+                    self.stats['languages_found'].add(language)
+        
+        logger.info(f"Extracted {len(extracted_blocks)} code blocks from {url}")
+        logger.debug(f"Stats: {self.stats}")
+        
+        return extracted_blocks
+    
+    async def extract_code_blocks_async(self, html: str, url: str) -> List[ExtractedCodeBlock]:
+        """
+        Extract all code blocks from HTML with their documentation context (async version with VS Code detection).
         
         Args:
             html: Raw HTML content
@@ -217,8 +294,9 @@ class HTMLCodeExtractor:
         for link in element_copy.find_all('a'):
             link.unwrap()
         
-        # Get text, preserving whitespace
-        code_text = element_copy.get_text()
+        # Extract text while preserving meaningful whitespace but not adding extra spaces
+        # between syntax highlighting spans
+        code_text = self._extract_text_no_extra_spaces(element_copy)
         
         # Clean up common artifacts
         # Remove line numbers if they appear at start of lines
@@ -231,6 +309,11 @@ class HTMLCodeExtractor:
             cleaned_lines.append(cleaned_line)
         
         return '\n'.join(cleaned_lines).strip()
+    
+    def _extract_text_no_extra_spaces(self, element: Tag) -> str:
+        """Extract text from element without adding spaces between syntax highlighting spans."""
+        # Use .strings to get all text content without BeautifulSoup adding separators
+        return ''.join(element.strings)
     
     def _detect_language(self, element: Tag) -> Optional[str]:
         """Detect programming language using HTML classes and content analysis."""
@@ -561,11 +644,23 @@ class HTMLCodeExtractor:
         elif code_text.strip().startswith('{') and code_text.strip().endswith('}') and '"' in code_text:
             return 'json'
         
-        # TypeScript/JavaScript patterns
+        # TypeScript/JavaScript patterns (check before CSS to handle JS objects)
         elif any(pattern in code_text for pattern in [': string', ': number', ': boolean', 'interface ', 'type ']):
             return 'typescript'
         elif any(pattern in code_text for pattern in ['function ', 'const ', 'let ', 'var ', '=>', 'export ', 'import ']):
             return 'javascript'
+        
+        # HTML patterns (check for both escaped and unescaped)
+        elif any(pattern in code_text for pattern in ['<html', '<div', '<p>', '<span', '<body', '<head', '</div>', '</p>', '</html>']):
+            return 'html'
+        elif any(pattern in code_text for pattern in ['&lt;html', '&lt;div', '&lt;p&gt;', '&lt;span', '&lt;body', '&lt;head', '&lt;/div&gt;', '&lt;/p&gt;', '&lt;/html&gt;']):
+            return 'html'
+        
+        # CSS patterns (more specific to avoid false positives)
+        elif any(pattern in code_text for pattern in ['{', '}']) and any(pattern in code_text for pattern in ['color:', 'display:', 'margin:', 'padding:', 'font-', 'background:', 'width:', 'height:']):
+            return 'css'
+        elif any(pattern in code_text for pattern in ['.', '#']) and '{' in code_text and '}' in code_text and ':' in code_text and not any(pattern in code_text for pattern in ['function', 'const', 'let', 'var']):
+            return 'css'
         
         # Python patterns
         elif any(pattern in code_text for pattern in ['def ', 'import ', 'from ', 'class ', 'if __name__']):

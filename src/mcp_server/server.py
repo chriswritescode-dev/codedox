@@ -61,14 +61,11 @@ class MCPServer:
                 limit=arguments.get("limit", 20),
                 page=arguments.get("page", 1),
             )
-        elif name == "get_snippet_details":
-            return await self.tools.get_snippet_details(snippet_id=arguments.get("snippet_id"))
         else:
             available_tools = [
                 "init_crawl",
                 "search_libraries",
                 "get_content",
-                "get_snippet_details",
             ]
             logger.error(f"Unknown tool requested: '{name}'. Available tools: {available_tools}")
             raise ValueError(f"Unknown tool: '{name}'. Available tools: {', '.join(available_tools)}")
@@ -215,20 +212,6 @@ class MCPServer:
                         },
                     },
                     "required": ["library_id"],
-                },
-            ),
-            Tool(
-                name="get_snippet_details",
-                description="Get detailed information about a specific code snippet by ID, not necessary unless the get_content tool did not return enough information to answer the user's question or request.",
-                inputSchema={
-                    "type": "object",
-                    "properties": {
-                        "snippet_id": {
-                            "type": "integer",
-                            "description": "The ID of the snippet (from search_content tool - search results)",
-                        }
-                    },
-                    "required": ["snippet_id"],
                 },
             ),
         ]
