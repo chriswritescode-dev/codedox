@@ -4,6 +4,8 @@ import logging
 import asyncio
 from typing import List, Tuple, Optional, Dict, Any
 from datetime import datetime
+from concurrent.futures import ThreadPoolExecutor, as_completed
+import os
 
 from sqlalchemy.orm import Session
 
@@ -22,6 +24,25 @@ class ResultProcessor:
         self.db_manager = get_db_manager()
         self.settings = get_settings()
         self.code_formatter = CodeFormatter()
+        # Thread pool for concurrent formatting
+        # Use CPU count * 2 threads (good for I/O bound operations like calling prettier)
+        self.format_thread_pool = ThreadPoolExecutor(
+            max_workers=min(32, (os.cpu_count() or 1) * 2),
+            thread_name_prefix="code-formatter"
+        )
+    
+    def cleanup(self):
+        """Cleanup resources including thread pool."""
+        try:
+            self.format_thread_pool.shutdown(wait=True, cancel_futures=False)
+            logger.info("Thread pool shut down successfully")
+        except Exception as e:
+            logger.error(f"Error shutting down thread pool: {e}")
+    
+    def __del__(self):
+        """Ensure thread pool is cleaned up."""
+        if hasattr(self, 'format_thread_pool'):
+            self.cleanup()
 
     async def process_result_pipeline(
         self, result: Any, job_id: str, depth: int  # CrawlResult
@@ -346,6 +367,69 @@ If you cannot determine the name, respond with "UNKNOWN"."""
         
         return None
 
+    async def _format_blocks_concurrently(self, blocks_to_format: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        """Format multiple code blocks concurrently using thread pool.
+        
+        Args:
+            blocks_to_format: List of block data dictionaries
+            
+        Returns:
+            List of formatted block data dictionaries
+        """
+        loop = asyncio.get_event_loop()
+        
+        # Submit all formatting tasks to thread pool
+        future_to_block = {}
+        for block_data in blocks_to_format:
+            future = loop.run_in_executor(
+                self.format_thread_pool,
+                self._format_single_block,
+                block_data
+            )
+            future_to_block[future] = block_data
+        
+        # Collect results as they complete
+        formatted_blocks = []
+        for future in asyncio.as_completed(future_to_block):
+            try:
+                formatted_block = await future
+                formatted_blocks.append(formatted_block)
+            except Exception as e:
+                # On error, keep original block data
+                original_block = future_to_block[future]
+                logger.warning(f"Concurrent formatting failed for '{original_block['title']}': {e}")
+                original_block['formatted_content'] = original_block['content']
+                formatted_blocks.append(original_block)
+        
+        return formatted_blocks
+    
+    def _format_single_block(self, block_data: Dict[str, Any]) -> Dict[str, Any]:
+        """Format a single code block (runs in thread pool).
+        
+        Args:
+            block_data: Block data dictionary
+            
+        Returns:
+            Block data with formatted_content added
+        """
+        content = block_data['content']
+        language = block_data['language']
+        title = block_data['title']
+        
+        try:
+            formatted_code = self.code_formatter.format(content, language)
+            if formatted_code and formatted_code != content:
+                logger.info(f"Formatting improved code for snippet '{title}' (language: {language})")
+                block_data['formatted_content'] = formatted_code
+            else:
+                logger.debug(f"Keeping original format for snippet '{title}' (language: {language})")
+                block_data['formatted_content'] = content
+        except Exception as e:
+            logger.warning(f"Failed to format code for snippet '{title}': {e}")
+            block_data['formatted_content'] = content
+        
+        return block_data
+
     async def _process_code_blocks(
         self, session: Session, doc: Document, code_blocks: List[Any], source_url: str
     ) -> int:
@@ -363,8 +447,10 @@ If you cannot determine the name, respond with "UNKNOWN"."""
         snippet_count = 0
         
         logger.info(f"Processing {len(code_blocks)} code blocks for document {doc.url}")
-
-        # Process blocks directly
+        
+        # First, extract all block data and prepare for concurrent formatting
+        blocks_to_format = []
+        
         for i, block in enumerate(code_blocks):
             # Debug log the block structure
             logger.debug(f"Processing block {i}: type={type(block)}, has_dict_methods={hasattr(block, 'get')}")
@@ -392,20 +478,36 @@ If you cannot determine the name, respond with "UNKNOWN"."""
                 logger.warning(f"Skipping empty code block {i} with title: {title}")
                 continue
             
-            # Try to format the code with the LLM-corrected language
-            try:
-                formatted_code = self.code_formatter.format(content, language)
-                if formatted_code and formatted_code != content:
-                    logger.info(f"Formatting improved code for snippet '{title}' (language: {language})")
-                    content = formatted_code
-                else:
-                    logger.debug(f"Keeping original format for snippet '{title}' (language: {language})")
-            except Exception as e:
-                logger.warning(f"Failed to format code for snippet '{title}': {e}")
-                # Keep original content on error
+            # Add to blocks to format
+            blocks_to_format.append({
+                'index': i,
+                'content': content,
+                'language': language,
+                'title': title,
+                'description': description,
+                'metadata': metadata,
+                'filename': filename
+            })
+        
+        # Format all blocks concurrently
+        if blocks_to_format:
+            logger.info(f"Starting concurrent formatting of {len(blocks_to_format)} code blocks")
+            formatted_blocks = await self._format_blocks_concurrently(blocks_to_format)
+        else:
+            formatted_blocks = []
+        
+        # Now process all formatted blocks
+        import hashlib
+        
+        for block_data in formatted_blocks:
+            content = block_data['formatted_content']
+            title = block_data['title']
+            description = block_data['description']
+            language = block_data['language']
+            metadata = block_data['metadata']
+            filename = block_data['filename']
                 
             # Calculate hash for deduplication
-            import hashlib
             code_hash = hashlib.md5(content.encode()).hexdigest()
             
             # Map purpose to snippet_type
