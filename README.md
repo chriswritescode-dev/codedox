@@ -5,13 +5,25 @@ A powerful system for crawling documentation websites, extracting code snippets,
 ## Features
 
 - **Controlled Web Crawling**: Manual crawling with configurable depth (0-3 levels)
-- **Smart Code Extraction**: HTML-based extraction with VS Code language detection
+- **Smart Code Extraction**: HTML-based extraction with LLM language detection
 - **LLM Descriptions**: AI-generated concise descriptions for extracted code
 - **Fast Search**: PostgreSQL full-text search with < 100ms response time
 - **MCP Integration**: Expose tools to AI assistants via Model Context Protocol
 - **Source Management**: Track multiple documentation sources with statistics
 - **Modern Web UI**: React-based dashboard for managing crawls, searching code, and monitoring system activity
 - **Auto Site Content Deduplication**: Only updates or adds content that has changed
+
+## Screenshots
+
+### Dashboard
+<img src="screenshots/WebUI-Dashboard.png" alt="CodeDox Dashboard" width="800">
+
+*The dashboard provides an overview of your documentation sources, crawl jobs, and system statistics.*
+
+### Source Detail View
+<img src="screenshots/WebUI-Source-Detail.png" alt="CodeDox Source Detail" width="800">
+
+*View detailed information about each documentation source, including extracted code snippets and search capabilities.*
 
 
 ## Architecture
@@ -31,7 +43,7 @@ graph TB
         Crawl[Crawl4AI<br/>Web Crawler]
         HTML[HTML Extraction<br/>BeautifulSoup]
         LLM[LLM Description<br/>Generator]
-        VSD[VS Code<br/>Language Detection]
+        Lang[LLM Language<br/>Detection]
     end
     
     subgraph "Storage"
@@ -50,7 +62,7 @@ graph TB
     API --> Crawl
     Crawl --> WEB
     Crawl --> HTML
-    HTML --> VSD
+    HTML --> Lang
     HTML --> LLM
     LLM --> PG
     
@@ -68,7 +80,7 @@ CodeDox uses a sophisticated two-step approach for code extraction:
 1. **HTML-Based Extraction**: Uses BeautifulSoup to extract code blocks from HTML with high accuracy
    - Identifies code blocks using multiple CSS selectors (pre, code, syntax highlighters)
    - Extracts surrounding context (titles, descriptions, container types)
-   - Detects language using VS Code's language detection model
+   - Detects language using LLM analysis with source URL context
    - Extracts filename hints from HTML attributes and context
    - Removes UI elements and clutter from code blocks
 
@@ -113,7 +125,7 @@ The setup script will:
 
 - Python 3.10+
 - PostgreSQL 12+ 
-- Node.js 14+ (for VS Code language detection)
+# Node.js is no longer required
 - Playwright (installed automatically with crawl4ai)
 
 #### Installation
@@ -200,10 +212,15 @@ MCP tools are automatically available when running the API server at `http://loc
 # List tools
 curl http://localhost:8000/mcp/tools
 
+# Search for libraries
+curl -X POST http://localhost:8000/mcp/execute/search_libraries \
+  -H "Content-Type: application/json" \
+  -d '{"query": "nextjs"}'
+
 # Get code snippets
 curl -X POST http://localhost:8000/mcp/execute/get_content \
   -H "Content-Type: application/json" \
-  -d '{"library_id": "nextjs", "query": "authentication"}'
+  -d '{"library_id": "library-id-here", "query": "authentication"}'
 ```
 
 ### Available MCP Tools
@@ -217,25 +234,39 @@ See full tool documentation at `/mcp/tools` endpoint.
 
 ## API Endpoints
 
+### Core Endpoints
+- `GET /health` - Health check
+- `POST /search` - Search code snippets
+- `GET /snippets/{id}` - Get specific snippet
 
 ### Crawling
 - `POST /crawl/init` - Start new crawl job with optional URL pattern filtering
 - `GET /crawl/status/{job_id}` - Check crawl status
 - `POST /crawl/cancel/{job_id}` - Cancel running job
-
-### Search
-- `POST /search` - Search code snippets
-- `GET /search/languages` - List available languages
-- `GET /search/recent` - Get recent snippets
-
-### Sources
-- `GET /sources` - List documentation sources
-- `GET /snippets/{id}` - Get specific snippet
 - `GET /export/{job_id}` - Export crawl results
 
+### Search
+- `GET /api/search/languages` - List available languages
+- `GET /api/search/recent` - Get recent snippets
+
+### Sources
+- `GET /api/sources` - List documentation sources
+- `GET /api/sources/{source_id}` - Get specific source details
+- `GET /api/sources/{source_id}/snippets` - Get snippets for a source
+- `DELETE /api/sources/{source_id}` - Delete a source
+- `POST /api/sources/{source_id}/recrawl` - Re-crawl a source
+
+### Statistics
+- `GET /api/statistics/dashboard` - Get dashboard statistics
+
 ### Upload
-- `POST /upload/markdown` - Upload markdown content
-- `POST /upload/file` - Upload markdown file
+- `POST /upload/markdown` - Upload markdown content (currently disabled)
+- `POST /upload/file` - Upload markdown file (currently disabled)
+
+### MCP (Model Context Protocol)
+- `POST /mcp` - MCP streamable HTTP endpoint
+- `GET /mcp/tools` - List available MCP tools
+- `POST /mcp/execute/{tool_name}` - Execute a specific MCP tool
 
 ## Web UI
 
@@ -254,8 +285,8 @@ CodeDox uses a powerful two-phase approach to extract and understand code:
 
 ### Phase 1: HTML-Based Code Extraction
 - **Smart Detection**: Identifies code blocks using 20+ CSS selector patterns
-- **Language Detection**: Uses VS Code's language detection model for accurate results
-- **Filename Hints**: Extracts filenames from HTML to improve language detection
+- **Language Detection**: Uses LLM for intelligent language detection with context
+- **Filename Hints**: Extracts filenames from HTML to provide context to LLM
 - **Context Extraction**: Captures surrounding documentation for better understanding
 - **Clean Output**: Removes UI elements, line numbers, and other artifacts
 
@@ -294,14 +325,13 @@ codedox/
 │   ├── api/                    # FastAPI server & endpoints
 │   ├── crawler/                # Web crawling & extraction
 │   │   ├── html_code_extractor.py     # HTML-based code extraction
-│   │   ├── vscode_language_detector.py # VS Code language detection client
+│   │   # VS Code language detection removed - using LLM detection
 │   │   ├── llm_description_generator.py # AI description generation
 │   │   ├── page_crawler.py            # Page crawling orchestration
 │   │   ├── extraction_models.py       # Data models
 │   │   └── code_formatter.py          # Code formatting utilities
-│   ├── language_detector/      # VS Code language detection (Node.js)
-│   │   ├── detect.js          # Language detection CLI
-│   │   └── package.json       # Node dependencies
+│   # Language detection now handled by LLM
+# Language detector files removed
 │   ├── database/              # PostgreSQL models & search
 │   ├── mcp_server/            # MCP tools implementation
 │   └── utils/                 # Shared utilities
@@ -334,7 +364,7 @@ python test_hash_optimization.py
   - Efficient CSS selector matching
 - **Language Detection**: 
   - Instant detection from HTML classes and filenames
-  - VS Code model for complex cases (~50ms per detection)
+  - LLM language detection with source URL context
   - Smart caching of detection results
 - **LLM Description Generation**: 
   - Only used for descriptions (10-30 words each)
@@ -356,8 +386,8 @@ python test_hash_optimization.py
 - System works without descriptions (extraction always succeeds)
 
 **Language Detection Issues**
-- Verify Node.js installed: `node --version`
-- Reinstall VS Code detector: `cd src/language_detector && npm install`
+- Ensure CODE_LLM_API_KEY is set in .env
+- Check LLM API connectivity and credits
 
 For detailed troubleshooting, see the [documentation wiki](https://github.com/chriswritescode-dev/codedox/wiki).
 

@@ -1,186 +1,170 @@
-"""Tests for code formatting functionality."""
+"""Test code formatting functionality."""
 
-import pytest
-from unittest.mock import Mock, patch
+import unittest
+from unittest.mock import patch, Mock
 from src.crawler.code_formatter import CodeFormatter
 
 
-class TestCodeFormatter:
-    """Test code formatting with different languages and formatters."""
+class TestCodeFormatter(unittest.TestCase):
+    """Test the CodeFormatter class."""
     
-    def setup_method(self):
+    def setUp(self):
         """Set up test fixtures."""
         self.formatter = CodeFormatter()
     
-    def test_format_javascript_basic(self):
-        """Test basic JavaScript formatting."""
-        messy_js = "function test(){console.log('hello');return true;}"
+    def test_javascript_formatting(self):
+        """Test JavaScript code formatting."""
+        # Skip if Prettier not available
+        if not self.formatter.prettier_available:
+            self.skipTest("Prettier not available")
         
-        formatted = self.formatter.format_code(messy_js, 'javascript')
-        
-        # Should be formatted with proper spacing and indentation
-        assert 'function test()' in formatted
-        assert '    console.log(' in formatted or 'console.log(' in formatted
-        assert 'return true;' in formatted
-    
-    def test_format_typescript_basic(self):
-        """Test basic TypeScript formatting."""
-        messy_ts = "interface User{name:string;age:number;}function getUser():User{return{name:'test',age:25};}"
-        
-        formatted = self.formatter.format_code(messy_ts, 'typescript')
-        
-        # Should be formatted with proper spacing
-        assert 'interface User' in formatted
-        assert 'name: string' in formatted or 'name:string' in formatted
-        assert 'function getUser()' in formatted
-    
-    def test_format_python_basic(self):
-        """Test basic Python formatting using Black."""
-        messy_python = "def test(x,y):return x+y"
-        
-        formatted = self.formatter.format_code(messy_python, 'python')
-        
-        # Should be formatted with proper spacing
-        assert 'def test(x, y):' in formatted
-        assert 'return x + y' in formatted
-    
-    def test_format_json_basic(self):
-        """Test JSON formatting."""
-        messy_json = '{"name":"test","items":[1,2,3],"config":{"enabled":true}}'
-        
-        formatted = self.formatter.format_code(messy_json, 'json')
-        
-        # Should be formatted with proper indentation
-        assert '{\n' in formatted
-        assert '    "name": "test"' in formatted or '"name": "test"' in formatted
-        assert '    "items": [' in formatted or '"items": [' in formatted
-    
-    def test_format_unknown_language_fallback(self):
-        """Test that unknown languages fall back to basic cleanup."""
-        code = "some random code    with  extra   spaces"
-        
-        formatted = self.formatter.format_code(code, 'unknown_language')
-        
-        # Unknown languages get basic formatting, may preserve original spacing
-        assert 'some random code' in formatted
-        assert 'extra' in formatted
-        assert 'spaces' in formatted
-    
-    def test_format_empty_code(self):
-        """Test formatting empty or whitespace-only code."""
-        assert self.formatter.format_code("", 'javascript') == ""
-        assert self.formatter.format_code("   ", 'python') == "   "  # Whitespace preserved
-        assert self.formatter.format_code("\n\n", 'json') == "\n\n"  # Whitespace preserved
-    
-    @patch('src.crawler.code_formatter.JSBEAUTIFIER_AVAILABLE', False)
-    def test_javascript_fallback_when_jsbeautifier_unavailable(self):
-        """Test JavaScript formatting falls back when jsbeautifier is unavailable."""
         code = "function test(){return true;}"
+        formatted = self.formatter.format(code, 'javascript')
         
-        formatted = self.formatter.format_code(code, 'javascript')
-        
-        # Should still format with basic rules
-        assert 'function test()' in formatted
-        assert '{' in formatted
-        assert 'return true;' in formatted
+        # Prettier should format it nicely
+        self.assertIn("function test()", formatted)
+        self.assertIn("return true", formatted)
     
-    @patch('src.crawler.code_formatter.BLACK_AVAILABLE', False)
-    def test_python_fallback_when_black_unavailable(self):
-        """Test Python formatting falls back when Black is unavailable."""
-        code = "def test(x,y):return x+y"
+    def test_typescript_formatting(self):
+        """Test TypeScript code formatting."""
+        if not self.formatter.prettier_available:
+            self.skipTest("Prettier not available")
         
-        formatted = self.formatter.format_code(code, 'python')
+        code = "interface User{name:string;age:number;}"
+        formatted = self.formatter.format(code, 'typescript')
         
-        # Should still format with basic rules
-        assert 'def test(' in formatted
-        assert 'return x' in formatted
+        # Should have proper spacing
+        self.assertIn("interface User", formatted)
+        self.assertIn("name: string", formatted)
+        self.assertIn("age: number", formatted)
     
-    def test_jsbeautifier_error_handling(self):
-        """Test handling of jsbeautifier errors."""
-        # Mock jsbeautifier to raise an exception
-        with patch('src.crawler.code_formatter.jsbeautifier') as mock_jsbeautifier:
-            mock_jsbeautifier.beautify.side_effect = Exception("Format error")
+    def test_jsx_formatting(self):
+        """Test JSX code formatting."""
+        if not self.formatter.prettier_available:
+            self.skipTest("Prettier not available")
+        
+        code = "<div className='test'><span>{value}</span></div>"
+        formatted = self.formatter.format(code, 'jsx')
+        
+        # Should format JSX properly
+        self.assertIn("<div", formatted)
+        self.assertIn("className", formatted)
+        self.assertIn("{value}", formatted)
+    
+    def test_python_formatting(self):
+        """Test Python code formatting."""
+        code = "def test(x,y):\n    return x+y"
+        formatted = self.formatter.format(code, 'python')
+        
+        # Should maintain proper indentation
+        self.assertIn("def test(x,y):", formatted)
+        self.assertIn("    return x+y", formatted)
+    
+    def test_json_formatting(self):
+        """Test JSON formatting."""
+        code = '{"name":"test","value":123}'
+        formatted = self.formatter.format(code, 'json')
+        
+        # Should be properly indented
+        self.assertIn('"name"', formatted)
+        self.assertIn('"value"', formatted)
+        if self.formatter.prettier_available:
+            # Prettier formats with newlines
+            self.assertIn('\n', formatted)
+    
+    def test_sql_formatting(self):
+        """Test SQL formatting."""
+        code = "select * from users where id = 1"
+        formatted = self.formatter.format(code, 'sql')
+        
+        # Should uppercase keywords
+        self.assertIn("SELECT", formatted)
+        self.assertIn("FROM", formatted)
+        self.assertIn("WHERE", formatted)
+    
+    def test_unknown_language(self):
+        """Test formatting for unknown language."""
+        code = "  some code  \n\n\n  more code  "
+        formatted = self.formatter.format(code, 'unknown')
+        
+        # Should do basic formatting
+        self.assertEqual(formatted, "some code\n\nmore code")
+    
+    def test_empty_code(self):
+        """Test formatting empty code."""
+        self.assertEqual(self.formatter.format("", 'javascript'), "")
+        self.assertEqual(self.formatter.format(None, 'python'), None)
+    
+    def test_prettier_fallback(self):
+        """Test fallback when Prettier is not available."""
+        formatter = CodeFormatter()
+        formatter.prettier_available = False
+        
+        code = "function test(){return true;}"
+        formatted = formatter.format(code, 'javascript')
+        
+        # Should get basic formatting
+        self.assertEqual(formatted, "function test(){return true;}")
+    
+    def test_prettier_error_handling(self):
+        """Test handling of Prettier errors."""
+        with patch('subprocess.run') as mock_run:
+            # Version check succeeds, formatting fails
+            mock_run.side_effect = [
+                Mock(returncode=0, stdout="3.0.0"),
+                Mock(returncode=1, stderr="Parse error")
+            ]
             
-            code = "function test(){return true;}"
-            formatted = self.formatter.format_code(code, 'javascript')
+            formatter = CodeFormatter()
+            code = "function test() { return true; }"
+            formatted = formatter.format(code, 'javascript')
             
-            # Should fall back gracefully
-            assert 'function test()' in formatted
+            # Should fall back to basic formatting
+            self.assertEqual(formatted, code)
     
-    def test_black_error_handling(self):
-        """Test handling of Black formatting errors."""
-        # Mock Black to raise an exception
-        with patch('src.crawler.code_formatter.black') as mock_black:
-            mock_black.format_str.side_effect = Exception("Format error")
-            
-            code = "def test():return True"
-            formatted = self.formatter.format_code(code, 'python')
-            
-            # Should fall back gracefully
-            assert 'def test()' in formatted
-            assert 'return True' in formatted
+    def test_invalid_json(self):
+        """Test formatting invalid JSON."""
+        code = '{"invalid": json}'
+        formatted = self.formatter.format(code, 'json')
+        
+        # Should return as-is for invalid JSON
+        self.assertEqual(formatted, code)
     
-    def test_json_error_handling(self):
-        """Test handling of invalid JSON."""
-        invalid_json = '{"invalid": json syntax}'
+    def test_html_formatting(self):
+        """Test HTML formatting."""
+        code = "<div><p>test</p></div>"
+        formatted = self.formatter.format(code, 'html')
         
-        formatted = self.formatter.format_code(invalid_json, 'json')
-        
-        # Should return cleaned up version without crashing
-        assert 'invalid' in formatted
-        assert 'json syntax' in formatted
+        if self.formatter.prettier_available:
+            # Prettier formats HTML
+            self.assertIn("<div>", formatted)
+            self.assertIn("<p>", formatted)
+        else:
+            # Basic formatting
+            self.assertEqual(formatted, code)
     
-    def test_formatting_preserves_functionality(self):
-        """Test that formatting preserves code functionality."""
-        # Test with a more complex JavaScript function
-        complex_js = """function fibonacci(n){if(n<=1)return n;else return fibonacci(n-1)+fibonacci(n-2);}"""
+    def test_css_formatting(self):
+        """Test CSS formatting."""
+        if not self.formatter.prettier_available:
+            self.skipTest("Prettier not available")
         
-        formatted = self.formatter.format_code(complex_js, 'javascript')
+        code = ".class{color:red;font-size:12px;}"
+        formatted = self.formatter.format(code, 'css')
         
-        # Key functionality should be preserved
-        assert 'function fibonacci(n)' in formatted
-        assert 'if (n <= 1)' in formatted or 'if(n<=1)' in formatted
-        assert 'return n' in formatted
-        assert 'fibonacci(n - 1)' in formatted or 'fibonacci(n-1)' in formatted
+        # Should format with proper spacing
+        self.assertIn("color:", formatted)
+        self.assertIn("font-size:", formatted)
     
-    def test_multiple_language_formatting(self):
-        """Test formatting multiple different languages."""
-        test_cases = [
-            ('function test() { return true; }', 'javascript'),
-            ('def test(): return True', 'python'),
-            ('{"test": true}', 'json'),
-            ('interface Test { value: boolean; }', 'typescript'),
-            ('echo "test"', 'bash')
-        ]
+    def test_yaml_formatting(self):
+        """Test YAML formatting."""
+        code = "key:   value\nlist:\n  - item1\n  - item2"
+        formatted = self.formatter.format(code, 'yaml')
         
-        for code, language in test_cases:
-            formatted = self.formatter.format_code(code, language)
-            assert formatted is not None
-            assert len(formatted.strip()) > 0
-            # Each should be formatted or at least returned safely
-            assert 'test' in formatted.lower()
-    
-    def test_large_code_block_handling(self):
-        """Test handling of large code blocks."""
-        # Create a large JavaScript function
-        large_code = "function test() {\n" + "    console.log('line');\n" * 1000 + "}"
-        
-        formatted = self.formatter.format_code(large_code, 'javascript')
-        
-        # Should handle large blocks without issues
-        assert 'function test()' in formatted
-        assert formatted.count('console.log') == 1000
-    
-    def test_special_characters_handling(self):
-        """Test handling of special characters in code."""
-        code_with_special_chars = '''function test() {
-    const message = "Hello 🌍! This is a test with émojis & spéçial chars";
-    return message;
-}'''
-        
-        formatted = self.formatter.format_code(code_with_special_chars, 'javascript')
-        
-        # Should preserve special characters
-        assert '🌍' in formatted
-        assert 'émojis' in formatted
-        assert 'spéçial' in formatted
+        # Should preserve YAML structure
+        self.assertIn("key:", formatted)
+        self.assertIn("- item1", formatted)
+        self.assertIn("- item2", formatted)
+
+
+if __name__ == '__main__':
+    unittest.main()

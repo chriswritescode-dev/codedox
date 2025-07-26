@@ -4,7 +4,6 @@ import { FileText, Code, Database, Clock } from 'lucide-react'
 import { Link } from 'react-router-dom'
 
 export default function Dashboard() {
-  console.log('Dashboard component rendering');
   
   const { data: stats, isLoading, error } = useQuery({
     queryKey: ['statistics'],
@@ -14,7 +13,6 @@ export default function Dashboard() {
     },
   })
   
-  console.log('Query state:', { isLoading, error, data: stats });
 
   if (isLoading) {
     return (
@@ -34,7 +32,7 @@ export default function Dashboard() {
 
   return (
     <div className="space-y-6">
-      <h1 className="text-3xl font-bold">Dashboard</h1>
+      <h1 className="text-3xl font-bold">CodeDox Dashboard</h1>
 
       {/* Statistics Cards */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
