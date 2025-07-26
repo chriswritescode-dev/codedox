@@ -3,7 +3,7 @@
 import json
 import logging
 import re
-from typing import Optional
+from typing import Optional, Tuple, Dict, Any
 import subprocess
 import tempfile
 import os
@@ -113,19 +113,23 @@ class CodeFormatter:
         
         return None
     
-    def format(self, code: str, language: str) -> str:
+    def format(self, code: str, language: Optional[str] = None) -> str:
         """
         Format code based on its language.
         
         Args:
             code: The code to format
-            language: The programming language
+            language: The programming language (optional, will auto-detect if not provided)
             
         Returns:
             Formatted code
         """
-        if not code or not language:
+        if not code:
             return code
+        
+        # Try auto-detection if no language provided
+        if not language:
+            return self._format_with_auto_detection(code)
         
         # Normalize language name
         lang_lower = language.lower()
@@ -158,8 +162,11 @@ class CodeFormatter:
         elif lang_lower == 'sql':
             return self._format_sql(code)
         
-        # Default: minimal cleanup
+        # Default: try auto-detection before basic format
         else:
+            formatted = self._format_with_auto_detection(code)
+            if formatted != code:
+                return formatted
             return self._basic_format(code)
     
     def _format_with_prettier(self, code: str, language: str) -> str:
@@ -218,7 +225,21 @@ class CodeFormatter:
                 if result.returncode == 0:
                     return result.stdout
                 else:
-                    logger.warning(f"Prettier formatting failed: {result.stderr}")
+                    logger.warning(f"Prettier formatting failed with parser '{parser}': {result.stderr}")
+                    
+                    # Try related parsers as fallback
+                    fallback_parsers = self._get_fallback_parsers(parser)
+                    for fallback_parser in fallback_parsers:
+                        logger.debug(f"Trying fallback parser: {fallback_parser}")
+                        fallback_result = self._try_prettier_with_parser(code, fallback_parser, config_path)
+                        if fallback_result:
+                            logger.info(f"Successfully formatted with fallback parser: {fallback_parser}")
+                            return fallback_result
+                    
+                    # Try auto-detection as last resort
+                    auto_formatted = self._try_prettier_auto_detect(code)
+                    if auto_formatted:
+                        return auto_formatted
                     return self._basic_format(code)
                     
         except Exception as e:
@@ -355,3 +376,260 @@ class CodeFormatter:
                 prev_blank = False
         
         return '\n'.join(result)
+    
+    def _format_with_auto_detection(self, code: str) -> str:
+        """Try to format code by auto-detecting the language."""
+        if not self.prettier_available:
+            return self._basic_format(code)
+        
+        # First try to detect language from code patterns
+        detected_lang = self._detect_language_from_patterns(code)
+        if detected_lang:
+            logger.debug(f"Detected language from patterns: {detected_lang}")
+            formatted = self.format(code, detected_lang)
+            if formatted != code:
+                return formatted
+        
+        # Try common file extensions to trigger Prettier's auto-detection
+        common_extensions = [
+            'js',    # JavaScript
+            'ts',    # TypeScript
+            'jsx',   # React JSX
+            'tsx',   # TypeScript JSX
+            'json',  # JSON
+            'css',   # CSS
+            'scss',  # SCSS
+            'html',  # HTML
+            'md',    # Markdown
+            'yaml',  # YAML
+            'yml',   # YAML
+            'xml',   # XML
+        ]
+        
+        for ext in common_extensions:
+            formatted = self._try_prettier_with_extension(code, ext)
+            if formatted and formatted != code:
+                logger.info(f"Auto-detected format as {ext}")
+                return formatted
+        
+        # If all fail, try without extension (Prettier might detect from content)
+        formatted = self._try_prettier_auto_detect(code)
+        if formatted:
+            return formatted
+        
+        return code
+    
+    def _try_prettier_with_extension(self, code: str, extension: str) -> Optional[str]:
+        """Try formatting with Prettier using a specific file extension."""
+        if not self.prettier_available:
+            return None
+        
+        try:
+            with secure_temp_file(suffix='.json') as config_path:
+                with open(config_path, 'w') as f:
+                    json.dump(PRETTIER_CONFIG, f)
+                
+                result = subprocess.run(
+                    [
+                        self.prettier_path,
+                        "--config", config_path,
+                        "--stdin-filepath", f"code.{extension}"
+                    ],
+                    input=code,
+                    capture_output=True,
+                    text=True,
+                    check=False,
+                    env={**os.environ, "NODE_ENV": "production"}
+                )
+                
+                if result.returncode == 0:
+                    return result.stdout
+                
+        except Exception as e:
+            logger.debug(f"Failed to format with extension {extension}: {e}")
+        
+        return None
+    
+    def _try_prettier_auto_detect(self, code: str) -> Optional[str]:
+        """Try formatting with Prettier without specifying parser or extension."""
+        if not self.prettier_available:
+            return None
+        
+        try:
+            with secure_temp_file(suffix='.json') as config_path:
+                with open(config_path, 'w') as f:
+                    json.dump(PRETTIER_CONFIG, f)
+                
+                # Try without any parser or file extension hints
+                result = subprocess.run(
+                    [
+                        self.prettier_path,
+                        "--config", config_path
+                    ],
+                    input=code,
+                    capture_output=True,
+                    text=True,
+                    check=False,
+                    env={**os.environ, "NODE_ENV": "production"}
+                )
+                
+                if result.returncode == 0:
+                    return result.stdout
+                
+        except Exception as e:
+            logger.debug(f"Failed to auto-detect format: {e}")
+        
+        return None
+    
+    def _get_fallback_parsers(self, parser: str) -> list[str]:
+        """Get related parsers to try as fallbacks."""
+        fallback_map = {
+            'babel': ['typescript', 'babel-ts', 'espree'],
+            'typescript': ['babel', 'babel-ts'],
+            'babel-ts': ['typescript', 'babel'],
+            'css': ['scss', 'less'],
+            'scss': ['css', 'less'],
+            'less': ['css', 'scss'],
+            'json': ['json5', 'jsonc'],
+            'yaml': ['yml'],
+            'yml': ['yaml'],
+        }
+        return fallback_map.get(parser, [])
+    
+    def _try_prettier_with_parser(self, code: str, parser: str, config_path: str) -> Optional[str]:
+        """Try formatting with a specific Prettier parser."""
+        try:
+            result = subprocess.run(
+                [
+                    self.prettier_path,
+                    "--config", config_path,
+                    "--parser", parser
+                ],
+                input=code,
+                capture_output=True,
+                text=True,
+                check=False,
+                env={**os.environ, "NODE_ENV": "production"}
+            )
+            
+            if result.returncode == 0:
+                return result.stdout
+                
+        except Exception as e:
+            logger.debug(f"Failed with parser {parser}: {e}")
+        
+        return None
+    
+    def _detect_language_from_patterns(self, code: str) -> Optional[str]:
+        """Detect language from code patterns and syntax."""
+        # Quick bail out for empty or very short code
+        if not code or len(code) < 10:
+            return None
+        
+        # JSON detection
+        code_stripped = code.strip()
+        if (code_stripped.startswith('{') and code_stripped.endswith('}')) or \
+           (code_stripped.startswith('[') and code_stripped.endswith(']')):
+            try:
+                json.loads(code)
+                return 'json'
+            except:
+                pass
+        
+        # HTML/XML detection
+        if re.search(r'<\w+[^>]*>', code) and re.search(r'</\w+>', code):
+            if '<!DOCTYPE html' in code or '<html' in code:
+                return 'html'
+            return 'xml'
+        
+        # Python detection
+        if any(pattern in code for pattern in ['def ', 'class ', 'import ', 'from ', 'if __name__']):
+            if re.search(r'\bdef\s+\w+\s*\([^)]*\):', code) or \
+               re.search(r'\bclass\s+\w+\s*[\(:]', code):
+                return 'python'
+        
+        # JavaScript/TypeScript detection
+        # TypeScript specific patterns first
+        if any(pattern in code for pattern in ['interface ', 'type ', ': string', ': number', ': boolean', '<T>', 'enum ', 'implements ']):
+            return 'typescript'
+        
+        if any(pattern in code for pattern in ['function ', 'const ', 'let ', 'var ', '=>', 'export ', 'import ']):
+            # React JSX
+            if re.search(r'<[A-Z]\w+', code) or 'React' in code:
+                return 'jsx'
+            return 'javascript'
+        
+        # CSS detection
+        if re.search(r'[.#]?\w+\s*{[^}]*}', code) and any(prop in code for prop in ['color:', 'background:', 'margin:', 'padding:', 'display:', 'position:']):
+            # SCSS specific
+            if '$' in code and ':' in code:
+                return 'scss'
+            return 'css'
+        
+        # YAML detection
+        if re.search(r'^\s*\w+:\s*\S', code, re.MULTILINE) and not '{' in code:
+            return 'yaml'
+        
+        # SQL detection
+        sql_keywords = ['SELECT', 'FROM', 'WHERE', 'INSERT', 'UPDATE', 'DELETE', 'CREATE', 'TABLE']
+        if any(keyword in code.upper() for keyword in sql_keywords):
+            return 'sql'
+        
+        return None
+    
+    def format_with_info(self, code: str, language: Optional[str] = None) -> Dict[str, Any]:
+        """
+        Format code and return detailed information about the formatting process.
+        
+        Args:
+            code: The code to format
+            language: The programming language (optional, will auto-detect if not provided)
+            
+        Returns:
+            Dict containing:
+                - formatted: The formatted code
+                - original_language: The language provided
+                - detected_language: Language detected from patterns (if any)
+                - formatter_used: Which formatter was ultimately used
+                - changed: Whether the code was changed
+        """
+        if not code:
+            return {
+                'formatted': code,
+                'original_language': language,
+                'detected_language': None,
+                'formatter_used': None,
+                'changed': False
+            }
+        
+        detected_lang = None
+        formatter_used = None
+        
+        # If no language provided, detect it
+        if not language:
+            detected_lang = self._detect_language_from_patterns(code)
+            language = detected_lang
+            
+        formatted = self.format(code, language)
+        
+        # Determine which formatter was used based on the result
+        if formatted != code:
+            if self.prettier_available and language and language.lower() in [
+                'javascript', 'js', 'jsx', 'typescript', 'ts', 'tsx', 
+                'json', 'css', 'scss', 'less', 'html', 'yaml', 'yml'
+            ]:
+                formatter_used = 'prettier'
+            elif language and language.lower() in ['python', 'py']:
+                formatter_used = 'python_basic'
+            elif language and language.lower() == 'sql':
+                formatter_used = 'sql_basic'
+            else:
+                formatter_used = 'basic'
+        
+        return {
+            'formatted': formatted,
+            'original_language': language,
+            'detected_language': detected_lang,
+            'formatter_used': formatter_used,
+            'changed': formatted != code
+        }
