@@ -14,13 +14,7 @@ else
     echo "✅ Python $(python3 --version)"
 fi
 
-# Check Node.js
-if ! command -v node &> /dev/null; then
-    echo "❌ Node.js is not installed. Please install Node.js 14 or higher."
-    exit 1
-else
-    echo "✅ Node.js $(node --version)"
-fi
+# Note: Node.js is no longer required for CodeDox core functionality
 
 # Check PostgreSQL
 if ! command -v psql &> /dev/null; then
@@ -66,12 +60,9 @@ echo ""
 echo "🌐 Installing Playwright browsers..."
 crawl4ai-setup
 
-# Install VS Code language detection
-echo ""
-echo "🔍 Installing VS Code language detection..."
-cd src/language_detector
-npm install
-cd ../..
+# Note: Prettier is now installed via pip as part of requirements.txt
+# VS Code language detection has been removed in favor of LLM-based detection
+
 
 # Copy environment file if it doesn't exist
 if [ ! -f .env ]; then

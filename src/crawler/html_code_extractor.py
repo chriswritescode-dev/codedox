@@ -4,9 +4,9 @@ import logging
 import re
 from typing import List, Dict, Any, Optional
 from bs4 import BeautifulSoup, NavigableString, Tag
-from bs4.formatter import HTMLFormatter
 from dataclasses import dataclass, field
 from .code_formatter import CodeFormatter
+from .language_mapping import normalize_language, get_language_from_filename
 import os
 
 logger = logging.getLogger(__name__)
@@ -81,7 +81,67 @@ class HTMLCodeExtractor:
             'blocks_by_type': {},
             'languages_found': set()
         }
-        self.formatter = CodeFormatter()
+    
+    def _process_code_block(self, block: Tag, selector_type: str, use_async_detection: bool = False) -> Optional[ExtractedCodeBlock]:
+        """
+        Process a single code block element.
+        
+        Args:
+            block: The code block element
+            selector_type: Type of selector that found this block
+            use_async_detection: Whether to use async language detection
+            
+        Returns:
+            ExtractedCodeBlock or None if block should be skipped
+        """
+        # Skip if already processed (nested selectors might match same element)
+        if block.get('data-processed'):
+            return None
+            
+        block['data-processed'] = 'true'
+        
+        # Extract the code content
+        raw_code_text = self._extract_code_text(block)
+        
+        # Skip empty or very short code blocks (likely inline code)
+        if not raw_code_text or len(raw_code_text.strip()) < 10:
+            return None
+        
+        # Detect language first
+        language = self._detect_language(block)
+        
+        # Use raw code text without formatting to preserve original
+        code_text = raw_code_text
+        
+        # Skip inline code in sentences (unless it's multi-line)
+        if self._is_inline_code(block) and '\n' not in code_text:
+            return None
+        
+        # Extract surrounding context
+        context = self._extract_context(block)
+        
+        # Classify container type
+        container_type = self._classify_container(context['hierarchy'])
+        
+        # Create extracted block
+        extracted = ExtractedCodeBlock(
+            code=code_text,
+            language=language,
+            container_hierarchy=context['hierarchy'],
+            context_before=context['before'],
+            context_after=context['after'],
+            container_type=container_type,
+            title=context.get('title'),
+            description=context.get('description')
+        )
+        
+        # Update stats
+        self.stats['total_blocks'] += 1
+        self.stats['blocks_by_type'][selector_type] = self.stats['blocks_by_type'].get(selector_type, 0) + 1
+        if language:
+            self.stats['languages_found'].add(language)
+        
+        return extracted
     
     def extract_code_blocks(self, html: str, url: str) -> List[ExtractedCodeBlock]:
         """
@@ -97,67 +157,79 @@ class HTMLCodeExtractor:
         soup = BeautifulSoup(html, 'html.parser')
         extracted_blocks = []
         
-        # Note: We don't remove any elements to avoid missing code blocks
-        # self._remove_skip_elements(soup)
-        
         # Find all code blocks
         for selector, selector_type in self.CODE_SELECTORS:
             blocks = soup.select(selector)
             
             for block in blocks:
-                # Skip if already processed (nested selectors might match same element)
-                if block.get('data-processed'):
-                    continue
-                    
-                block['data-processed'] = 'true'
-                
-                # Extract the code content
-                raw_code_text = self._extract_code_text(block)
-                
-                # Skip empty or very short code blocks (likely inline code)
-                if not raw_code_text or len(raw_code_text.strip()) < 10:
-                    continue
-                
-                # Detect language first (needed for formatting)
-                language = self._detect_language(block)
-                
-                # Format the code using language-specific rules
-                code_text = self.formatter.format_code(raw_code_text, language)
-                
-                # Skip inline code in sentences (unless it's multi-line after formatting)
-                if self._is_inline_code(block) and '\n' not in code_text:
-                    continue
-                
-                # Extract surrounding context
-                context = self._extract_context(block)
-                
-                # Classify container type
-                container_type = self._classify_container(context['hierarchy'])
-                
-                # Create extracted block
-                extracted = ExtractedCodeBlock(
-                    code=code_text,
-                    language=language,
-                    container_hierarchy=context['hierarchy'],
-                    context_before=context['before'],
-                    context_after=context['after'],
-                    container_type=container_type,
-                    title=context.get('title'),
-                    description=context.get('description')
-                )
-                
-                extracted_blocks.append(extracted)
-                
-                # Update stats
-                self.stats['total_blocks'] += 1
-                self.stats['blocks_by_type'][selector_type] = self.stats['blocks_by_type'].get(selector_type, 0) + 1
-                if language:
-                    self.stats['languages_found'].add(language)
+                extracted = self._process_code_block(block, selector_type, use_async_detection=False)
+                if extracted:
+                    extracted_blocks.append(extracted)
         
         logger.info(f"Extracted {len(extracted_blocks)} code blocks from {url}")
         logger.debug(f"Stats: {self.stats}")
         
         return extracted_blocks
+    
+    async def _process_code_block_async(self, block: Tag, selector_type: str) -> Optional[ExtractedCodeBlock]:
+        """
+        Process a single code block element with async language detection.
+        
+        Args:
+            block: The code block element
+            selector_type: Type of selector that found this block
+            
+        Returns:
+            ExtractedCodeBlock or None if block should be skipped
+        """
+        # Skip if already processed (nested selectors might match same element)
+        if block.get('data-processed'):
+            return None
+            
+        block['data-processed'] = 'true'
+        
+        # Extract the code content
+        raw_code_text = self._extract_code_text(block)
+        
+        # Skip empty or very short code blocks (likely inline code)
+        if not raw_code_text or len(raw_code_text.strip()) < 10:
+            return None
+        
+        # Detect language first - async version
+        language = await self._detect_language_async(block)
+        
+        # Use raw code text without formatting to preserve original
+        code_text = raw_code_text
+        
+        # Skip inline code in sentences (unless it's multi-line)
+        if self._is_inline_code(block) and '\n' not in code_text:
+            return None
+        
+        # Extract surrounding context
+        context = self._extract_context(block)
+        
+        # Classify container type
+        container_type = self._classify_container(context['hierarchy'])
+        
+        # Create extracted block
+        extracted = ExtractedCodeBlock(
+            code=code_text,
+            language=language,
+            container_hierarchy=context['hierarchy'],
+            context_before=context['before'],
+            context_after=context['after'],
+            container_type=container_type,
+            title=context.get('title'),
+            description=context.get('description')
+        )
+        
+        # Update stats
+        self.stats['total_blocks'] += 1
+        self.stats['blocks_by_type'][selector_type] = self.stats['blocks_by_type'].get(selector_type, 0) + 1
+        if language:
+            self.stats['languages_found'].add(language)
+        
+        return extracted
     
     async def extract_code_blocks_async(self, html: str, url: str) -> List[ExtractedCodeBlock]:
         """
@@ -173,62 +245,14 @@ class HTMLCodeExtractor:
         soup = BeautifulSoup(html, 'html.parser')
         extracted_blocks = []
         
-        # Note: We don't remove any elements to avoid missing code blocks
-        # self._remove_skip_elements(soup)
-        
         # Find all code blocks
         for selector, selector_type in self.CODE_SELECTORS:
             blocks = soup.select(selector)
             
             for block in blocks:
-                # Skip if already processed (nested selectors might match same element)
-                if block.get('data-processed'):
-                    continue
-                    
-                block['data-processed'] = 'true'
-                
-                # Extract the code content
-                raw_code_text = self._extract_code_text(block)
-                
-                # Skip empty or very short code blocks (likely inline code)
-                if not raw_code_text or len(raw_code_text.strip()) < 10:
-                    continue
-                
-                # Detect language first (needed for formatting)
-                language = await self._detect_language_async(block)
-                
-                # Format the code using language-specific rules
-                code_text = self.formatter.format_code(raw_code_text, language)
-                
-                # Skip inline code in sentences (unless it's multi-line after formatting)
-                if self._is_inline_code(block) and '\n' not in code_text:
-                    continue
-                
-                # Extract surrounding context
-                context = self._extract_context(block)
-                
-                # Classify container type
-                container_type = self._classify_container(context['hierarchy'])
-                
-                # Create extracted block
-                extracted = ExtractedCodeBlock(
-                    code=code_text,
-                    language=language,
-                    container_hierarchy=context['hierarchy'],
-                    context_before=context['before'],
-                    context_after=context['after'],
-                    container_type=container_type,
-                    title=context.get('title'),
-                    description=context.get('description')
-                )
-                
-                extracted_blocks.append(extracted)
-                
-                # Update stats
-                self.stats['total_blocks'] += 1
-                self.stats['blocks_by_type'][selector_type] = self.stats['blocks_by_type'].get(selector_type, 0) + 1
-                if language:
-                    self.stats['languages_found'].add(language)
+                extracted = await self._process_code_block_async(block, selector_type)
+                if extracted:
+                    extracted_blocks.append(extracted)
         
         logger.info(f"Extracted {len(extracted_blocks)} code blocks from {url}")
         logger.debug(f"Stats: {self.stats}")
@@ -348,7 +372,7 @@ class HTMLCodeExtractor:
         return self._pattern_based_detection(code_text)
     
     async def _detect_language_async(self, element: Tag) -> Optional[str]:
-        """Detect programming language using VS Code detection service if available."""
+        """Detect programming language using HTML classes and pattern matching (VS Code detection disabled)."""
         code_text = self._extract_code_text(element)
         if not code_text or len(code_text.strip()) < 10:
             return None
@@ -387,27 +411,6 @@ class HTMLCodeExtractor:
                 logger.debug(f"Language from filename '{filename}': {lang_from_filename}")
                 return lang_from_filename
         
-        # Use VS Code detection
-        try:
-            from .vscode_language_detector import detect_language
-            
-            result = await detect_language(code_text)
-            if result.get('success') and result.get('topResult'):
-                top_result = result['topResult']
-                confidence = top_result.get('confidence', 0)
-                detected_lang = top_result['language']
-                
-                # Log all detections for debugging
-                logger.debug(f"VS Code result: {detected_lang} (confidence: {confidence:.3f})")
-                
-                # Use VS Code result if confidence is above threshold or if it's not plaintext
-                if confidence > 0.1 or (detected_lang != 'plaintext' and confidence > 0):
-                    logger.debug(f"VS Code detected: {detected_lang} (confidence: {confidence:.2f})")
-                    return self._normalize_language_name(detected_lang)
-                else:
-                    logger.debug(f"VS Code confidence too low: {confidence:.3f}, using pattern detection")
-        except Exception as e:
-            logger.error(f"VS Code language detection failed: {e}", exc_info=True)
         
         # Fall back to pattern-based detection
         logger.debug("Falling back to pattern-based detection")
@@ -415,256 +418,122 @@ class HTMLCodeExtractor:
     
     def _normalize_language_name(self, lang: str) -> str:
         """Normalize language name to a standard format."""
-        lang = lang.lower().strip()
-        
-        # Common normalizations
-        language_map = {
-            'js': 'javascript',
-            'jsx': 'javascript',
-            'ts': 'typescript',
-            'tsx': 'typescript',
-            'py': 'python',
-            'py3': 'python',
-            'python3': 'python',
-            'sh': 'bash',
-            'shell': 'bash',
-            'zsh': 'bash',
-            'fish': 'bash',
-            'yml': 'yaml',
-            'c++': 'cpp',
-            'c#': 'csharp',
-            'objective-c': 'objc',
-            'objectivec': 'objc',
-            'golang': 'go',
-            'htm': 'html',
-            'xhtml': 'html',
-            'xml': 'html',
-            'rb': 'ruby',
-            'pl': 'perl',
-            'ps1': 'powershell',
-            'psm1': 'powershell',
-            'kt': 'kotlin',
-            'rs': 'rust',
-            'md': 'markdown',
-            'tex': 'latex',
-            'r': 'r',
-            'sql': 'sql',
-            'postgresql': 'sql',
-            'mysql': 'sql',
-            'sqlite': 'sql',
-            'shellscript': 'shell',
-            'bat': 'batch',
-            'cmd': 'batch',
-        }
-        
-        return language_map.get(lang, lang)
+        return normalize_language(lang)
     
     def _get_language_from_filename(self, filename: str) -> Optional[str]:
         """Determine language from filename or extension."""
-        if not filename:
-            return None
-        
-        filename = filename.strip().lower()
-        
-        # Special filenames without extensions
-        special_files = {
-            'dockerfile': 'dockerfile',
-            'makefile': 'makefile',
-            'gemfile': 'ruby',
-            'rakefile': 'ruby',
-            'gulpfile': 'javascript',
-            'gruntfile': 'javascript',
-            'vagrantfile': 'ruby',
-            'jenkinsfile': 'groovy',
-            'podfile': 'ruby',
-            'cartfile': 'swift',
-            'appfile': 'ruby',
-            'fastfile': 'ruby',
-            'snapfile': 'ruby',
-            'scanfile': 'ruby',
-            '.gitignore': 'gitignore',
-            '.dockerignore': 'dockerignore',
-            '.env': 'env',
-            '.babelrc': 'json',
-            '.eslintrc': 'json',
-            '.prettierrc': 'json',
-            'tsconfig.json': 'json',
-            'package.json': 'json',
-            'composer.json': 'json',
-            'cargo.toml': 'toml',
-            'pyproject.toml': 'toml',
-            'go.mod': 'go',
-            'go.sum': 'go',
-            'requirements.txt': 'text',
-            'readme.md': 'markdown',
-            'changelog.md': 'markdown',
-        }
-        
-        # Check special filenames first
-        base_name = os.path.basename(filename)
-        if base_name in special_files:
-            return special_files[base_name]
-        
-        # Extract extension
-        ext_match = re.search(r'\.([a-zA-Z0-9]+)$', filename)
-        if not ext_match:
-            return None
-        
-        ext = ext_match.group(1)
-        
-        # Extension to language mapping
-        ext_map = {
-            # JavaScript/TypeScript
-            'js': 'javascript',
-            'jsx': 'javascript',
-            'ts': 'typescript',
-            'tsx': 'typescript',
-            'mjs': 'javascript',
-            'cjs': 'javascript',
-            
-            # Python
-            'py': 'python',
-            'pyw': 'python',
-            'pyx': 'python',
-            'pxd': 'python',
-            'pyi': 'python',
-            
-            # Web
-            'html': 'html',
-            'htm': 'html',
-            'xhtml': 'html',
-            'xml': 'xml',
-            'css': 'css',
-            'scss': 'scss',
-            'sass': 'sass',
-            'less': 'less',
-            
-            # Data formats
-            'json': 'json',
-            'yaml': 'yaml',
-            'yml': 'yaml',
-            'toml': 'toml',
-            'ini': 'ini',
-            'cfg': 'ini',
-            'conf': 'conf',
-            
-            # Shell
-            'sh': 'shell',
-            'bash': 'bash',
-            'zsh': 'zsh',
-            'fish': 'fish',
-            'ps1': 'powershell',
-            'psm1': 'powershell',
-            'psd1': 'powershell',
-            'bat': 'batch',
-            'cmd': 'batch',
-            
-            # Systems languages
-            'c': 'c',
-            'h': 'c',
-            'cpp': 'cpp',
-            'cxx': 'cpp',
-            'cc': 'cpp',
-            'hpp': 'cpp',
-            'hxx': 'cpp',
-            'hh': 'cpp',
-            'rs': 'rust',
-            'go': 'go',
-            'zig': 'zig',
-            
-            # JVM languages
-            'java': 'java',
-            'kt': 'kotlin',
-            'kts': 'kotlin',
-            'scala': 'scala',
-            'clj': 'clojure',
-            'cljs': 'clojure',
-            'groovy': 'groovy',
-            
-            # .NET languages
-            'cs': 'csharp',
-            'fs': 'fsharp',
-            'vb': 'vbnet',
-            
-            # Mobile
-            'swift': 'swift',
-            'm': 'objc',
-            'mm': 'objc',
-            
-            # Database
-            'sql': 'sql',
-            'psql': 'sql',
-            'mysql': 'sql',
-            
-            # Others
-            'rb': 'ruby',
-            'php': 'php',
-            'pl': 'perl',
-            'lua': 'lua',
-            'r': 'r',
-            'R': 'r',
-            'jl': 'julia',
-            'ex': 'elixir',
-            'exs': 'elixir',
-            'erl': 'erlang',
-            'hrl': 'erlang',
-            'nim': 'nim',
-            'nims': 'nim',
-            'dart': 'dart',
-            'pas': 'pascal',
-            'pp': 'pascal',
-            'asm': 'asm',
-            's': 'asm',
-            
-            # Documentation
-            'md': 'markdown',
-            'mdx': 'mdx',
-            'rst': 'rst',
-            'tex': 'latex',
-            'adoc': 'asciidoc',
-            
-            # Config files
-            'nginx': 'nginx',
-            'htaccess': 'apache',
-        }
-        
-        return ext_map.get(ext)
+        return get_language_from_filename(filename)
     
     def _pattern_based_detection(self, code_text: str) -> str:
-        """Pattern-based detection for programming languages."""
+        """Pattern-based detection for programming languages with improved specificity."""
         code_lower = code_text.lower()
+        lines = code_text.split('\n')
+        first_line = lines[0].strip() if lines else ''
         
-        # Shell/Bash patterns (check first to avoid conflicts with 'export')
-        if any(pattern in code_text for pattern in ['#!/bin/bash', '#!/bin/sh']) or (code_text.startswith('#!') and 'bash' in code_lower):
-            return 'bash'
-        elif 'echo ' in code_text and ('$' in code_text or code_text.strip().startswith('export ')):
-            return 'bash'
+        # Shell/Bash patterns - check shebang first (most specific)
+        if code_text.startswith('#!'):
+            if any(shell in first_line for shell in ['/bash', '/sh', '/zsh', '/fish']):
+                return 'bash'
+            elif '/usr/bin/env' in first_line:
+                if 'python' in first_line:
+                    return 'python'
+                elif 'node' in first_line:
+                    return 'javascript'
+                elif 'ruby' in first_line:
+                    return 'ruby'
+                elif 'perl' in first_line:
+                    return 'perl'
         
-        # JSON pattern (check early as it's very specific)
-        elif code_text.strip().startswith('{') and code_text.strip().endswith('}') and '"' in code_text:
-            return 'json'
+        # JSON pattern - must have valid JSON structure
+        if (code_text.strip().startswith('{') and code_text.strip().endswith('}') and 
+            '":' in code_text and code_text.count('{') == code_text.count('}')):
+            # Additional check: no JavaScript keywords
+            if not any(kw in code_text for kw in ['function', 'const', 'let', 'var', '=>', 'class']):
+                return 'json'
         
-        # TypeScript/JavaScript patterns (check before CSS to handle JS objects)
-        elif any(pattern in code_text for pattern in [': string', ': number', ': boolean', 'interface ', 'type ']):
+        # YAML pattern - check for key: value patterns without braces
+        if (': ' in code_text and not '{' in code_text and not '}' in code_text and
+            any(line.strip().endswith(':') for line in lines)):
+            return 'yaml'
+        
+        # CSS patterns - must have CSS-specific properties
+        css_properties = ['color:', 'display:', 'margin:', 'padding:', 'font-', 'background:', 
+                         'width:', 'height:', 'position:', 'border:', 'text-align:']
+        if ('{' in code_text and '}' in code_text and 
+            any(prop in code_text for prop in css_properties)):
+            # Check for CSS-specific patterns
+            if ('@import' in code_text or '@media' in code_text or 
+                any(selector in code_text for selector in ['.class', '#id', 'body {', 'div {'])):
+                return 'css'
+            # Additional check: no JavaScript function declarations
+            if not any(pattern in code_text for pattern in ['function(', 'function ', '=> {']):
+                return 'css'
+        
+        # TypeScript patterns - must have type annotations
+        if any(pattern in code_text for pattern in [': string', ': number', ': boolean', 
+                                                    'interface ', 'type ', ': any', ': void',
+                                                    '<T>', 'extends ', 'implements ']):
             return 'typescript'
-        elif any(pattern in code_text for pattern in ['function ', 'const ', 'let ', 'var ', '=>', 'export ', 'import ']):
+        
+        # JavaScript patterns - check for JS-specific syntax
+        js_patterns = ['function ', 'const ', 'let ', 'var ', '=>', 'async ', 'await ',
+                      'export ', 'import ', 'require(', 'module.exports', 'console.log']
+        if any(pattern in code_text for pattern in js_patterns):
+            # Additional check for React/JSX
+            if any(jsx in code_text for jsx in ['<div>', '<span>', 'React.', 'useState', 'useEffect']):
+                return 'javascript'
+            # Check for Node.js patterns
+            if any(node in code_text for node in ['require(', 'module.exports', 'process.', 'fs.']):
+                return 'javascript'
             return 'javascript'
         
-        # HTML patterns (check for both escaped and unescaped)
-        elif any(pattern in code_text for pattern in ['<html', '<div', '<p>', '<span', '<body', '<head', '</div>', '</p>', '</html>']):
-            return 'html'
-        elif any(pattern in code_text for pattern in ['&lt;html', '&lt;div', '&lt;p&gt;', '&lt;span', '&lt;body', '&lt;head', '&lt;/div&gt;', '&lt;/p&gt;', '&lt;/html&gt;']):
-            return 'html'
-        
-        # CSS patterns (more specific to avoid false positives)
-        elif any(pattern in code_text for pattern in ['{', '}']) and any(pattern in code_text for pattern in ['color:', 'display:', 'margin:', 'padding:', 'font-', 'background:', 'width:', 'height:']):
-            return 'css'
-        elif any(pattern in code_text for pattern in ['.', '#']) and '{' in code_text and '}' in code_text and ':' in code_text and not any(pattern in code_text for pattern in ['function', 'const', 'let', 'var']):
-            return 'css'
-        
-        # Python patterns
-        elif any(pattern in code_text for pattern in ['def ', 'import ', 'from ', 'class ', 'if __name__']):
+        # Python patterns - check for Python-specific syntax
+        python_patterns = ['def ', 'import ', 'from ', 'class ', 'if __name__', 
+                          'print(', 'self.', '__init__', 'async def', 'await ',
+                          'try:', 'except:', 'finally:', 'with ']
+        if any(pattern in code_text for pattern in python_patterns):
             return 'python'
+        
+        # Ruby patterns
+        if any(pattern in code_text for pattern in ['def ', 'end', 'puts ', 'require ', 
+                                                    'class ', 'module ', 'attr_', '.each']):
+            return 'ruby'
+        
+        # Go patterns
+        if any(pattern in code_text for pattern in ['func ', 'package ', 'import (', 
+                                                    'fmt.', 'var ', 'const ', ':=']):
+            return 'go'
+        
+        # Rust patterns
+        if any(pattern in code_text for pattern in ['fn ', 'let ', 'mut ', 'impl ', 
+                                                    'struct ', 'enum ', 'trait ', 'use ']):
+            return 'rust'
+        
+        # C/C++ patterns
+        if any(pattern in code_text for pattern in ['#include', 'int main', 'void ', 
+                                                    'printf(', 'std::', 'namespace ']):
+            return 'cpp'
+        
+        # Java patterns
+        if any(pattern in code_text for pattern in ['public class', 'private ', 'protected ',
+                                                    'static void', 'System.out.', 'import java.']):
+            return 'java'
+        
+        # SQL patterns
+        sql_keywords = ['SELECT', 'FROM', 'WHERE', 'INSERT', 'UPDATE', 'DELETE', 
+                       'CREATE TABLE', 'ALTER TABLE', 'DROP TABLE']
+        if any(keyword in code_text.upper() for keyword in sql_keywords):
+            return 'sql'
+        
+        # HTML patterns (both escaped and unescaped)
+        if (any(tag in code_text for tag in ['<html', '<div', '<body', '<head', '</html>', '<p', '</p>']) or
+            any(tag in code_text for tag in ['&lt;html', '&lt;div', '&lt;body', '&lt;/html&gt;', '&lt;p&gt;', '&lt;/p&gt;'])):
+            return 'html'
+        
+        # Shell patterns - fallback for commands without shebang
+        if (any(cmd in code_text for cmd in ['echo ', 'cd ', 'ls ', 'mkdir ', 'rm ', 'cp ']) and
+            ('$' in code_text or '|' in code_text or '&&' in code_text)):
+            return 'bash'
         
         # Default to text if no patterns match
         return 'text'

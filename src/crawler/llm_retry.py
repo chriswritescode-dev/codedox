@@ -8,6 +8,7 @@ from typing import Optional, List
 import openai
 
 from .extraction_models import SimpleCodeBlock, TITLE_AND_DESCRIPTION_PROMPT
+from .language_mapping import normalize_language
 from ..config import get_settings
 
 logger = logging.getLogger(__name__)
@@ -82,6 +83,8 @@ class LLMDescriptionGenerator:
                 
                 # Create the prompt using string replacement to avoid format string conflicts
                 prompt = TITLE_AND_DESCRIPTION_PROMPT.replace(
+                    "{url}", url
+                ).replace(
                     "{context}", context[:500]  # Limit context length
                 ).replace(
                     "{code}", block.code[:2000]  # Limit code length
@@ -105,13 +108,16 @@ class LLMDescriptionGenerator:
                         # Extract and parse response
                         content = response.choices[0].message.content.strip()
                         
-                        # Parse title and description
+                        # Parse language, title and description
+                        language = None
                         title = None
                         description = None
                         
                         for line in content.split('\n'):
                             line = line.strip()
-                            if line.startswith("TITLE:"):
+                            if line.startswith("LANGUAGE:"):
+                                language = line[9:].strip()
+                            elif line.startswith("TITLE:"):
                                 title = line[6:].strip()
                             elif line.startswith("DESCRIPTION:"):
                                 description = line[12:].strip()
@@ -121,9 +127,20 @@ class LLMDescriptionGenerator:
                             logger.debug(f"Generated description: {description[:100]}...")
                             block.title = title
                             block.description = description
+                            
+                            # Update language if LLM provided one
+                            if language:
+                                original_language = block.language
+                                normalized_language = normalize_language(language)
+                                block.language = normalized_language
+                                if original_language and original_language != normalized_language:
+                                    logger.info(f"LLM corrected language from '{original_language}' to '{normalized_language}' (raw: '{language}')")
+                                else:
+                                    logger.debug(f"LLM confirmed language: {normalized_language}")
+                            
                             return block
                         else:
-                            logger.warning(f"Failed to parse title and description from response: {content}")
+                            logger.warning(f"Failed to parse response from LLM: {content}")
                             
                     except Exception as e:
                         logger.error(f"LLM title/description error on attempt {attempt + 1}: {e}")
