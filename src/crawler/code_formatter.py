@@ -60,7 +60,7 @@ class CodeFormatter:
         self.prettier_path = self._find_prettier_path()
         self.prettier_available = self.prettier_path is not None
         if not self.prettier_available:
-            logger.warning("Prettier not found. Install it globally with 'npm install -g prettier'")
+            logger.warning("Prettier not found. Run 'npm install' in the frontend directory to enable JavaScript/TypeScript formatting")
     
     def _find_prettier_path(self) -> Optional[str]:
         """Find Prettier executable in various locations with security validation."""
@@ -70,7 +70,9 @@ class CodeFormatter:
         
         # Check common locations
         possible_paths = [
-            # Primary: System PATH
+            # Primary: Frontend node_modules (where we install it)
+            os.path.join(project_root, "frontend", "node_modules", ".bin", "prettier"),
+            # Secondary: System PATH
             "prettier",
             # npm global on Unix
             "/usr/local/bin/prettier",
