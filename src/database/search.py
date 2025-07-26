@@ -622,13 +622,10 @@ class DocumentSearcher:
         if job_id:
             base_query = base_query.filter(Document.crawl_job_id == job_id)
         
-        # Simple text search on title and content
+        # Simple text search on title only
         if query:
             base_query = base_query.filter(
-                or_(
-                    Document.title.ilike(f'%{query}%'),
-                    Document.markdown_content.ilike(f'%{query}%')
-                )
+                Document.title.ilike(f'%{query}%')
             )
         
         total_count = base_query.count()

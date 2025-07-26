@@ -10,7 +10,8 @@ services:
       - "5432:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
-      - ./src/database/schema.sql:/docker-entrypoint-initdb.d/01-schema.sql
+      - ./docker/init-db.sh:/docker-entrypoint-initdb.d/01-init-db.sh
+      - ./src/database/schema.sql:/docker-entrypoint-initdb.d/02-schema.sql
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U postgres"]
       interval: 10s
@@ -25,13 +26,10 @@ services:
     ports:
       - "8000:8000"
     env_file:
-      - .env.docker
+      - .env
     environment:
+      # Override DB_HOST for Docker networking
       DB_HOST: postgres
-      DB_PORT: 5432
-      DB_NAME: codedox
-      DB_USER: postgres
-      DB_PASSWORD: postgres
       ENVIRONMENT: production
     depends_on:
       postgres:

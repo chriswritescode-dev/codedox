@@ -75,8 +75,16 @@ config.local.yaml
 debug_*.py
 clear_old_data.py
 
+# HTML extraction debug output
+html_extraction_debug/
+test_extraction_output/
+
 # Frontend
 frontend/node_modules/
 frontend/dist/
 frontend/dist-ssr/
 frontend/package-lock.json
+
+# Node.js (for language detector)
+node_modules/
+src/language_detector/node_modules/

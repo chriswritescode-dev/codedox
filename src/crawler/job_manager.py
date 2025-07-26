@@ -115,7 +115,14 @@ class JobManager:
                 existing_job.documents_crawled = 0
                 existing_job.processed_pages = 0
                 existing_job.total_pages = 0
-                existing_job.snippets_extracted = 0
+                # Don't reset snippets_extracted - preserve existing count
+                # Count existing snippets for this job
+                from ..database.models import Document, CodeSnippet
+                existing_snippets = session.query(CodeSnippet).join(Document).filter(
+                    Document.crawl_job_id == existing_job.id
+                ).count()
+                logger.info(f"Preserving {existing_snippets} existing snippets for job {existing_job.id}")
+                existing_job.snippets_extracted = existing_snippets
                 existing_job.config = config
 
                 session.commit()
