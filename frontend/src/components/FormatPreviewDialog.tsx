@@ -8,6 +8,8 @@ interface FormatPreviewDialogProps {
   formatted: string
   language: string
   changed: boolean
+  detectedLanguage?: string
+  formatterUsed?: string
   isFormatting?: boolean
   onConfirm: () => void
   onCancel: () => void
@@ -20,6 +22,8 @@ export function FormatPreviewDialog({
   formatted,
   language,
   changed,
+  detectedLanguage,
+  formatterUsed,
   isFormatting = false,
   onConfirm,
   onCancel,
@@ -65,6 +69,19 @@ export function FormatPreviewDialog({
                 <span className="px-2 py-0.5 bg-primary/10 text-primary rounded text-xs font-medium">
                   {language}
                 </span>
+                {detectedLanguage && detectedLanguage !== language && (
+                  <>
+                    <span className="text-xs text-muted-foreground">→</span>
+                    <span className="px-2 py-0.5 bg-amber-500/10 text-amber-600 dark:text-amber-400 rounded text-xs font-medium">
+                      Auto-detected: {detectedLanguage}
+                    </span>
+                  </>
+                )}
+                {formatterUsed && (
+                  <span className="text-xs text-muted-foreground ml-2">
+                    ({formatterUsed})
+                  </span>
+                )}
               </div>
               <div className="flex items-center gap-2">
                 {changed ? (

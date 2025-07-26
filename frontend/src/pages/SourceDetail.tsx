@@ -26,6 +26,7 @@ import { PaginationControls } from "../components/PaginationControls";
 import { useDebounce } from "../hooks/useDebounce";
 import { EditableSourceName } from "../components/EditableSourceName";
 import { FormatSourceDialog } from "../components/FormatSourceDialog";
+import { Spinner } from "../components/Spinner";
 
 type TabType = "overview" | "documents" | "snippets";
 
@@ -458,10 +459,19 @@ export default function SourceDetail() {
                 <button
                   onClick={handleFormatAll}
                   disabled={formatPreviewMutation.isPending || snippetsLoading || !snippets || snippets.total === 0}
-                  className="flex items-center gap-2 px-3 py-2 text-sm bg-secondary text-secondary-foreground rounded-md hover:bg-secondary/80 disabled:opacity-50 disabled:cursor-not-allowed"
+                  className="flex items-center gap-2 px-4 py-2 text-sm bg-secondary text-secondary-foreground rounded-md hover:bg-secondary/80 disabled:opacity-50 disabled:cursor-not-allowed min-w-[120px] justify-center"
                 >
-                  <Wand2 className="h-4 w-4" />
-                  Format All
+                  {formatPreviewMutation.isPending ? (
+                    <>
+                      <Spinner size="sm" className="text-secondary-foreground" />
+                      Analyzing...
+                    </>
+                  ) : (
+                    <>
+                      <Wand2 className="h-4 w-4" />
+                      Format All
+                    </>
+                  )}
                 </button>
               </div>
 

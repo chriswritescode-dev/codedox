@@ -4,6 +4,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { api } from '../lib/api'
 import { ArrowLeft, Code, Link as LinkIcon, Copy, Check, Wand2 } from 'lucide-react'
 import { FormatPreviewDialog } from '../components/FormatPreviewDialog'
+import { Spinner } from '../components/Spinner'
 
 export default function SnippetDetail() {
   const { id } = useParams<{ id: string }>()
@@ -16,6 +17,8 @@ export default function SnippetDetail() {
     formatted: string
     language: string
     changed: boolean
+    detected_language?: string
+    formatter_used?: string
   } | null>(null)
   
   const { data: snippet, isLoading, error } = useQuery({
@@ -144,10 +147,19 @@ export default function SnippetDetail() {
             <button
               onClick={handleFormat}
               disabled={formatPreviewMutation.isPending}
-              className="flex items-center gap-1 px-2 py-1 text-xs bg-background rounded hover:bg-primary/10 transition-colors disabled:opacity-50"
+              className="flex items-center gap-1 px-2 py-1 text-xs bg-background rounded hover:bg-primary/10 transition-colors disabled:opacity-50 min-w-[65px] justify-center"
             >
-              <Wand2 className="h-3 w-3" />
-              Format
+              {formatPreviewMutation.isPending ? (
+                <>
+                  <Spinner size="xs" />
+                  <span className="ml-0.5">...</span>
+                </>
+              ) : (
+                <>
+                  <Wand2 className="h-3 w-3" />
+                  Format
+                </>
+              )}
             </button>
             <button
               onClick={handleCopy}
@@ -177,6 +189,8 @@ export default function SnippetDetail() {
           formatted={formatPreview.formatted}
           language={formatPreview.language}
           changed={formatPreview.changed}
+          detectedLanguage={formatPreview.detected_language}
+          formatterUsed={formatPreview.formatter_used}
           isFormatting={formatSnippetMutation.isPending}
           onConfirm={handleConfirmFormat}
           onCancel={() => {
