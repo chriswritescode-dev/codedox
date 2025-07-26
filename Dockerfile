@@ -74,7 +74,18 @@ RUN mkdir -p logs && chown codedox:codedox logs
 COPY --chown=root:root docker-entrypoint.sh /usr/local/bin/
 RUN chmod +x /usr/local/bin/docker-entrypoint.sh
 
-# Note: VS Code language detection has been removed in favor of LLM-based detection
+# Install Node.js and npm for frontend dependencies (including Prettier)
+RUN curl -fsSL https://deb.nodesource.com/setup_18.x | bash - && \
+    apt-get install -y nodejs && \
+    rm -rf /var/lib/apt/lists/*
+
+# Install frontend dependencies (including Prettier for code formatting)
+WORKDIR /app/frontend
+COPY --chown=codedox:codedox frontend/package*.json ./
+RUN npm install && \
+    chown -R codedox:codedox node_modules
+
+WORKDIR /app
 
 # Install Playwright browsers as root with proper setup
 USER root
