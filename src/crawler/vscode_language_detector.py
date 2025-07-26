@@ -6,6 +6,7 @@ import logging
 import os
 import subprocess
 from typing import Dict, Any
+from functools import lru_cache
 
 logger = logging.getLogger(__name__)
 
@@ -15,12 +16,25 @@ class VSCodeLanguageDetector:
     
     def __init__(self):
         """Initialize the detector."""
-        self.detector_path = os.path.join(
-            os.path.dirname(__file__), 
+        # Get absolute paths for security validation
+        current_dir = os.path.dirname(os.path.abspath(__file__))
+        project_root = os.path.dirname(os.path.dirname(current_dir))
+        
+        # Construct and validate detector path
+        self.detector_path = os.path.abspath(os.path.join(
+            current_dir, 
             '..', 
             'language_detector', 
             'detect.js'
-        )
+        ))
+        
+        # Security validation: ensure detector is within project
+        if not self.detector_path.startswith(os.path.abspath(project_root)):
+            raise SecurityError(f"Detector path '{self.detector_path}' is outside project root")
+        
+        if not os.path.exists(self.detector_path):
+            logger.warning(f"Detector script not found at {self.detector_path}")
+        
         self._initialized = False
         self._init_error = None
     
@@ -72,7 +86,11 @@ class VSCodeLanguageDetector:
         await self.ensure_initialized()
         
         try:
-            # Run the detection script
+            # Validate detector path still exists (in case it was removed)
+            if not os.path.exists(self.detector_path):
+                raise FileNotFoundError(f"Detector script not found at {self.detector_path}")
+            
+            # Run the detection script with validated path
             process = await asyncio.create_subprocess_exec(
                 'node', self.detector_path,
                 stdin=subprocess.PIPE,
@@ -104,15 +122,21 @@ class VSCodeLanguageDetector:
             }
 
 
-# Global instance
+# Global instance with caching
 _detector = None
 
 
+@lru_cache(maxsize=1)
+def _create_detector_sync() -> VSCodeLanguageDetector:
+    """Create a detector instance (sync part for caching)."""
+    return VSCodeLanguageDetector()
+
+
 async def get_detector() -> VSCodeLanguageDetector:
-    """Get or create the global detector instance."""
+    """Get or create the global detector instance with caching."""
     global _detector
     if _detector is None:
-        _detector = VSCodeLanguageDetector()
+        _detector = _create_detector_sync()
         await _detector.ensure_initialized()
     return _detector
 
