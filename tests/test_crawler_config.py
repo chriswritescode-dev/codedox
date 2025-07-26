@@ -16,9 +16,9 @@ class TestCrawlerConfig:
         
         assert config is not None
         assert not hasattr(config, 'deep_crawl_strategy') or config.deep_crawl_strategy is None
-        assert config.excluded_tags == ["nav", "footer", "header", "aside", "button", "form"]
         assert config.cache_mode.value == "bypass"
         assert config.stream is True
+        assert config.exclude_external_links is True
     
     def test_deep_crawl_config(self):
         """Test configuration for deep crawl."""

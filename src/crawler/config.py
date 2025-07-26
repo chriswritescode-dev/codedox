@@ -5,7 +5,6 @@ from typing import Optional, List
 from crawl4ai import (
     CrawlerRunConfig,
     BrowserConfig,
-    DefaultMarkdownGenerator,
     CacheMode,
 )
 from crawl4ai.deep_crawling import BFSDeepCrawlStrategy
@@ -47,15 +46,7 @@ def create_crawler_config(
         Configured CrawlerRunConfig instance
     """
     config_dict = {
-        "excluded_tags": ["nav", "footer", "header", "aside", "button", "form"],
-        "markdown_generator": DefaultMarkdownGenerator(
-            options={
-                "ignore_links": True,
-                "escape_html": False,
-                "ignore_images": True,
-            },
-            content_source="raw_html",
-        ),
+        
         "wait_until": "domcontentloaded",
         "page_timeout": 60000,
         "cache_mode": CacheMode.BYPASS,
@@ -63,15 +54,15 @@ def create_crawler_config(
         "verbose": True,
         "exclude_external_links": True,
     }
-    
+
     # Add deep crawl strategy if max_depth > 0
     if max_depth > 0:
         # Create filters
         filters = []
-        
+
         if domain_restrictions:
             filters.append(DomainFilter(allowed_domains=domain_restrictions))
-        
+
         if include_patterns:
             filters.append(
                 URLPatternFilter(
@@ -80,7 +71,7 @@ def create_crawler_config(
                     reverse=False
                 )
             )
-        
+
         if exclude_patterns:
             filters.append(
                 URLPatternFilter(
@@ -89,15 +80,12 @@ def create_crawler_config(
                     reverse=True
                 )
             )
-        
+
         # Create deep crawl strategy
         config_dict["deep_crawl_strategy"] = BFSDeepCrawlStrategy(
             max_depth=max_depth,
             include_external=False,
             filter_chain=FilterChain(filters) if filters else None,
         )
-    
-   
-    
-    return CrawlerRunConfig(**config_dict)
 
+    return CrawlerRunConfig(**config_dict)

@@ -109,7 +109,7 @@ def get_application() -> FastAPI:
     # Configure CORS
     app.add_middleware(
         CORSMiddleware,
-        allow_origins=settings.api.cors_origins,
+        allow_origins=settings.api.get_cors_origins_list(),
         allow_credentials=True,
         allow_methods=["*"],
         allow_headers=["*"],
@@ -306,193 +306,13 @@ async def get_recent_snippets(
 # Upload endpoints
 @app.post("/upload/markdown")
 async def upload_markdown(request: UploadMarkdownRequest, db: Session = Depends(get_db)) -> Dict[str, Any]:
-    """Upload and process markdown content using LLM extraction."""
-    try:
-        from ..database.models import Document, CodeSnippet
-        from ..crawler.extraction_models import LLMExtractionResult
-        from ..crawler.result_processor import ResultProcessor
-        
-        settings = get_settings()
-        
-        # Get LLM API key
-        if not settings.code_extraction.llm_api_key:
-            raise HTTPException(
-                status_code=400, 
-                detail="LLM API key not configured. Please set CODE_LLM_API_KEY."
-            )
-        
-        api_key = settings.code_extraction.llm_api_key.get_secret_value()
-        
-        # Configure OpenAI client
-        client = openai.AsyncOpenAI(
-            api_key=api_key,
-            base_url=settings.code_extraction.llm_base_url if settings.code_extraction.llm_base_url else None
-        )
-        
-        # Create document
-        doc = Document(
-            url=request.source_url,
-            title=request.title or "Uploaded Markdown",
-            content_type="markdown",
-            markdown_content=request.content,
-            content_hash=hashlib.md5(request.content.encode()).hexdigest(),
-            metadata={"source": "upload"}
-        )
-        db.add(doc)
-        db.flush()
-        
-        # Use LLM to extract code blocks
-        from ..crawler.extraction_models import EXTRACTION_INSTRUCTIONS, get_extraction_schema
-        
-        prompt = f"""{EXTRACTION_INSTRUCTIONS}
-
-Page URL: {request.source_url}
-Page Title: {request.title or 'Uploaded Markdown'}
-
-Content to analyze:
-{request.content}"""
-        
-        # System prompt for structured output
-        system_message = """You are a code extraction specialist. Your job is to extract ALL code snippets from documentation.
-
-Extract every piece of code found, including inline snippets, examples, configurations, and commands.
-Provide comprehensive metadata for each code block to enhance searchability and understanding."""
-        
-        # Get the JSON schema
-        schema = get_extraction_schema()
-        
-        response = await client.chat.completions.create(
-            model=settings.code_extraction.llm_extraction_model,
-            messages=[
-                {"role": "system", "content": system_message},
-                {"role": "user", "content": prompt}
-            ],
-            temperature=0.1,
-            response_format={
-                "type": "json_schema",
-                "json_schema": {
-                    "name": "code_extraction",
-                    "schema": schema,
-                    "strict": True
-                }
-            }
-        )
-        
-        # Parse LLM response (structured output guarantees valid JSON)
-        llm_content = response.choices[0].message.content.strip()
-        
-        try:
-            extracted_data = json.loads(llm_content)
-            
-            # Add extraction metadata
-            extracted_data["extraction_timestamp"] = datetime.utcnow().isoformat()
-            extracted_data["extraction_model"] = settings.code_extraction.llm_extraction_model
-            
-            # Validate with Pydantic model
-            extraction_result = LLMExtractionResult(**extracted_data)
-            
-        except (json.JSONDecodeError, Exception) as e:
-            logger.error(f"Failed to parse LLM response: {e}")
-            raise HTTPException(
-                status_code=500,
-                detail=f"Failed to extract code from content: LLM response parsing error"
-            )
-        
-        # Process code blocks using the same logic as crawling
-        snippet_count = 0
-        created_snippets = []
-        
-        for i, block in enumerate(extraction_result.code_blocks):
-            # Build metadata including relationships
-            block_metadata = {
-                'purpose': block.purpose,
-                'frameworks': block.frameworks,
-                'keywords': block.keywords,
-                'dependencies': block.dependencies,
-                'section': block.section,
-                'prerequisites': block.prerequisites,
-                'relationships': [r.model_dump() for r in block.relationships],
-                'extraction_model': extraction_result.extraction_model,
-                'extraction_timestamp': extraction_result.extraction_timestamp,
-            }
-            
-            # Calculate hash for deduplication
-            code_hash = hashlib.md5(block.code.encode()).hexdigest()
-            
-            # Map purpose to snippet_type
-            purpose = block.purpose
-            snippet_type_map = {
-                'example': 'example',
-                'configuration': 'config',
-                'api_reference': 'code',
-                'tutorial': 'example',
-                'utility': 'function',
-                'test': 'code'
-            }
-            snippet_type = snippet_type_map.get(purpose, 'code')
-            
-            # Create snippet
-            snippet = CodeSnippet(
-                document_id=doc.id,
-                title=block.title,
-                description=block.description,
-                language=block.language,
-                code_content=block.code,
-                code_hash=code_hash,
-                line_start=None,
-                line_end=None,
-                context_before=None,
-                context_after=None,
-                section_title=block.section,
-                section_content=None,
-                functions=block.dependencies,  # Store dependencies in functions field
-                imports=[],
-                keywords=block.keywords,
-                snippet_type=snippet_type,
-                source_url=request.source_url,
-                metadata={
-                    **block_metadata,
-                    'filename': block.filename,
-                    'source': 'manual_upload',
-                    'extraction_method': 'llm'
-                },
-            )
-            
-            # Check for duplicate
-            existing = db.query(CodeSnippet).filter_by(code_hash=code_hash).first()
-            if not existing:
-                db.add(snippet)
-                db.flush()  # Get the ID
-                created_snippets.append((i, snippet))
-                snippet_count += 1
-            else:
-                # Update existing snippet if needed
-                created_snippets.append((i, existing))
-        
-        # Ensure all snippets have been flushed to get their IDs before creating relationships
-        db.flush()
-        
-        # Create relationships if any
-        if created_snippets:
-            result_processor = ResultProcessor()
-            result_processor._create_snippet_relationships(db, created_snippets, extraction_result.code_blocks)
-        
-        db.commit()
-        
-        return {
-            "document_id": doc.id,
-            "snippets_extracted": snippet_count,
-            "total_blocks_found": len(extraction_result.code_blocks),
-            "message": f"Successfully processed markdown with {snippet_count} new snippets using LLM extraction"
-        }
-        
-    except HTTPException:
-        db.rollback()
-        raise
-    except Exception as e:
-        logger.error(f"Failed to upload markdown: {e}")
-        db.rollback()
-        raise HTTPException(status_code=500, detail=str(e))
+    """Upload and process markdown content - NEEDS TO BE UPDATED to use new HTML extraction method."""
+    # TODO: Update this endpoint to use the new HTML extraction + LLM description method
+    # Currently disabled until the new extraction method is implemented for uploads
+    raise HTTPException(
+        status_code=501,
+        detail="Upload functionality is temporarily disabled while being updated to use the new extraction method. Please use the crawl functionality instead."
+    )
 
 
 @app.post("/upload/file")
