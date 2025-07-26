@@ -17,6 +17,7 @@ import {
   Trash2,
   X,
   ChevronDown,
+  Wand2,
 } from "lucide-react";
 import { ConfirmationDialog } from "../components/ConfirmationDialog";
 import { DocumentList } from "../components/DocumentList";
@@ -24,6 +25,7 @@ import { SnippetList } from "../components/SnippetList";
 import { PaginationControls } from "../components/PaginationControls";
 import { useDebounce } from "../hooks/useDebounce";
 import { EditableSourceName } from "../components/EditableSourceName";
+import { FormatSourceDialog } from "../components/FormatSourceDialog";
 
 type TabType = "overview" | "documents" | "snippets";
 
@@ -33,6 +35,21 @@ export default function SourceDetail() {
   const queryClient = useQueryClient();
   const [searchParams, setSearchParams] = useSearchParams();
   const [deleteModalOpen, setDeleteModalOpen] = useState(false);
+  const [formatDialogOpen, setFormatDialogOpen] = useState(false);
+  const [formatPreview, setFormatPreview] = useState<{
+    source_id: string
+    source_name: string
+    total_snippets: number
+    changed_snippets: number
+    saved_snippets: number
+    preview: Array<{
+      snippet_id: number
+      title: string
+      language: string
+      original_preview: string
+      formatted_preview: string
+    }>
+  } | null>(null);
 
   // Initialize tab from URL or default to 'overview'
   const tabFromUrl = searchParams.get("tab") as TabType | null;
@@ -179,6 +196,39 @@ export default function SourceDetail() {
 
   const handleUpdateSourceName = async (_sourceId: string, newName: string) => {
     await updateSourceNameMutation.mutateAsync({ name: newName });
+  };
+
+  const formatPreviewMutation = useMutation({
+    mutationFn: () => api.formatSource(id!, false, true),
+    onSuccess: (data) => {
+      setFormatPreview(data);
+      setFormatDialogOpen(true);
+    },
+    onError: (error) => {
+      console.error('Failed to get format preview:', error);
+      alert('Failed to get format preview');
+    }
+  });
+
+  const formatSourceMutation = useMutation({
+    mutationFn: () => api.formatSource(id!, true, false),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['source-snippets', id] });
+      setFormatDialogOpen(false);
+      setFormatPreview(null);
+    },
+    onError: (error) => {
+      console.error('Failed to format source:', error);
+      alert('Failed to format source');
+    }
+  });
+
+  const handleFormatAll = () => {
+    formatPreviewMutation.mutate();
+  };
+
+  const handleConfirmFormat = () => {
+    formatSourceMutation.mutate();
   };
 
   const docsTotalPages = useMemo(
@@ -358,7 +408,8 @@ export default function SourceDetail() {
           {activeTab === "snippets" && (
             <div className="space-y-4">
               {/* Search and Filter Bar */}
-              <div className="flex gap-3">
+              <div className="flex items-center justify-between mb-4">
+                <div className="flex gap-3 flex-1">
                 <div className="flex-1 relative">
                   <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                   <input
@@ -402,6 +453,16 @@ export default function SourceDetail() {
                     <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
                   </div>
                 )}
+                </div>
+                
+                <button
+                  onClick={handleFormatAll}
+                  disabled={formatPreviewMutation.isPending || snippetsLoading || !snippets || snippets.total === 0}
+                  className="flex items-center gap-2 px-3 py-2 text-sm bg-secondary text-secondary-foreground rounded-md hover:bg-secondary/80 disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  <Wand2 className="h-4 w-4" />
+                  Format All
+                </button>
               </div>
 
               {/* Snippets List */}
@@ -443,6 +504,22 @@ export default function SourceDetail() {
         onConfirm={confirmDelete}
         onCancel={() => setDeleteModalOpen(false)}
       />
+
+      {formatPreview && (
+        <FormatSourceDialog
+          isOpen={formatDialogOpen}
+          sourceName={source.name}
+          totalSnippets={formatPreview.total_snippets}
+          changedSnippets={formatPreview.changed_snippets}
+          preview={formatPreview.preview}
+          isFormatting={formatSourceMutation.isPending}
+          onConfirm={handleConfirmFormat}
+          onCancel={() => {
+            setFormatDialogOpen(false)
+            setFormatPreview(null)
+          }}
+        />
+      )}
     </div>
   );
 }
