@@ -280,6 +280,8 @@ class APIClient {
     language: string
     changed: boolean
     saved: boolean
+    detected_language?: string
+    formatter_used?: string
   }> {
     return this.fetch(`/snippets/${id}/format`, {
       method: 'POST',
