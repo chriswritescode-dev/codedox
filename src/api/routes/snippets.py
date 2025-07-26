@@ -7,7 +7,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
 from ...database import get_db
-from ...database.models import CodeSnippet, Source
+from ...database.models import CodeSnippet, CrawlJob, Document
 from ...crawler.code_formatter import CodeFormatter
 
 logger = logging.getLogger(__name__)
@@ -65,7 +65,7 @@ async def format_snippet(
         formatter = CodeFormatter()
         
         # Format the code
-        original_code = snippet.code
+        original_code = snippet.code_content
         formatted_code = formatter.format(original_code, snippet.language)
         
         # Check if formatting changed the code
@@ -74,7 +74,7 @@ async def format_snippet(
         # Save if requested and changed
         saved = False
         if request.save and changed:
-            snippet.code = formatted_code
+            snippet.code_content = formatted_code
             db.commit()
             saved = True
             logger.info(f"Saved formatted code for snippet {snippet_id}")
@@ -118,14 +118,17 @@ async def format_source_snippets(
 ) -> FormatSourceResponse:
     """Format all snippets in a source."""
     try:
-        # Get the source
-        source = db.query(Source).filter_by(id=source_id).first()
+        # Get the source (crawl job)
+        source = db.query(CrawlJob).filter_by(id=source_id).first()
         
         if not source:
             raise HTTPException(status_code=404, detail="Source not found")
         
-        # Get all snippets for the source
-        snippets = db.query(CodeSnippet).filter_by(source_id=source_id).all()
+        # Get all snippets for the source (through Document relationship)
+        snippets = db.query(CodeSnippet)\
+            .join(Document)\
+            .filter(Document.crawl_job_id == source_id)\
+            .all()
         
         # Initialize formatter
         formatter = CodeFormatter()
@@ -136,7 +139,7 @@ async def format_source_snippets(
         preview = []
         
         for snippet in snippets:
-            original_code = snippet.code
+            original_code = snippet.code_content
             formatted_code = formatter.format(original_code, snippet.language)
             
             if original_code != formatted_code:
@@ -154,7 +157,7 @@ async def format_source_snippets(
                 
                 # Save if requested and not dry run
                 if request.save and not request.dry_run:
-                    snippet.code = formatted_code
+                    snippet.code_content = formatted_code
                     saved_count += 1
         
         # Commit changes if any were saved
