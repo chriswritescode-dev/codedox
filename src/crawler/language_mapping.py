@@ -6,13 +6,15 @@ from typing import Optional, Dict
 LANGUAGE_ALIASES: Dict[str, str] = {
     # JavaScript variants
     'js': 'javascript',
-    'jsx': 'javascript',
+    # Keep JSX separate for proper formatting
+    # 'jsx': 'jsx',  # Don't normalize jsx - keep it for formatter
     'mjs': 'javascript',
     'cjs': 'javascript',
     
     # TypeScript variants
     'ts': 'typescript',
-    'tsx': 'typescript',
+    # Keep TSX separate for proper formatting  
+    # 'tsx': 'tsx',  # Don't normalize tsx - keep it for formatter
     
     # Python variants
     'py': 'python',
@@ -133,6 +135,14 @@ LANGUAGE_ALIASES: Dict[str, str] = {
     'cfg': 'ini',
     'ini': 'ini',
     'toml': 'toml',
+    
+    # React/Next.js specific mappings
+    'react': 'jsx',
+    'react.js': 'jsx',
+    'reactjs': 'jsx',
+    'next': 'jsx',
+    'next.js': 'jsx',
+    'nextjs': 'jsx',
     
     # Others
     'dart': 'dart',

@@ -51,7 +51,6 @@ pytest tests/test_api_routes.py::TestHealthEndpoints::test_health
 - `test_api_routes.py` - Tests for main API endpoints
 - `test_mcp_routes.py` - Tests for MCP HTTP streaming endpoints
 - `test_integration.py` - End-to-end integration tests
-- `test_language_detector.py` - Unit tests for language detection
 
 ## Test Database
 

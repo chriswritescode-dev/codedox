@@ -60,7 +60,7 @@ class CodeFormatter:
         self.prettier_path = self._find_prettier_path()
         self.prettier_available = self.prettier_path is not None
         if not self.prettier_available:
-            logger.warning("Prettier not found. Run 'npm install' in src/language_detector/")
+            logger.warning("Prettier not found. Install it globally with 'npm install -g prettier'")
     
     def _find_prettier_path(self) -> Optional[str]:
         """Find Prettier executable in various locations with security validation."""
@@ -70,9 +70,7 @@ class CodeFormatter:
         
         # Check common locations
         possible_paths = [
-            # Primary: language_detector node_modules
-            os.path.join(project_root, "src", "language_detector", "node_modules", ".bin", "prettier"),
-            # Fallback: System PATH
+            # Primary: System PATH
             "prettier",
             # npm global on Unix
             "/usr/local/bin/prettier",
@@ -162,8 +160,12 @@ class CodeFormatter:
         elif lang_lower == 'sql':
             return self._format_sql(code)
         
-        # Default: try auto-detection before basic format
+        # Default: for truly unknown languages, just use basic formatting
+        # Don't try auto-detection for explicit unknown/text languages
         else:
+            if lang_lower in ['unknown', 'text', 'plaintext']:
+                return self._basic_format(code)
+            # For other unrecognized languages, try auto-detection
             formatted = self._format_with_auto_detection(code)
             if formatted != code:
                 return formatted
@@ -354,8 +356,8 @@ class CodeFormatter:
         """Basic formatting: trim lines and remove excess blank lines."""
         lines = code.split('\n')
         
-        # Trim whitespace from each line
-        formatted_lines = [line.rstrip() for line in lines]
+        # Trim whitespace from each line (including leading whitespace)
+        formatted_lines = [line.strip() for line in lines]
         
         # Remove leading and trailing blank lines
         while formatted_lines and not formatted_lines[0]:

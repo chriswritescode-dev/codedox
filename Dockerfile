@@ -22,17 +22,15 @@ RUN pip install --no-cache-dir --upgrade pip \
 # Runtime stage
 FROM python:3.10-slim
 
-# Install Node.js repository
+# Install runtime dependencies
 RUN apt-get update && apt-get install -y \
     curl \
-    gnupg \
-    && curl -fsSL https://deb.nodesource.com/setup_18.x | bash -
+    gnupg
 
 # Install runtime dependencies and Playwright requirements
 RUN apt-get update && apt-get install -y \
     libpq5 \
     wget \
-    nodejs \
 \
     # Dependencies for Chromium/Playwright
     libnss3 \
@@ -76,11 +74,7 @@ RUN mkdir -p logs && chown codedox:codedox logs
 COPY --chown=root:root docker-entrypoint.sh /usr/local/bin/
 RUN chmod +x /usr/local/bin/docker-entrypoint.sh
 
-# Install VS Code language detection dependencies (including Prettier)
-WORKDIR /app/src/language_detector
-RUN npm install
-
-WORKDIR /app
+# Note: VS Code language detection has been removed in favor of LLM-based detection
 
 # Install Playwright browsers as root with proper setup
 USER root

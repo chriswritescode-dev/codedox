@@ -98,7 +98,15 @@ class JobManager:
                 logger.info(f"Reusing existing crawl job for domain '{domain}': {existing_job.id}")
 
                 # Reset job for new crawl
-                existing_job.name = name
+                # Only update name if the existing one is auto-detect or if new name is not auto-detect
+                if existing_job.name.startswith("[Auto-detecting") or not name.startswith("[Auto-detecting"):
+                    existing_job.name = name
+                    # Clear name_detected flag if setting a new auto-detect name
+                    if name.startswith("[Auto-detecting") and existing_job.config.get('name_detected'):
+                        existing_job.config['name_detected'] = False
+                else:
+                    logger.info(f"Preserving existing name '{existing_job.name}' instead of '{name}'")
+                
                 existing_job.start_urls = start_urls
                 existing_job.max_depth = max_depth
                 existing_job.domain_restrictions = domain_restrictions
