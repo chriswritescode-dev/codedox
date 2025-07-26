@@ -409,7 +409,7 @@ export default function SourceDetail() {
           {activeTab === "snippets" && (
             <div className="space-y-4">
               {/* Search and Filter Bar */}
-              <div className="flex items-center justify-between mb-4">
+              <div className="flex items-center justify-between mb-4 gap-2">
                 <div className="flex gap-3 flex-1">
                 <div className="flex-1 relative">
                   <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
@@ -435,14 +435,14 @@ export default function SourceDetail() {
                 </div>
 
                 {languages && languages.languages.length > 0 && (
-                  <div className="relative">
+                  <div className="relative min-w-48">
                     <select
                       value={selectedLanguage}
                       onChange={(e) => {
                         setSelectedLanguage(e.target.value);
                         setSnippetsPage(1);
                       }}
-                      className="appearance-none pl-4 pr-10 py-2 bg-secondary border border-input rounded-md focus:outline-none focus:ring-2 focus:ring-primary cursor-pointer"
+                      className="appearance-none pl-4 pr-10 py-2 bg-secondary border border-input rounded-md focus:outline-none focus:ring-2 focus:ring-primary cursor-pointer bg-right"
                     >
                       <option value="">All Languages</option>
                       {languages.languages.map((lang) => (
@@ -459,7 +459,7 @@ export default function SourceDetail() {
                 <button
                   onClick={handleFormatAll}
                   disabled={formatPreviewMutation.isPending || snippetsLoading || !snippets || snippets.total === 0}
-                  className="flex items-center gap-2 px-4 py-2 text-sm bg-secondary text-secondary-foreground rounded-md hover:bg-secondary/80 disabled:opacity-50 disabled:cursor-not-allowed min-w-[120px] justify-center"
+                  className="flex items-center gap-2 px-4 py-2 text-sm bg-secondary text-secondary-foreground rounded-md hover:bg-secondary/80 disabled:opacity-50 disabled:cursor-not-allowed min-w-[120px] justify-center h-10 cursor-pointer"
                 >
                   {formatPreviewMutation.isPending ? (
                     <>
