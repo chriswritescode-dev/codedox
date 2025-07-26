@@ -81,30 +81,35 @@ def crawl(name: str, urls: tuple, depth: int, domain: Optional[str], url_pattern
 def sources():
     """List available documentation sources."""
     async def list_sources():
-        tools = MCPTools()
-        sources = await tools.get_sources()
+        from src.database import get_db_manager
+        from src.database.models import CrawlJob
         
-        if not sources:
-            console.print("No sources found.")
-            return
+        db_manager = get_db_manager()
         
-        table = Table(title="Documentation Sources")
-        table.add_column("Name", style="cyan")
-        table.add_column("Status", style="green")
-        table.add_column("Snippets", justify="right")
-        table.add_column("Tokens", justify="right")
-        table.add_column("Last Update")
-        
-        for source in sources:
-            table.add_row(
-                source['name'],
-                source['status'],
-                str(source.get('snippets', 0)),
-                f"{source.get('tokens', 0):,}",
-                source.get('last_update', 'Never')
-            )
-        
-        console.print(table)
+        with db_manager.get_session() as session:
+            jobs = session.query(CrawlJob).order_by(CrawlJob.created_at.desc()).all()
+            
+            if not jobs:
+                console.print("No sources found.")
+                return
+            
+            table = Table(title="Documentation Sources")
+            table.add_column("Name", style="cyan")
+            table.add_column("Status", style="green")
+            table.add_column("Snippets", justify="right")
+            table.add_column("URLs", justify="right")
+            table.add_column("Last Update")
+            
+            for job in jobs:
+                table.add_row(
+                    job.name,
+                    job.status,
+                    str(job.snippets_extracted or 0),
+                    str(job.processed_pages or 0),
+                    job.updated_at.strftime('%Y-%m-%d %H:%M:%S') if job.updated_at else 'Never'
+                )
+            
+            console.print(table)
     
     asyncio.run(list_sources())
 
@@ -121,9 +126,9 @@ def search(query: str, source: Optional[str], lang: Optional[str], limit: int):
         
         with console.status("[bold green]Searching..."):
             results = await tools.get_content(
+                library_id=source or "",
                 query=query,
-                library_id=source,
-                max_results=limit
+                limit=limit
             )
         
         console.print(results)

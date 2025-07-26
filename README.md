@@ -80,14 +80,43 @@ CodeDox uses a sophisticated two-step approach for code extraction:
 
 ## Quick Start
 
-### Prerequisites
+### Option 1: Using Docker (Recommended)
+
+The easiest way to get started is with Docker. Everything is automatically set up for you.
+
+```bash
+# Clone the repository
+git clone https://github.com/chriswritescode-dev/codedox.git
+cd codedox
+
+# Configure environment
+cp .env.example .env
+# Edit .env to add your CODE_LLM_API_KEY
+
+# Run the automated setup
+./docker-setup.sh
+
+# That's it! Access the web UI at:
+# http://localhost:5173
+```
+
+The setup script will:
+- Create configuration from template
+- Build all Docker images
+- Start PostgreSQL, API, and Frontend services
+- Initialize the database automatically
+- Guide you through adding your OpenAI API key
+
+### Option 2: Manual Installation
+
+#### Prerequisites
 
 - Python 3.10+
 - PostgreSQL 12+ 
 - Node.js 14+ (for VS Code language detection)
 - Playwright (installed automatically with crawl4ai)
 
-### Installation
+#### Installation
 
 1. Clone the repository:
 ```bash
@@ -100,7 +129,17 @@ cd codedox
 ./setup.sh
 ```
 
-3. Set up PostgreSQL:
+3. Configure environment:
+```bash
+# Copy the example environment file
+cp .env.example .env
+
+# Edit .env and configure your settings
+# At minimum, set CODE_LLM_API_KEY for code extraction
+nano .env  # or use your preferred editor
+```
+
+4. Set up PostgreSQL:
 ```bash
 # Create database
 createdb codedox
@@ -109,10 +148,27 @@ createdb codedox
 python cli.py init
 ```
 
-4. Configure environment:
+### Configuration
+
+The system uses environment variables for configuration. Key settings in `.env`:
+
 ```bash
-# Edit .env with your settings (created by setup script)
+# Required: LLM API Configuration
+CODE_LLM_API_KEY=your-api-key-here
+CODE_LLM_EXTRACTION_MODEL=gpt-4o-mini  # or gpt-4, claude-3, etc.
+
+# Optional: For local LLMs (Jan, Ollama, etc.)
+CODE_LLM_BASE_URL=http://localhost:8001/v1
+
+# Database (defaults work for local development)
+DB_HOST=localhost
+DB_PORT=5432
+DB_NAME=codedox
+DB_USER=postgres
+DB_PASSWORD=postgres
 ```
+
+See `.env.example` for all available options including crawling, search, and API settings.
 
 ### Running the Application
 

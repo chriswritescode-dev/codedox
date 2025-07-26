@@ -71,6 +71,10 @@ COPY --chown=codedox:codedox . .
 # Create necessary directories
 RUN mkdir -p logs && chown codedox:codedox logs
 
+# Copy and set up entrypoint script
+COPY --chown=root:root docker-entrypoint.sh /usr/local/bin/
+RUN chmod +x /usr/local/bin/docker-entrypoint.sh
+
 # Install VS Code language detection dependencies
 WORKDIR /app/src/language_detector
 RUN npm install
@@ -89,6 +93,9 @@ ENV PLAYWRIGHT_BROWSERS_PATH=/opt/playwright-browsers
 
 # Set Python path
 ENV PYTHONPATH=/app
+
+# Set entrypoint
+ENTRYPOINT ["/usr/local/bin/docker-entrypoint.sh"]
 
 # Default command (can be overridden)
 CMD ["python", "-m", "uvicorn", "src.api.main:app", "--host", "0.0.0.0", "--port", "8000"]
