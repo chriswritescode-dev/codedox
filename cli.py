@@ -3,7 +3,6 @@
 
 import click
 import asyncio
-import json
 import sys
 from typing import Optional
 from rich.console import Console

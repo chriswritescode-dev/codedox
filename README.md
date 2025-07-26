@@ -13,6 +13,18 @@ A powerful system for crawling documentation websites, extracting code snippets,
 - **Modern Web UI**: React-based dashboard for managing crawls, searching code, and monitoring system activity
 - **Auto Site Content Deduplication**: Only updates or adds content that has changed
 
+## Screenshots
+
+### Dashboard
+<img src="screenshots/WebUI-Dashboard.png" alt="CodeDox Dashboard" width="800">
+
+*The dashboard provides an overview of your documentation sources, crawl jobs, and system statistics.*
+
+### Source Detail View
+<img src="screenshots/WebUI-Source-Detail.png" alt="CodeDox Source Detail" width="800">
+
+*View detailed information about each documentation source, including extracted code snippets and search capabilities.*
+
 
 ## Architecture
 
