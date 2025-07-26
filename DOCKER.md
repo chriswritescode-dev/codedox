@@ -14,19 +14,20 @@ CodeDox provides a complete Docker setup for running all services in containers.
 ## Quick Start
 
 ```bash
-# 1. Copy environment file
-cp .env.docker .env
+# 1. Copy and configure environment file
+cp .env.example .env
+# Edit .env to add your CODE_LLM_API_KEY
 
 # 2. Build and start all services
 docker-compose up -d
 
-# 3. Initialize the database
-curl -X POST http://localhost:8000/init
+# 3. Database is automatically initialized on first start
 
 # 4. Access the services
+# Web UI: http://localhost:5173
 # API: http://localhost:8000
 # API Docs: http://localhost:8000/docs
-# MCP Server: http://localhost:8899
+# MCP tools: http://localhost:8000/mcp/*
 ```
 
 ## Services
@@ -61,16 +62,24 @@ curl -X POST http://localhost:8000/init
 
 ### Environment Variables
 
-Two environment files are used:
+A single `.env` file is used for both local and Docker deployments:
 
-1. `.env` - Your local development settings
-2. `.env.docker` - Docker-specific settings (uses `postgres` as DB_HOST)
+1. Copy `.env.example` to `.env`
+2. Configure your settings (especially `CODE_LLM_API_KEY`)
+3. Docker Compose automatically overrides `DB_HOST=postgres` for container networking
 
-Key differences in `.env.docker`:
+Key settings:
 ```env
-DB_HOST=postgres  # Uses Docker service name
-DB_NAME=codedox  # Matches docker-compose.yml
-DB_USER=postgres  # Matches docker-compose.yml
+# For local development
+DB_HOST=localhost
+
+# Docker automatically overrides to:
+# DB_HOST=postgres  # Uses Docker service name
+
+# Required for code extraction
+CODE_LLM_API_KEY=your-api-key
+CODE_LLM_EXTRACTION_MODEL=gpt-4o-mini  # or Jan, claude-3, etc.
+# CODE_LLM_BASE_URL=http://localhost:8001/v1  # For local LLMs
 ```
 
 ### Volumes
@@ -212,7 +221,7 @@ This script will:
    # Start only PostgreSQL in Docker
    docker-compose up -d postgres
    
-   # Run API locally
+   # Run API locally (uses same .env file)
    python cli.py api
    ```
 
