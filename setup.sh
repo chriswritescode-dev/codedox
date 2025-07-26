@@ -66,12 +66,13 @@ echo ""
 echo "🌐 Installing Playwright browsers..."
 crawl4ai-setup
 
-# Install VS Code language detection
+# Install VS Code language detection and Prettier
 echo ""
-echo "🔍 Installing VS Code language detection..."
+echo "🔍 Installing VS Code language detection and Prettier..."
 cd src/language_detector
 npm install
 cd ../..
+
 
 # Copy environment file if it doesn't exist
 if [ ! -f .env ]; then

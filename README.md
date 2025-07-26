@@ -200,10 +200,15 @@ MCP tools are automatically available when running the API server at `http://loc
 # List tools
 curl http://localhost:8000/mcp/tools
 
+# Search for libraries
+curl -X POST http://localhost:8000/mcp/execute/search_libraries \
+  -H "Content-Type: application/json" \
+  -d '{"query": "nextjs"}'
+
 # Get code snippets
 curl -X POST http://localhost:8000/mcp/execute/get_content \
   -H "Content-Type: application/json" \
-  -d '{"library_id": "nextjs", "query": "authentication"}'
+  -d '{"library_id": "library-id-here", "query": "authentication"}'
 ```
 
 ### Available MCP Tools
@@ -217,25 +222,39 @@ See full tool documentation at `/mcp/tools` endpoint.
 
 ## API Endpoints
 
+### Core Endpoints
+- `GET /health` - Health check
+- `POST /search` - Search code snippets
+- `GET /snippets/{id}` - Get specific snippet
 
 ### Crawling
 - `POST /crawl/init` - Start new crawl job with optional URL pattern filtering
 - `GET /crawl/status/{job_id}` - Check crawl status
 - `POST /crawl/cancel/{job_id}` - Cancel running job
-
-### Search
-- `POST /search` - Search code snippets
-- `GET /search/languages` - List available languages
-- `GET /search/recent` - Get recent snippets
-
-### Sources
-- `GET /sources` - List documentation sources
-- `GET /snippets/{id}` - Get specific snippet
 - `GET /export/{job_id}` - Export crawl results
 
+### Search
+- `GET /api/search/languages` - List available languages
+- `GET /api/search/recent` - Get recent snippets
+
+### Sources
+- `GET /api/sources` - List documentation sources
+- `GET /api/sources/{source_id}` - Get specific source details
+- `GET /api/sources/{source_id}/snippets` - Get snippets for a source
+- `DELETE /api/sources/{source_id}` - Delete a source
+- `POST /api/sources/{source_id}/recrawl` - Re-crawl a source
+
+### Statistics
+- `GET /api/statistics/dashboard` - Get dashboard statistics
+
 ### Upload
-- `POST /upload/markdown` - Upload markdown content
-- `POST /upload/file` - Upload markdown file
+- `POST /upload/markdown` - Upload markdown content (currently disabled)
+- `POST /upload/file` - Upload markdown file (currently disabled)
+
+### MCP (Model Context Protocol)
+- `POST /mcp` - MCP streamable HTTP endpoint
+- `GET /mcp/tools` - List available MCP tools
+- `POST /mcp/execute/{tool_name}` - Execute a specific MCP tool
 
 ## Web UI
 
