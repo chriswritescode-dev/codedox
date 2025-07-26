@@ -5,7 +5,7 @@ A powerful system for crawling documentation websites, extracting code snippets,
 ## Features
 
 - **Controlled Web Crawling**: Manual crawling with configurable depth (0-3 levels)
-- **Smart Code Extraction**: HTML-based extraction with VS Code language detection
+- **Smart Code Extraction**: HTML-based extraction with LLM language detection
 - **LLM Descriptions**: AI-generated concise descriptions for extracted code
 - **Fast Search**: PostgreSQL full-text search with < 100ms response time
 - **MCP Integration**: Expose tools to AI assistants via Model Context Protocol
@@ -31,7 +31,7 @@ graph TB
         Crawl[Crawl4AI<br/>Web Crawler]
         HTML[HTML Extraction<br/>BeautifulSoup]
         LLM[LLM Description<br/>Generator]
-        VSD[VS Code<br/>Language Detection]
+        Lang[LLM Language<br/>Detection]
     end
     
     subgraph "Storage"
@@ -50,7 +50,7 @@ graph TB
     API --> Crawl
     Crawl --> WEB
     Crawl --> HTML
-    HTML --> VSD
+    HTML --> Lang
     HTML --> LLM
     LLM --> PG
     
@@ -68,7 +68,7 @@ CodeDox uses a sophisticated two-step approach for code extraction:
 1. **HTML-Based Extraction**: Uses BeautifulSoup to extract code blocks from HTML with high accuracy
    - Identifies code blocks using multiple CSS selectors (pre, code, syntax highlighters)
    - Extracts surrounding context (titles, descriptions, container types)
-   - Detects language using VS Code's language detection model
+   - Detects language using LLM analysis with source URL context
    - Extracts filename hints from HTML attributes and context
    - Removes UI elements and clutter from code blocks
 
@@ -113,7 +113,7 @@ The setup script will:
 
 - Python 3.10+
 - PostgreSQL 12+ 
-- Node.js 14+ (for VS Code language detection)
+# Node.js is no longer required
 - Playwright (installed automatically with crawl4ai)
 
 #### Installation
@@ -273,8 +273,8 @@ CodeDox uses a powerful two-phase approach to extract and understand code:
 
 ### Phase 1: HTML-Based Code Extraction
 - **Smart Detection**: Identifies code blocks using 20+ CSS selector patterns
-- **Language Detection**: Uses VS Code's language detection model for accurate results
-- **Filename Hints**: Extracts filenames from HTML to improve language detection
+- **Language Detection**: Uses LLM for intelligent language detection with context
+- **Filename Hints**: Extracts filenames from HTML to provide context to LLM
 - **Context Extraction**: Captures surrounding documentation for better understanding
 - **Clean Output**: Removes UI elements, line numbers, and other artifacts
 
@@ -313,14 +313,13 @@ codedox/
 │   ├── api/                    # FastAPI server & endpoints
 │   ├── crawler/                # Web crawling & extraction
 │   │   ├── html_code_extractor.py     # HTML-based code extraction
-│   │   ├── vscode_language_detector.py # VS Code language detection client
+│   │   # VS Code language detection removed - using LLM detection
 │   │   ├── llm_description_generator.py # AI description generation
 │   │   ├── page_crawler.py            # Page crawling orchestration
 │   │   ├── extraction_models.py       # Data models
 │   │   └── code_formatter.py          # Code formatting utilities
-│   ├── language_detector/      # VS Code language detection (Node.js)
-│   │   ├── detect.js          # Language detection CLI
-│   │   └── package.json       # Node dependencies
+│   # Language detection now handled by LLM
+# Language detector files removed
 │   ├── database/              # PostgreSQL models & search
 │   ├── mcp_server/            # MCP tools implementation
 │   └── utils/                 # Shared utilities
@@ -353,7 +352,7 @@ python test_hash_optimization.py
   - Efficient CSS selector matching
 - **Language Detection**: 
   - Instant detection from HTML classes and filenames
-  - VS Code model for complex cases (~50ms per detection)
+  - LLM language detection with source URL context
   - Smart caching of detection results
 - **LLM Description Generation**: 
   - Only used for descriptions (10-30 words each)
@@ -375,8 +374,8 @@ python test_hash_optimization.py
 - System works without descriptions (extraction always succeeds)
 
 **Language Detection Issues**
-- Verify Node.js installed: `node --version`
-- Reinstall VS Code detector: `cd src/language_detector && npm install`
+- Ensure CODE_LLM_API_KEY is set in .env
+- Check LLM API connectivity and credits
 
 For detailed troubleshooting, see the [documentation wiki](https://github.com/chriswritescode-dev/codedox/wiki).
 

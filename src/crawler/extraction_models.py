@@ -31,7 +31,10 @@ DESCRIPTION: [10-30 words explaining what this specific code accomplishes]
 Guidelines:
 - Identify the programming language based on syntax, keywords, and context
 - Consider the source URL and documentation context when identifying the language
-- For markup/config files, be specific (e.g., "postcss" not just "css", "jsx" not just "javascript")
+- For React code with JSX syntax, use "jsx" not "javascript"
+- For TypeScript React code, use "tsx" not "typescript"
+- For Vue components, use "vue" not "javascript"
+- For markup/config files, be specific (e.g., "postcss" not just "css")
 - TITLE should describe the specific action or purpose of the code
 - DESCRIPTION should explain what this code does and how it works
 - DO NOT start description with "The code..." or "This code..."
@@ -47,3 +50,7 @@ Code to analyze:
 
 Analyze the above code and respond with LANGUAGE, TITLE and DESCRIPTION for it.
 """
+
+
+
+
