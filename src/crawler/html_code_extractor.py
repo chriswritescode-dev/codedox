@@ -372,7 +372,7 @@ class HTMLCodeExtractor:
         return self._pattern_based_detection(code_text)
     
     async def _detect_language_async(self, element: Tag) -> Optional[str]:
-        """Detect programming language using VS Code detection service if available."""
+        """Detect programming language using HTML classes and pattern matching (VS Code detection disabled)."""
         code_text = self._extract_code_text(element)
         if not code_text or len(code_text.strip()) < 10:
             return None
@@ -411,27 +411,28 @@ class HTMLCodeExtractor:
                 logger.debug(f"Language from filename '{filename}': {lang_from_filename}")
                 return lang_from_filename
         
+        # TODO: REMOVE VS CODE DETECTION - Currently disabled as LLM detection is more accurate and VS Code slows down the process
         # Use VS Code detection
-        try:
-            from .vscode_language_detector import detect_language
-            
-            result = await detect_language(code_text)
-            if result.get('success') and result.get('topResult'):
-                top_result = result['topResult']
-                confidence = top_result.get('confidence', 0)
-                detected_lang = top_result['language']
-                
-                # Log all detections for debugging
-                logger.debug(f"VS Code result: {detected_lang} (confidence: {confidence:.3f})")
-                
-                # Use VS Code result if confidence is above threshold or if it's not plaintext
-                if confidence > 0.1 or (detected_lang != 'plaintext' and confidence > 0):
-                    logger.debug(f"VS Code detected: {detected_lang} (confidence: {confidence:.2f})")
-                    return self._normalize_language_name(detected_lang)
-                else:
-                    logger.debug(f"VS Code confidence too low: {confidence:.3f}, using pattern detection")
-        except Exception as e:
-            logger.error(f"VS Code language detection failed: {e}", exc_info=True)
+        # try:
+        #     from .vscode_language_detector import detect_language
+        #     
+        #     result = await detect_language(code_text)
+        #     if result.get('success') and result.get('topResult'):
+        #         top_result = result['topResult']
+        #         confidence = top_result.get('confidence', 0)
+        #         detected_lang = top_result['language']
+        #         
+        #         # Log all detections for debugging
+        #         logger.debug(f"VS Code result: {detected_lang} (confidence: {confidence:.3f})")
+        #         
+        #         # Use VS Code result if confidence is above threshold or if it's not plaintext
+        #         if confidence > 0.1 or (detected_lang != 'plaintext' and confidence > 0):
+        #             logger.debug(f"VS Code detected: {detected_lang} (confidence: {confidence:.2f})")
+        #             return self._normalize_language_name(detected_lang)
+        #         else:
+        #             logger.debug(f"VS Code confidence too low: {confidence:.3f}, using pattern detection")
+        # except Exception as e:
+        #     logger.error(f"VS Code language detection failed: {e}", exc_info=True)
         
         # Fall back to pattern-based detection
         logger.debug("Falling back to pattern-based detection")
