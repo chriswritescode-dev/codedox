@@ -9,6 +9,7 @@ from sqlalchemy.orm import Session
 
 from ..database import Document, CodeSnippet, get_db_manager
 from ..config import get_settings
+from .code_formatter import CodeFormatter
 
 logger = logging.getLogger(__name__)
 
@@ -20,6 +21,7 @@ class ResultProcessor:
         """Initialize result processor."""
         self.db_manager = get_db_manager()
         self.settings = get_settings()
+        self.code_formatter = CodeFormatter()
 
     async def process_result_pipeline(
         self, result: Any, job_id: str, depth: int  # CrawlResult
@@ -304,6 +306,18 @@ class ResultProcessor:
             if not content:
                 logger.warning(f"Skipping empty code block {i} with title: {title}")
                 continue
+            
+            # Try to format the code with the LLM-corrected language
+            try:
+                formatted_code = self.code_formatter.format(content, language)
+                if formatted_code and formatted_code != content:
+                    logger.info(f"Formatting improved code for snippet '{title}' (language: {language})")
+                    content = formatted_code
+                else:
+                    logger.debug(f"Keeping original format for snippet '{title}' (language: {language})")
+            except Exception as e:
+                logger.warning(f"Failed to format code for snippet '{title}': {e}")
+                # Keep original content on error
                 
             # Calculate hash for deduplication
             import hashlib
