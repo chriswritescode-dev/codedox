@@ -27,6 +27,8 @@ class FormatSnippetResponse(BaseModel):
     language: str = Field(..., description="Detected language")
     changed: bool = Field(..., description="Whether formatting changed the code")
     saved: bool = Field(default=False, description="Whether the changes were saved")
+    detected_language: Optional[str] = Field(None, description="Language detected from code patterns")
+    formatter_used: Optional[str] = Field(None, description="Which formatter was used")
 
 
 @router.get("/{snippet_id}")
@@ -64,12 +66,11 @@ async def format_snippet(
         # Initialize formatter
         formatter = CodeFormatter()
         
-        # Format the code
+        # Format the code with detailed info
         original_code = snippet.code_content
-        formatted_code = formatter.format(original_code, snippet.language)
-        
-        # Check if formatting changed the code
-        changed = original_code != formatted_code
+        format_info = formatter.format_with_info(original_code, snippet.language)
+        formatted_code = format_info['formatted']
+        changed = format_info['changed']
         
         # Save if requested and changed
         saved = False
@@ -84,7 +85,9 @@ async def format_snippet(
             formatted=formatted_code,
             language=snippet.language,
             changed=changed,
-            saved=saved
+            saved=saved,
+            detected_language=format_info['detected_language'],
+            formatter_used=format_info['formatter_used']
         )
         
     except HTTPException:
