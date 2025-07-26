@@ -81,7 +81,6 @@ class HTMLCodeExtractor:
             'blocks_by_type': {},
             'languages_found': set()
         }
-        self.formatter = CodeFormatter()
     
     def _process_code_block(self, block: Tag, selector_type: str, use_async_detection: bool = False) -> Optional[ExtractedCodeBlock]:
         """
@@ -108,13 +107,13 @@ class HTMLCodeExtractor:
         if not raw_code_text or len(raw_code_text.strip()) < 10:
             return None
         
-        # Detect language first (needed for formatting)
+        # Detect language first
         language = self._detect_language(block)
         
-        # Format the code using language-specific rules
-        code_text = self.formatter.format(raw_code_text, language)
+        # Use raw code text without formatting to preserve original
+        code_text = raw_code_text
         
-        # Skip inline code in sentences (unless it's multi-line after formatting)
+        # Skip inline code in sentences (unless it's multi-line)
         if self._is_inline_code(block) and '\n' not in code_text:
             return None
         
@@ -196,13 +195,13 @@ class HTMLCodeExtractor:
         if not raw_code_text or len(raw_code_text.strip()) < 10:
             return None
         
-        # Detect language first (needed for formatting) - async version
+        # Detect language first - async version
         language = await self._detect_language_async(block)
         
-        # Format the code using language-specific rules
-        code_text = self.formatter.format(raw_code_text, language)
+        # Use raw code text without formatting to preserve original
+        code_text = raw_code_text
         
-        # Skip inline code in sentences (unless it's multi-line after formatting)
+        # Skip inline code in sentences (unless it's multi-line)
         if self._is_inline_code(block) and '\n' not in code_text:
             return None
         

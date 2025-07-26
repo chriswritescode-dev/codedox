@@ -354,25 +354,7 @@ async def upload_file(
         raise HTTPException(status_code=500, detail=str(e))
 
 
-# Snippet endpoints
-@app.get("/snippets/{snippet_id}")
-async def get_snippet(snippet_id: int, db: Session = Depends(get_db)) -> Dict[str, Any]:
-    """Get details of a specific code snippet."""
-    try:
-        from ..database.models import CodeSnippet
-        
-        snippet = db.query(CodeSnippet).filter_by(id=snippet_id).first()
-        
-        if not snippet:
-            raise HTTPException(status_code=404, detail="Snippet not found")
-        
-        return snippet.to_dict()
-        
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"Failed to get snippet: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+# Snippet endpoints are now in routes/snippets.py
 
 
 # Export endpoint
