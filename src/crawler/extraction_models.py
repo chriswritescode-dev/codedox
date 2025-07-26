@@ -19,16 +19,22 @@ class SimpleCodeBlock:
     context_after: List[str] = field(default_factory=list)
 
 
-# LLM prompt for getting both title and description
+# LLM prompt for getting language, title and description
 TITLE_AND_DESCRIPTION_PROMPT = """
-Analyze the code snippet below and generate a title and description based on what the code actually does.
+Analyze the code snippet below and identify its programming language, then generate a title and description based on what the code actually does.
 
 FORMAT YOUR RESPONSE EXACTLY AS:
+LANGUAGE: [programming language name]
 TITLE: [5-10 words describing what this specific code does]
 DESCRIPTION: [10-30 words explaining what this specific code accomplishes]
 
 Guidelines:
-- Focus ONLY on the code provided below, not the examples
+- Identify the programming language based on syntax, keywords, and context
+- Consider the source URL and documentation context when identifying the language
+- For React code with JSX syntax, use "jsx" not "javascript"
+- For TypeScript React code, use "tsx" not "typescript"
+- For Vue components, use "vue" not "javascript"
+- For markup/config files, be specific (e.g., "postcss" not just "css")
 - TITLE should describe the specific action or purpose of the code
 - DESCRIPTION should explain what this code does and how it works
 - DO NOT start description with "The code..." or "This code..."
@@ -36,10 +42,15 @@ Guidelines:
 
 === ACTUAL CODE TO ANALYZE ===
 
+Source URL: {url}
 Context: {context}
 
 Code to analyze:
 {code}
 
-Analyze the above code and respond with TITLE and DESCRIPTION for it.
+Analyze the above code and respond with LANGUAGE, TITLE and DESCRIPTION for it.
 """
+
+
+
+
