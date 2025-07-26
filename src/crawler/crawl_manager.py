@@ -88,6 +88,7 @@ class CrawlManager:
 
         # Cancel any existing active task for this job
         existing_task = self._active_crawl_tasks.get(job_id)
+        logger.info(f"Checking for existing task for job {job_id}: {existing_task is not None}")
         if existing_task and not existing_task.done():
             logger.info(f"Cancelling existing crawl task for job {job_id}")
             existing_task.cancel()
@@ -97,6 +98,9 @@ class CrawlManager:
             except (asyncio.CancelledError, asyncio.TimeoutError):
                 pass
             # Remove from active tasks
+            self._active_crawl_tasks.pop(job_id, None)
+        elif existing_task:
+            logger.info(f"Existing task for job {job_id} is already done, removing from active tasks")
             self._active_crawl_tasks.pop(job_id, None)
 
         # Start async crawl

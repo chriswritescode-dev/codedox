@@ -87,10 +87,10 @@ class ResultProcessor:
                 if hasattr(result, 'metadata') and result.metadata.get('content_unchanged'):
                     # Return with existing snippet count from crawl phase
                     existing_snippet_count = result.metadata.get('existing_snippet_count', 0)
-                    return int(existing_doc.id), existing_snippet_count, None
+                    return int(existing_doc.id), existing_snippet_count
                 else:
                     # Legacy path - content unchanged but not detected during crawl
-                    return int(existing_doc.id), 0, None
+                    return int(existing_doc.id), 0
 
             # Create or update document
             doc = self._create_or_update_document(session, result, job_id, depth, existing_doc)
@@ -179,7 +179,6 @@ class ResultProcessor:
             # Update existing
             doc = existing_doc
             doc.title = result.title
-            doc.markdown_content = result.markdown_content
             doc.content_hash = result.content_hash
             doc.crawl_job_id = job_id
             doc.last_crawled = datetime.utcnow()
@@ -188,7 +187,6 @@ class ResultProcessor:
             doc = Document(
                 url=result.url,
                 title=result.title,
-                markdown_content=result.markdown_content,
                 content_hash=result.content_hash,
                 crawl_job_id=job_id,
                 crawl_depth=depth,
@@ -276,7 +274,6 @@ class ResultProcessor:
             Number of snippets created
         """
         snippet_count = 0
-        created_snippets = []  # Track created snippets for relationship mapping
         
         logger.info(f"Processing {len(code_blocks)} code blocks for document {doc.url}")
 
@@ -324,15 +321,11 @@ class ResultProcessor:
             }
             snippet_type = snippet_type_map.get(purpose, 'code')
             
-            # Build comprehensive metadata
+            # Build simplified metadata
             full_metadata = {
                 'filename': filename,
-                'purpose': purpose,
-                'frameworks': metadata.get('frameworks', []),
-                'prerequisites': metadata.get('prerequisites', []),
-                'relationships': metadata.get('relationships', []),
-                'extraction_model': metadata.get('extraction_model'),
-                'extraction_timestamp': metadata.get('extraction_timestamp'),
+                'container_type': metadata.get('container_type'),
+                'extraction_method': metadata.get('extraction_method'),
             }
             
             # Create snippet with all LLM data
@@ -349,9 +342,9 @@ class ResultProcessor:
                 context_after=None,
                 section_title=metadata.get('section'),
                 section_content=None,
-                functions=metadata.get('dependencies', []),  # Store dependencies in functions field
-                imports=[],  # Could extract from relationships
-                keywords=metadata.get('keywords', []),
+                functions=[],
+                imports=[],
+                keywords=[],
                 snippet_type=snippet_type,
                 source_url=source_url,
                 metadata=full_metadata,
@@ -363,149 +356,21 @@ class ResultProcessor:
             if not existing:
                 session.add(snippet)
                 session.flush()  # Flush to get the ID
-                created_snippets.append((i, snippet))  # Track index and snippet
                 snippet_count += 1
                 logger.info(f"Added new snippet: {title} (language: {language})")
             else:
                 # Update existing with new data
                 self._update_snippet(existing, snippet)
-                created_snippets.append((i, existing))  # Track existing snippet too
                 logger.info(f"Updated existing snippet: {title}")
         
-        # Commit snippets first before creating relationships
+        # Commit snippets
         session.commit()
-        
-        # Process relationships after all snippets are created and committed
-        self._create_snippet_relationships(session, created_snippets, code_blocks)
         
         logger.info(f"Processed {snippet_count} new snippets for document {doc.id}")
 
         return snippet_count
 
 
-    def _create_snippet_relationships(
-        self, session: Session, created_snippets: List[Tuple[int, CodeSnippet]], code_blocks: List[Any]
-    ) -> None:
-        """Create relationships between snippets based on LLM extraction.
-        
-        Args:
-            session: Database session
-            created_snippets: List of (index, snippet) tuples
-            code_blocks: Original code blocks with relationship data
-        """
-        from ..database.models import SnippetRelationship
-        
-        # Create a mapping of index to snippet
-        index_to_snippet = {idx: snippet for idx, snippet in created_snippets}
-        
-        # Track relationships to avoid duplicates
-        created_relationships = set()
-        
-        # Process each snippet's relationships
-        for idx, snippet in created_snippets:
-            if idx >= len(code_blocks):
-                continue
-                
-            block = code_blocks[idx]
-            
-            # Get relationships from metadata
-            relationships = []
-            if isinstance(block, dict) and 'relationships' in block:
-                relationships = block.get('relationships', [])
-            elif isinstance(block, dict) and 'metadata' in block:
-                relationships = block['metadata'].get('relationships', [])
-            elif hasattr(block, 'metadata') and block.metadata:
-                relationships = block.metadata.get('relationships', [])
-            
-            # Create relationship records
-            for rel in relationships:
-                target_idx = rel.get('related_index')
-                if target_idx is not None and target_idx in index_to_snippet:
-                    target_snippet = index_to_snippet[target_idx]
-                    
-                    # Validate that both snippets have valid IDs
-                    if snippet.id is None or target_snippet.id is None:
-                        logger.warning(f"Skipping relationship creation - snippet IDs are None: source={snippet.id}, target={target_snippet.id}")
-                        continue
-                    
-                    relationship_type = rel.get('relationship_type', 'related')
-                    
-                    # Create a unique key for this relationship
-                    relationship_key = (snippet.id, target_snippet.id, relationship_type)
-                    
-                    # Skip if we've already processed this relationship
-                    if relationship_key in created_relationships:
-                        logger.debug(f"Skipping duplicate relationship: {snippet.title} -> {target_snippet.title} ({relationship_type})")
-                        continue
-                    
-                    # Check if relationship already exists in database
-                    existing_rel = session.query(SnippetRelationship).filter_by(
-                        source_snippet_id=snippet.id,
-                        target_snippet_id=target_snippet.id,
-                        relationship_type=relationship_type
-                    ).first()
-                    
-                    if not existing_rel:
-                        relationship = SnippetRelationship(
-                            source_snippet_id=snippet.id,
-                            target_snippet_id=target_snippet.id,
-                            relationship_type=relationship_type,
-                            description=rel.get('description', '')
-                        )
-                        session.add(relationship)
-                        created_relationships.add(relationship_key)
-                        logger.debug(f"Created relationship: {snippet.title} -> {target_snippet.title} ({relationship_type})")
-                    else:
-                        created_relationships.add(relationship_key)
-                        logger.debug(f"Relationship already exists: {snippet.title} -> {target_snippet.title} ({relationship_type})")
-        
-        # Commit relationships separately to handle any remaining conflicts
-        try:
-            session.commit()
-            logger.debug(f"Successfully committed {len(created_relationships)} relationships")
-        except Exception as e:
-            logger.error(f"Error committing relationships: {e}")
-            session.rollback()
-            # Try to create relationships one by one to identify which ones are causing issues
-            for idx, snippet in created_snippets:
-                if idx >= len(code_blocks):
-                    continue
-                    
-                block = code_blocks[idx]
-                relationships = []
-                if isinstance(block, dict) and 'relationships' in block:
-                    relationships = block.get('relationships', [])
-                elif isinstance(block, dict) and 'metadata' in block:
-                    relationships = block['metadata'].get('relationships', [])
-                elif hasattr(block, 'metadata') and block.metadata:
-                    relationships = block.metadata.get('relationships', [])
-                
-                for rel in relationships:
-                    target_idx = rel.get('related_index')
-                    if target_idx is not None and target_idx in index_to_snippet:
-                        target_snippet = index_to_snippet[target_idx]
-                        relationship_type = rel.get('relationship_type', 'related')
-                        
-                        try:
-                            # Use raw SQL with ON CONFLICT DO NOTHING
-                            session.execute(
-                                """
-                                INSERT INTO snippet_relationships 
-                                (source_snippet_id, target_snippet_id, relationship_type, description, created_at)
-                                VALUES (:source_id, :target_id, :rel_type, :description, NOW())
-                                ON CONFLICT (source_snippet_id, target_snippet_id, relationship_type) DO NOTHING
-                                """,
-                                {
-                                    'source_id': snippet.id,
-                                    'target_id': target_snippet.id,
-                                    'rel_type': relationship_type,
-                                    'description': rel.get('description', '')
-                                }
-                            )
-                            session.commit()
-                        except Exception as inner_e:
-                            logger.error(f"Failed to create individual relationship: {inner_e}")
-                            session.rollback()
 
     def _update_snippet(self, existing: CodeSnippet, new: CodeSnippet) -> None:
         """Update existing snippet with new data.

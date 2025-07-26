@@ -1,23 +1,20 @@
-"""Async retry mechanism for failed LLM extractions."""
+"""Async retry mechanism for LLM description generation."""
 
 import asyncio
 import logging
-import json
 import os
-from typing import Optional, Dict, Any
-from datetime import datetime
+from typing import Optional, List
 
 import openai
-from pydantic import ValidationError
 
-from .extraction_models import LLMExtractionResult, EXTRACTION_INSTRUCTIONS, get_extraction_schema
+from .extraction_models import SimpleCodeBlock, TITLE_AND_DESCRIPTION_PROMPT
 from ..config import get_settings
 
 logger = logging.getLogger(__name__)
 
 
-class LLMRetryExtractor:
-    """Handles retry logic for failed LLM extractions."""
+class LLMDescriptionGenerator:
+    """Handles LLM description generation for code blocks."""
     
     def __init__(self):
         self.settings = get_settings()
@@ -37,142 +34,119 @@ class LLMRetryExtractor:
                 base_url=base_url
             )
     
-    async def extract_with_retry(
-        self, 
-        markdown_content: str, 
-        url: str,
-        title: Optional[str] = None,
-        max_retries: int = 2
-    ) -> Optional[LLMExtractionResult]:
-        """
-        Extract code blocks with retry logic.
-        
-        Args:
-            markdown_content: The markdown content to extract from
-            url: Source URL for context
-            title: Page title for context
-            max_retries: Maximum number of retry attempts
-            
-        Returns:
-            LLMExtractionResult or None if all retries fail
-        """
-        if not self.client:
-            logger.error("LLM client not initialized - missing API key")
-            return None
-        
-        # Get the JSON schema
-        schema = get_extraction_schema()
-        
-        # System prompt for structured output
-        system_prompt = """You are a code extraction specialist. Your job is to extract ALL code snippets from documentation.
-
-Extract every piece of code found, including inline snippets, examples, configurations, and commands.
-Provide comprehensive metadata for each code block to enhance searchability and understanding."""
-        
-        # Create user prompt with schema
-        user_prompt = f"""{EXTRACTION_INSTRUCTIONS}
-
-Page URL: {url}
-Page Title: {title or 'Unknown'}
-
-Content to analyze:
-{markdown_content}"""
-        
-        for attempt in range(max_retries):
-            try:
-                logger.info(f"LLM extraction attempt {attempt + 1} for {url}")
-                
-                # Make the API call with structured output
-                response = await self.client.chat.completions.create(
-                    model=self.settings.code_extraction.llm_extraction_model,
-                    messages=[
-                        {"role": "system", "content": system_prompt},
-                        {"role": "user", "content": user_prompt}
-                    ],
-                    temperature=0.1,
-                    response_format={
-                        "type": "json_schema",
-                        "json_schema": {
-                            "name": "code_extraction",
-                            "schema": schema,
-                            "strict": True
-                        }
-                    }
-                )
-                
-                # Extract and parse response
-                llm_content = response.choices[0].message.content.strip()
-                
-                # Parse JSON response (structured output guarantees valid JSON)
-                try:
-                    extracted_data = json.loads(llm_content)
-                except json.JSONDecodeError as e:
-                    logger.error(f"Failed to parse LLM JSON response: {e}")
-                    continue
-                
-                # Add extraction metadata
-                extracted_data["extraction_timestamp"] = datetime.utcnow().isoformat()
-                extracted_data["extraction_model"] = self.settings.code_extraction.llm_extraction_model
-                
-                # Validate with Pydantic
-                try:
-                    result = LLMExtractionResult(**extracted_data)
-                    logger.info(f"Successfully extracted {len(result.code_blocks)} code blocks from {url}")
-                    return result
-                except ValidationError as e:
-                    logger.error(f"Validation error on attempt {attempt + 1}: {e}")
-                    # On last attempt, log the data that failed validation
-                    if attempt == max_retries - 1:
-                        logger.error(f"Failed data structure: {json.dumps(extracted_data, indent=2)}")
-                    continue
-                    
-            except Exception as e:
-                logger.error(f"LLM extraction error on attempt {attempt + 1}: {e}")
-                if attempt < max_retries - 1:
-                    await asyncio.sleep(2 ** attempt)  # Exponential backoff
-        
-        logger.error(f"All {max_retries} extraction attempts failed for {url}")
-        return None
-    
-    async def extract_batch(
+    async def generate_titles_and_descriptions_batch(
         self,
-        failed_extractions: list[Dict[str, Any]],
-        max_concurrent: Optional[int] = None
-    ) -> Dict[str, Optional[LLMExtractionResult]]:
+        code_blocks: List[SimpleCodeBlock],
+        url: str,
+        max_concurrent: Optional[int] = None,
+        semaphore: Optional[asyncio.Semaphore] = None
+    ) -> List[SimpleCodeBlock]:
         """
-        Extract from multiple failed pages concurrently.
+        Generate titles and descriptions for multiple code blocks concurrently.
         
         Args:
-            failed_extractions: List of dicts with 'url', 'markdown_content', 'title'
-            max_concurrent: Maximum concurrent extractions (defaults to CODE_LLM_NUM_PARALLEL env var or 5)
+            code_blocks: List of code blocks to generate titles and descriptions for
+            url: Source URL for context
+            max_concurrent: Maximum concurrent requests (defaults to CODE_LLM_NUM_PARALLEL env var or 5)
+            semaphore: Optional semaphore for controlling concurrency
             
         Returns:
-            Dict mapping URL to extraction result (or None if failed)
+            List of code blocks with titles and descriptions added
         """
-        results = {}
+        # Use provided semaphore or create one
+        if semaphore is None:
+            # Use environment variable if max_concurrent not provided
+            if max_concurrent is None:
+                max_concurrent = int(os.getenv('CODE_LLM_NUM_PARALLEL', '5'))
+                logger.info(f"Using CODE_LLM_NUM_PARALLEL={max_concurrent} for batch title/description generation")
+            
+            # Create semaphore for concurrency control
+            semaphore = asyncio.Semaphore(max_concurrent)
         
-        # Use environment variable if max_concurrent not provided
-        if max_concurrent is None:
-            max_concurrent = int(os.getenv('CODE_LLM_NUM_PARALLEL', '5'))
-            logger.info(f"Using CODE_LLM_NUM_PARALLEL={max_concurrent} for batch extraction")
-        
-        # Create semaphore for concurrency control
-        semaphore = asyncio.Semaphore(max_concurrent)
-        
-        async def extract_with_semaphore(item: Dict[str, Any]) -> tuple[str, Optional[LLMExtractionResult]]:
+        async def generate_with_semaphore(block: SimpleCodeBlock) -> SimpleCodeBlock:
             async with semaphore:
-                result = await self.extract_with_retry(
-                    markdown_content=item['markdown_content'],
-                    url=item['url'],
-                    title=item.get('title')
+                if not self.client:
+                    logger.error("LLM client not initialized - missing API key")
+                    block.title = f"Code Block in {block.language or 'Unknown'}"
+                    block.description = f"Code block in {block.language or 'unknown'} language"
+                    return block
+                
+                # Build context from before/after context
+                context_parts = []
+                if block.context_before:
+                    context_parts.extend(block.context_before)
+                if block.context_after:
+                    context_parts.extend(block.context_after)
+                
+                context = " ".join(context_parts) if context_parts else "No additional context available"
+                
+                # Create the prompt using string replacement to avoid format string conflicts
+                prompt = TITLE_AND_DESCRIPTION_PROMPT.replace(
+                    "{context}", context[:500]  # Limit context length
+                ).replace(
+                    "{code}", block.code[:2000]  # Limit code length
                 )
-                return item['url'], result
+                
+                max_retries = 2
+                for attempt in range(max_retries):
+                    try:
+                        logger.debug(f"LLM title/description attempt {attempt + 1} for code block from {url}")
+                        
+                        # Make completion call
+                        response = await self.client.chat.completions.create(
+                            model=self.settings.code_extraction.llm_extraction_model,
+                            messages=[
+                                {"role": "user", "content": prompt}
+                            ],
+                            temperature=0.1,
+                            max_tokens=200  # Slightly more tokens for both title and description
+                        )
+                        
+                        # Extract and parse response
+                        content = response.choices[0].message.content.strip()
+                        
+                        # Parse title and description
+                        title = None
+                        description = None
+                        
+                        for line in content.split('\n'):
+                            line = line.strip()
+                            if line.startswith("TITLE:"):
+                                title = line[6:].strip()
+                            elif line.startswith("DESCRIPTION:"):
+                                description = line[12:].strip()
+                        
+                        if title and description:
+                            logger.debug(f"Generated title: {title}")
+                            logger.debug(f"Generated description: {description[:100]}...")
+                            block.title = title
+                            block.description = description
+                            return block
+                        else:
+                            logger.warning(f"Failed to parse title and description from response: {content}")
+                            
+                    except Exception as e:
+                        logger.error(f"LLM title/description error on attempt {attempt + 1}: {e}")
+                        if attempt < max_retries - 1:
+                            await asyncio.sleep(2 ** attempt)  # Exponential backoff
+                
+                # Fallback if all attempts failed
+                logger.error(f"All {max_retries} title/description attempts failed")
+                block.title = f"Code Block in {block.language or 'Unknown'}"
+                block.description = f"Code block in {block.language or 'unknown'} language"
+                return block
         
-        # Run extractions concurrently
-        tasks = [extract_with_semaphore(item) for item in failed_extractions]
+        # Run generation concurrently
+        tasks = [generate_with_semaphore(block) for block in code_blocks]
         
+        results = []
         for future in asyncio.as_completed(tasks):
-            url, result = await future
-            results[url] = result
+            result = await future
+            results.append(result)
         
         return results
+
+
+
+# Keep old class name for backward compatibility
+LLMRetryExtractor = LLMDescriptionGenerator

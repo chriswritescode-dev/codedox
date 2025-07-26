@@ -3,8 +3,8 @@
 import logging
 import logging.handlers
 from pathlib import Path
-from typing import Optional, List, Any
-from pydantic import Field
+from typing import Optional, List, Any, Annotated
+from pydantic import Field, field_validator, BeforeValidator
 from pydantic.types import SecretStr
 from pydantic_settings import BaseSettings, SettingsConfigDict
 from dotenv import load_dotenv
@@ -127,8 +127,12 @@ class APIConfig(BaseSettings):
     
     host: str = "0.0.0.0"
     port: int = 8000
-    cors_origins: List[str] = ["http://localhost:3000", "http://localhost:5173", "http://localhost:8000"]
+    cors_origins: str = "http://localhost:3000,http://localhost:5173,http://localhost:8000"
     max_request_size: int = 10485760  # 10MB
+    
+    def get_cors_origins_list(self) -> List[str]:
+        """Get CORS origins as a list."""
+        return [origin.strip() for origin in self.cors_origins.split(',')]
 
 
 class LoggingConfig(BaseSettings):
