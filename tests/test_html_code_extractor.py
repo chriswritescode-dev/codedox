@@ -111,6 +111,19 @@ ls -la</code></pre>
         assert len(blocks) >= 1
         assert blocks[0].language == 'json'
     
+    def test_language_detection_css_import(self):
+        """Test CSS language detection with @import statement."""
+        html = """
+        <pre><code>@import "tailwindcss";
+body {
+    margin: 0;
+}</code></pre>
+        """
+        blocks = self.extractor.extract_code_blocks(html, "https://test.com")
+        
+        assert len(blocks) >= 1
+        assert blocks[0].language == 'css'
+    
     def test_skip_short_code_blocks(self):
         """Test that very short code blocks are skipped."""
         html = """

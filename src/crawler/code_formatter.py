@@ -7,6 +7,8 @@ from typing import Optional
 import subprocess
 import tempfile
 import os
+import shlex
+from contextlib import contextmanager
 
 logger = logging.getLogger(__name__)
 
@@ -29,6 +31,27 @@ PRETTIER_CONFIG = {
 }
 
 
+@contextmanager
+def secure_temp_file(suffix=None, mode='w', delete=True):
+    """Context manager for secure temporary file creation and cleanup."""
+    temp_file = None
+    try:
+        temp_file = tempfile.NamedTemporaryFile(
+            mode=mode,
+            suffix=suffix,
+            delete=False  # We'll handle deletion ourselves
+        )
+        temp_path = temp_file.name
+        temp_file.close()  # Close immediately so subprocess can access it
+        yield temp_path
+    finally:
+        if temp_file and os.path.exists(temp_path) and delete:
+            try:
+                os.unlink(temp_path)
+            except OSError as e:
+                logger.warning(f"Failed to delete temp file {temp_path}: {e}")
+
+
 class CodeFormatter:
     """Formats code snippets based on their language using appropriate formatters."""
     
@@ -40,7 +63,7 @@ class CodeFormatter:
             logger.warning("Prettier not found. Run 'npm install' in src/language_detector/")
     
     def _find_prettier_path(self) -> Optional[str]:
-        """Find Prettier executable in various locations."""
+        """Find Prettier executable in various locations with security validation."""
         # Get the directory of this file
         current_file_dir = os.path.dirname(os.path.abspath(__file__))
         project_root = os.path.dirname(os.path.dirname(current_file_dir))
@@ -65,19 +88,27 @@ class CodeFormatter:
                 possible_paths.append(node_bin)
             current_dir = os.path.dirname(current_dir)
         
-        # Check each path
+        # Check each path with security validation
         for path in possible_paths:
             try:
-                result = subprocess.run(
-                    [path, "--version"],
-                    capture_output=True,
-                    text=True,
-                    check=False
-                )
-                if result.returncode == 0:
-                    logger.info(f"Prettier found at {path}: {result.stdout.strip()}")
-                    return path
-            except (subprocess.SubprocessError, FileNotFoundError):
+                # Get absolute path for security checks
+                abs_path = os.path.abspath(path) if not path.startswith('/') else path
+                
+                # For non-system paths, validate they're accessible
+                if os.path.exists(abs_path) and os.access(abs_path, os.X_OK):
+                    # Test execution with safe arguments
+                    result = subprocess.run(
+                        [abs_path, "--version"],
+                        capture_output=True,
+                        text=True,
+                        check=False,
+                        env={**os.environ, "NODE_ENV": "production"}  # Ensure safe environment
+                    )
+                    if result.returncode == 0:
+                        logger.info(f"Prettier found at {abs_path}: {result.stdout.strip()}")
+                        return abs_path
+            except (subprocess.SubprocessError, FileNotFoundError, OSError) as e:
+                logger.debug(f"Failed to check prettier at {path}: {e}")
                 continue
         
         return None
@@ -132,7 +163,7 @@ class CodeFormatter:
             return self._basic_format(code)
     
     def _format_with_prettier(self, code: str, language: str) -> str:
-        """Format code using Prettier."""
+        """Format code using Prettier with secure temp file handling."""
         if not self.prettier_available:
             return self._basic_format(code)
         
@@ -158,34 +189,38 @@ class CodeFormatter:
         parser = parser_map.get(language, 'babel')
         
         try:
-            # Create temporary config file
-            with tempfile.NamedTemporaryFile(mode='w', suffix='.json', delete=False) as config_file:
-                json.dump(PRETTIER_CONFIG, config_file)
-                config_path = config_file.name
-            
-            # Run Prettier
-            result = subprocess.run(
-                [
-                    self.prettier_path,
-                    "--config", config_path,
-                    "--parser", parser,
-                    "--stdin-filepath", f"code.{language}"
-                ],
-                input=code,
-                capture_output=True,
-                text=True,
-                check=False
-            )
-            
-            # Clean up config file
-            os.unlink(config_path)
-            
-            if result.returncode == 0:
-                return result.stdout
-            else:
-                logger.warning(f"Prettier formatting failed: {result.stderr}")
-                return self._basic_format(code)
+            # Use secure temp file context manager
+            with secure_temp_file(suffix='.json') as config_path:
+                # Write config to temp file
+                with open(config_path, 'w') as f:
+                    json.dump(PRETTIER_CONFIG, f)
                 
+                # Validate prettier path still exists
+                if not os.path.exists(self.prettier_path):
+                    logger.error("Prettier executable not found")
+                    return self._basic_format(code)
+                
+                # Run Prettier with validated arguments
+                result = subprocess.run(
+                    [
+                        self.prettier_path,
+                        "--config", config_path,
+                        "--parser", parser,
+                        "--stdin-filepath", f"code.{language}"
+                    ],
+                    input=code,
+                    capture_output=True,
+                    text=True,
+                    check=False,
+                    env={**os.environ, "NODE_ENV": "production"}  # Safe environment
+                )
+                
+                if result.returncode == 0:
+                    return result.stdout
+                else:
+                    logger.warning(f"Prettier formatting failed: {result.stderr}")
+                    return self._basic_format(code)
+                    
         except Exception as e:
             logger.error(f"Error running Prettier: {e}")
             return self._basic_format(code)
