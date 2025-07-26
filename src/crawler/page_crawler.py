@@ -111,7 +111,7 @@ class PageCrawler:
             
             logger.info(f"Creating AsyncWebCrawler with config: {self.browser_config}")
             async with AsyncWebCrawler(config=self.browser_config) as crawler:
-                logger.info(f"AsyncWebCrawler created successfully")
+                logger.info("AsyncWebCrawler created successfully")
                 results = []
 
                 # Configure rate limiter and dispatcher
@@ -409,10 +409,13 @@ class PageCrawler:
             logger.warning(f"No markdown content for content hash from {result.url}")
             return None
         
-        # Extract title
+        # Extract title and metadata
         title = ""
+        page_metadata = {}
         if hasattr(result, "metadata") and result.metadata:
             title = result.metadata.get("title", "")
+            # Extract all metadata including Open Graph tags
+            page_metadata = result.metadata.copy()
         
         # Calculate content hash
         content_hash = hashlib.md5(markdown_content.encode("utf-8")).hexdigest()
@@ -438,7 +441,8 @@ class PageCrawler:
                         "depth": page_depth,
                         "content_unchanged": True,
                         "existing_snippet_count": existing_snippet_count,
-                        "skipped_extraction": True
+                        "skipped_extraction": True,
+                        **page_metadata  # Include all extracted metadata
                     }
                 )
         
@@ -484,7 +488,8 @@ class PageCrawler:
                 metadata={
                     "depth": page_depth,
                     "extraction_method": "html",
-                    "blocks_found": 0
+                    "blocks_found": 0,
+                    **page_metadata  # Include all extracted metadata
                 }
             )
         
@@ -534,7 +539,8 @@ class PageCrawler:
                 metadata={
                     "depth": page_depth,
                     "extraction_method": "html_llm",
-                    "blocks_found": len(processed_blocks)
+                    "blocks_found": len(processed_blocks),
+                    **page_metadata  # Include all extracted metadata
                 }
             )
             
@@ -564,7 +570,8 @@ class PageCrawler:
                 metadata={
                     "depth": page_depth,
                     "extraction_method": "html_only",
-                    "blocks_found": len(fallback_blocks)
+                    "blocks_found": len(fallback_blocks),
+                    **page_metadata  # Include all extracted metadata
                 }
             )
 
@@ -647,8 +654,11 @@ class PageCrawler:
             # Calculate content hash
             content_hash = hashlib.md5((markdown_content or "").encode("utf-8")).hexdigest()
 
-            # Add metadata
+            # Add all metadata from result
             if hasattr(result, "metadata") and result.metadata:
+                # Include all metadata fields directly
+                metadata.update(result.metadata)
+                # Also keep a reference to the original
                 metadata["crawl4ai_metadata"] = result.metadata
             metadata["extraction_method"] = "llm"
 

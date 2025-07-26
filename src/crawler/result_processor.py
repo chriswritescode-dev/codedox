@@ -214,15 +214,23 @@ class ResultProcessor:
         job = session.query(CrawlJob).filter_by(id=job_id).first()
 
         if job and job.name.startswith("[Auto-detecting"):
+            # Check if name was already detected (stored in config)
+            if job.config.get('name_detected'):
+                logger.debug(f"Name already detected for job {job_id}, skipping")
+                return
+                
             # Extract name from first page
-            detected_name = await self._extract_site_name(result.title, result.url, result.metadata)
+            detected_name = await self._extract_site_name(result.title, result.url, result.metadata, result.content)
             if detected_name:
                 logger.info(f"Auto-detected site name: {detected_name}")
                 job.name = detected_name
+                # Mark as detected to avoid future updates
+                job.config['name_detected'] = True
                 session.commit()
 
     async def _extract_site_name(
-        self, title: str, url: str, metadata: Optional[Dict[str, Any]] = None
+        self, title: str, url: str, metadata: Optional[Dict[str, Any]] = None, 
+        content: Optional[str] = None
     ) -> Optional[str]:
         """Extract site name using LLM or fallback logic.
 
@@ -230,36 +238,113 @@ class ResultProcessor:
             title: Page title
             url: Page URL
             metadata: Optional metadata
+            content: Optional page content for LLM analysis
 
         Returns:
             Site name or None
         """
-        if not title:
+        if not title and not metadata:
             return None
 
-        # Simple extraction logic
-        if metadata and "title" in metadata:
-            meta_title = metadata["title"]
-            if meta_title and len(meta_title) <= 50:
-                return meta_title.strip()
+        # First try Open Graph metadata
+        if metadata:
+            # Check for og:site_name first
+            og_site_name = metadata.get('og:site_name')
+            if og_site_name and len(og_site_name) <= 50:
+                logger.info(f"Using og:site_name: {og_site_name}")
+                return og_site_name.strip()
+            
+            # Check for application-name meta tag
+            app_name = metadata.get('application-name')
+            if app_name and len(app_name) <= 50:
+                logger.info(f"Using application-name: {app_name}")
+                return app_name.strip()
+            
+            # Check for twitter:site
+            twitter_site = metadata.get('twitter:site')
+            if twitter_site and len(twitter_site) <= 50:
+                # Remove @ if present
+                if twitter_site.startswith('@'):
+                    twitter_site = twitter_site[1:]
+                logger.info(f"Using twitter:site: {twitter_site}")
+                return twitter_site.strip()
 
-        # Clean common suffixes
-        clean_title = title
-        for suffix in [" Documentation", " Docs", " | Home", " - Official Site"]:
-            if clean_title.endswith(suffix):
-                clean_title = clean_title[:-len(suffix)]
-                break
+        # Try LLM extraction if available
+        if self.settings.code_extraction.llm_api_key and (title or content):
+            try:
+                from .llm_retry import LLMDescriptionGenerator
+                llm_generator = LLMDescriptionGenerator()
+                
+                if llm_generator.client:
+                    # Create a focused prompt for name extraction
+                    prompt = f"""Extract the library/framework name from this documentation page.
+
+Page Title: {title or 'N/A'}
+URL: {url}
+Metadata: {str(metadata)[:500] if metadata else 'N/A'}
+
+Respond with ONLY the library/framework name (e.g., "React", "Next.js", "Django", ".NET").
+Do not include words like "Documentation", "Docs", "Guide", etc.
+If you cannot determine the name, respond with "UNKNOWN"."""
+                    
+                    response = await llm_generator.client.chat.completions.create(
+                        model=self.settings.code_extraction.llm_extraction_model,
+                        messages=[{"role": "user", "content": prompt}],
+                        temperature=0.1,
+                        max_tokens=50
+                    )
+                    
+                    extracted_name = response.choices[0].message.content.strip()
+                    if extracted_name and extracted_name != "UNKNOWN" and len(extracted_name) <= 50:
+                        logger.info(f"LLM extracted name: {extracted_name}")
+                        return extracted_name
+            except Exception as e:
+                logger.warning(f"LLM name extraction failed: {e}")
+
+        # Fallback to simple extraction logic
+        if title:
+            clean_title = title
+            
+            # Clean common suffixes
+            suffixes_to_remove = [
+                " Documentation", " Docs", " | Home", " - Official Site",
+                " - Home", " Reference", " API Reference", " Developer Guide",
+                " · GitBook", " | MDN", " - MDN Web Docs"
+            ]
+            for suffix in suffixes_to_remove:
+                if clean_title.endswith(suffix):
+                    clean_title = clean_title[:-len(suffix)]
+                    break
+            
+            # Handle pipe-separated titles
+            if " | " in clean_title:
+                parts = clean_title.split(" | ")
+                # Try different strategies
+                # 1. If first part is short and looks like a library name
+                if len(parts[0]) <= 30 and not any(word in parts[0].lower() for word in ['documentation', 'docs', 'guide']):
+                    clean_title = parts[0].strip()
+                # 2. Otherwise use the last part
+                else:
+                    clean_title = parts[-1].strip()
+            
+            # Handle dash-separated titles
+            elif " - " in clean_title:
+                parts = clean_title.split(" - ")
+                # Similar logic
+                if len(parts[0]) <= 30 and not any(word in parts[0].lower() for word in ['documentation', 'docs', 'guide']):
+                    clean_title = parts[0].strip()
+            
+            # Remove version numbers at the end
+            import re
+            clean_title = re.sub(r'\s+v?\d+(\.\d+)*$', '', clean_title)
+            
+            # Truncate long titles
+            if len(clean_title) > 50:
+                return clean_title[:50].rsplit(" ", 1)[0] + "..."
+            
+            return clean_title.strip()
         
-        # Handle pipe-separated titles
-        if " | " in clean_title:
-            parts = clean_title.split(" | ")
-            # Usually the library name is the last part
-            clean_title = parts[-1].strip()
-        
-        # Truncate long titles
-        if len(clean_title) > 50:
-            return clean_title[:50].rsplit(" ", 1)[0] + "..."
-        return clean_title.strip()
+        return None
 
     async def _process_code_blocks(
         self, session: Session, doc: Document, code_blocks: List[Any], source_url: str
