@@ -60,8 +60,15 @@ echo ""
 echo "🌐 Installing Playwright browsers..."
 crawl4ai-setup
 
-# Note: Prettier is now installed via pip as part of requirements.txt
-# VS Code language detection has been removed in favor of LLM-based detection
+# Install frontend dependencies (including Prettier for code formatting)
+if [ -d "frontend" ]; then
+    echo ""
+    echo "📦 Installing frontend dependencies..."
+    cd frontend
+    npm install
+    cd ..
+    echo "✅ Frontend dependencies installed"
+fi
 
 
 # Copy environment file if it doesn't exist
