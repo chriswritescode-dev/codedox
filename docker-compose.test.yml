@@ -1,0 +1,84 @@
+version: '3.8'
+
+services:
+  # Test runner service
+  test:
+    build: .
+    container_name: codedox_test
+    depends_on:
+      postgres:
+        condition: service_healthy
+      api:
+        condition: service_started
+    environment:
+      - DB_HOST=postgres
+      - DB_PORT=5432
+      - DB_NAME=codedox_test
+      - DB_USER=postgres
+      - DB_PASSWORD=postgres
+      - CODE_LLM_API_KEY=${CODE_LLM_API_KEY:-test-key}
+      - CODE_LLM_EXTRACTION_MODEL=gpt-4o-mini
+    volumes:
+      - ./tests:/app/tests
+      - ./test_docker_health.sh:/app/test_docker_health.sh
+    command: |
+      bash -c "
+        echo '🧪 Running CodeDox Docker tests...'
+        
+        # Wait for services
+        echo 'Waiting for PostgreSQL...'
+        while ! pg_isready -h postgres -U postgres; do
+          sleep 1
+        done
+        
+        echo 'Waiting for API...'
+        while ! curl -s http://api:8000/health > /dev/null; do
+          sleep 1
+        done
+        
+        # Initialize test database
+        echo 'Initializing test database...'
+        python cli.py init --drop
+        
+        # Run unit tests
+        echo 'Running unit tests...'
+        pytest tests/ -v
+        
+        # Check service health
+        echo 'Checking service health...'
+        curl -f http://api:8000/health || exit 1
+        curl -f http://api:8000/mcp/tools || exit 1
+        
+        echo '✅ All tests passed!'
+      "
+    networks:
+      - codedox-network
+
+  # Override main services for testing
+  postgres:
+    extends:
+      file: docker-compose.yml
+      service: postgres
+    environment:
+      - POSTGRES_DB=codedox_test
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  api:
+    extends:
+      file: docker-compose.yml
+      service: api
+    environment:
+      - DB_HOST=postgres
+      - DB_NAME=codedox_test
+      - CODE_LLM_API_KEY=${CODE_LLM_API_KEY:-test-key}
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+networks:
+  codedox-network:
+    driver: bridge

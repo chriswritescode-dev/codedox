@@ -33,6 +33,7 @@ RUN apt-get update && apt-get install -y \
     libpq5 \
     wget \
     nodejs \
+\
     # Dependencies for Chromium/Playwright
     libnss3 \
     libnspr4 \
@@ -75,9 +76,10 @@ RUN mkdir -p logs && chown codedox:codedox logs
 COPY --chown=root:root docker-entrypoint.sh /usr/local/bin/
 RUN chmod +x /usr/local/bin/docker-entrypoint.sh
 
-# Install VS Code language detection dependencies
+# Install VS Code language detection dependencies (including Prettier)
 WORKDIR /app/src/language_detector
 RUN npm install
+
 WORKDIR /app
 
 # Install Playwright browsers as root with proper setup
