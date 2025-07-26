@@ -125,7 +125,6 @@ The setup script will:
 
 - Python 3.10+
 - PostgreSQL 12+ 
-# Node.js is no longer required
 - Playwright (installed automatically with crawl4ai)
 
 #### Installation
