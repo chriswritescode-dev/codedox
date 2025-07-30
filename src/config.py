@@ -3,8 +3,8 @@
 import logging
 import logging.handlers
 from pathlib import Path
-from typing import Optional, List, Any, Annotated
-from pydantic import Field, field_validator, BeforeValidator
+from typing import Optional, List, Any
+from pydantic import Field
 from pydantic.types import SecretStr
 from pydantic_settings import BaseSettings, SettingsConfigDict
 from dotenv import load_dotenv
@@ -89,6 +89,10 @@ class CodeExtractionConfig(BaseSettings):
     llm_base_url: Optional[str] = Field(
         default=None,
         description="Base URL for LLM API (if using custom endpoint)"
+    )
+    llm_max_tokens: int = Field(
+        default=1000,
+        description="Maximum tokens for LLM title and description generation"
     )
     enable_context_extraction: bool = Field(
         default=True,
