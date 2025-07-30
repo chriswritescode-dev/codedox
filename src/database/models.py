@@ -82,6 +82,60 @@ class CrawlJob(Base):  # type: ignore[misc,valid-type]
         }
 
 
+class UploadJob(Base):  # type: ignore[misc,valid-type]
+    """Represents an upload job for user-provided documentation."""
+    
+    __tablename__ = 'upload_jobs'
+    
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid4)
+    name = Column(String, nullable=False)
+    source_type = Column(String(20), default='upload', nullable=False)
+    file_count = Column(Integer, default=0)
+    status = Column(String(20), default='pending', nullable=False)
+    processed_files = Column(Integer, default=0)
+    snippets_extracted = Column(Integer, default=0)
+    started_at = Column(DateTime)
+    completed_at = Column(DateTime)
+    error_message = Column(Text)
+    config = Column(JSONB, default={})
+    created_by = Column(String)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    
+    # Relationships
+    documents = relationship("Document", back_populates="upload_job", cascade="all, delete-orphan")
+    
+    __table_args__ = (
+        CheckConstraint(
+            "source_type IN ('upload', 'file', 'api')",
+            name='check_source_type'
+        ),
+        CheckConstraint(
+            "status IN ('pending', 'running', 'completed', 'failed', 'cancelled')",
+            name='check_upload_status'
+        ),
+    )
+    
+    def to_dict(self) -> Dict[str, Any]:
+        """Convert to dictionary for API responses."""
+        return {
+            'id': str(self.id),
+            'name': self.name,
+            'source_type': self.source_type,
+            'file_count': self.file_count,
+            'status': self.status,
+            'processed_files': self.processed_files,
+            'snippets_extracted': self.snippets_extracted,
+            'started_at': self.started_at.isoformat() if self.started_at else None,
+            'completed_at': self.completed_at.isoformat() if self.completed_at else None,
+            'error_message': self.error_message,
+            'config': self.config,
+            'created_by': self.created_by,
+            'created_at': self.created_at.isoformat(),
+            'updated_at': self.updated_at.isoformat()
+        }
+
+
 class Document(Base):  # type: ignore[misc,valid-type]
     """Represents a crawled document/page."""
     
@@ -91,9 +145,10 @@ class Document(Base):  # type: ignore[misc,valid-type]
     url = Column(Text, unique=True, nullable=False, index=True)
     title = Column(Text)
     content_type = Column(String(50), default='html')
-    markdown_content = Column(Text)
     content_hash = Column(String(64), index=True)
     crawl_job_id = Column(UUID(as_uuid=True), ForeignKey('crawl_jobs.id', ondelete='CASCADE'))
+    upload_job_id = Column(UUID(as_uuid=True), ForeignKey('upload_jobs.id', ondelete='CASCADE'))
+    source_type = Column(String(20), default='crawl')
     crawl_depth = Column(Integer, default=0)
     parent_url = Column(Text)
     last_crawled = Column(DateTime, default=datetime.utcnow)
@@ -103,12 +158,24 @@ class Document(Base):  # type: ignore[misc,valid-type]
     
     # Relationships
     crawl_job = relationship("CrawlJob", back_populates="documents")
+    upload_job = relationship("UploadJob", back_populates="documents")
     code_snippets = relationship("CodeSnippet", back_populates="document", cascade="all, delete-orphan")
     
     __table_args__ = (
         Index('idx_documents_crawl_job_id', 'crawl_job_id'),
+        Index('idx_documents_upload_job_id', 'upload_job_id'),
+        Index('idx_documents_source_type', 'source_type'),
         Index('idx_documents_crawl_depth', 'crawl_depth'),
         Index('idx_documents_created_at', 'created_at'),
+        CheckConstraint(
+            "source_type IN ('crawl', 'upload')",
+            name='check_doc_source_type'
+        ),
+        CheckConstraint(
+            "(crawl_job_id IS NOT NULL AND upload_job_id IS NULL AND source_type = 'crawl') OR "
+            "(upload_job_id IS NOT NULL AND crawl_job_id IS NULL AND source_type = 'upload')",
+            name='check_job_link'
+        ),
     )
 
 
