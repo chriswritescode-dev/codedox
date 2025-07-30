@@ -292,8 +292,17 @@ async def delete_source(source_id: str, db: Session = Depends(get_db)) -> Dict[s
     return {"message": "Source deleted successfully"}
 
 
+class RecrawlRequest(BaseModel):
+    """Request model for recrawling a source."""
+    ignore_hash: bool = Field(default=False, description="Ignore content hash and regenerate all content")
+
+
 @router.post("/sources/{source_id}/recrawl")
-async def recrawl_source(source_id: str, db: Session = Depends(get_db)) -> Dict[str, Any]:
+async def recrawl_source(
+    source_id: str, 
+    request: RecrawlRequest = RecrawlRequest(),
+    db: Session = Depends(get_db)
+) -> Dict[str, Any]:
     """Recrawl an existing source (completed crawl job)."""
     # Get the original crawl job
     original_job = db.query(CrawlJob).filter_by(id=source_id).first()
@@ -305,21 +314,27 @@ async def recrawl_source(source_id: str, db: Session = Depends(get_db)) -> Dict[
     
     try:
         # Use the same init_crawl method that MCP and web UI use
-        # Get max_concurrent_crawls from original job config if available
+        # Get configuration from original job config if available
         max_concurrent = 20  # default
+        url_patterns = None  # default
+        
         if original_job.config and isinstance(original_job.config, dict):
             max_concurrent = original_job.config.get('max_concurrent_crawls', 20)
+            # Preserve URL patterns from original crawl
+            url_patterns = original_job.config.get('url_patterns', original_job.config.get('include_patterns'))
         
         result = await mcp_tools.init_crawl(
             name=original_job.name,
             start_urls=original_job.start_urls,
             max_depth=original_job.max_depth,
             domain_filter=original_job.domain if original_job.domain else None,
+            url_patterns=url_patterns,
             metadata={
                 "is_recrawl": True,
                 "original_source_id": source_id,
                 "original_name": original_job.name,
-                "recrawl_started_at": datetime.utcnow().isoformat()
+                "recrawl_started_at": datetime.utcnow().isoformat(),
+                "ignore_hash": request.ignore_hash
             },
             max_concurrent_crawls=max_concurrent
         )
