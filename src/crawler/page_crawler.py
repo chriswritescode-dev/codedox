@@ -49,7 +49,7 @@ class PageCrawler:
         self.browser_config = browser_config
         self.db_manager = get_db_manager()
         self.settings = get_settings()
-        self.description_generator = LLMDescriptionGenerator()
+        self.description_generator = None  # Initialize on demand with custom config
         self.html_extractor = HTMLCodeExtractor()
 
     async def crawl_page(
@@ -85,6 +85,9 @@ class PageCrawler:
             logger.error("LLM extraction API key not found. Please set CODE_LLM_API_KEY in your .env file")
             raise ValueError("LLM extraction API key is required")
 
+        # Get user agent from settings
+        user_agent = self.settings.crawling.user_agent
+        
         # Create unified configuration
         crawler_run_config = create_crawler_config(
             max_depth=max_depth,
@@ -92,6 +95,7 @@ class PageCrawler:
             domain_restrictions=job_config.get("domain_restrictions") if job_config else None,
             include_patterns=job_config.get("include_patterns") if job_config else None,
             exclude_patterns=job_config.get("exclude_patterns") if job_config else None,
+            user_agent=user_agent,
         )
 
         print(f"Config: {crawler_run_config}")
@@ -178,6 +182,7 @@ class PageCrawler:
                         domain_restrictions=job_config.get("domain_restrictions") if job_config else None,
                         include_patterns=job_config.get("include_patterns") if job_config else None,
                         exclude_patterns=job_config.get("exclude_patterns") if job_config else None,
+                        user_agent=user_agent,
                     )
                     
                     # Check if streaming is supported
@@ -501,8 +506,33 @@ class PageCrawler:
                 llm_parallel_limit = int(os.getenv('CODE_LLM_NUM_PARALLEL', '5'))
                 llm_semaphore = asyncio.Semaphore(llm_parallel_limit)
             
+            # Check for custom LLM configuration in job config
+            custom_model = None
+            custom_api_key = None
+            custom_base_url = None
+            
+            if job_config and isinstance(job_config, dict):
+                metadata = job_config.get('metadata', {})
+                custom_model = metadata.get('llm_model')
+                custom_api_key = metadata.get('llm_api_key')
+                custom_base_url = metadata.get('llm_base_url')
+                
+                if custom_model:
+                    logger.info(f"Using custom LLM model: {custom_model}")
+                if custom_api_key:
+                    logger.info("Using custom LLM API key")
+                if custom_base_url:
+                    logger.info(f"Using custom LLM base URL: {custom_base_url}")
+            
+            # Initialize description generator with custom config if needed
+            if custom_api_key or custom_base_url or not self.description_generator:
+                self.description_generator = LLMDescriptionGenerator(
+                    api_key=custom_api_key,
+                    base_url=custom_base_url
+                )
+            
             blocks_with_descriptions = await self.description_generator.generate_titles_and_descriptions_batch(
-                html_blocks, result.url, semaphore=llm_semaphore
+                html_blocks, result.url, semaphore=llm_semaphore, model=custom_model
             )
             
             # Convert to the format expected by result processor

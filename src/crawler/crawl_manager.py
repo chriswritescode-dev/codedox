@@ -47,11 +47,15 @@ class CrawlManager:
         self.job_manager = JobManager()
         self.progress_tracker = ProgressTracker(self.job_manager)
 
+        # Get user agent from settings
+        user_agent = self.settings.crawling.user_agent
+        
         # Initialize browser config
         self.browser_config = create_browser_config(
             headless=True,
             viewport_width=1200,
             viewport_height=800,
+            user_agent=user_agent,
         )
 
         # Initialize crawler and processor

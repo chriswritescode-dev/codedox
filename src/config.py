@@ -65,7 +65,7 @@ class CrawlingConfig(BaseSettings):
     respect_robots_txt: bool = True
     max_concurrent_pages: int = 3
     content_size_limit: int = 50000
-    user_agent: str = "CodeDox/1.0 (Documentation Crawler)"
+    user_agent: str = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36"
     max_concurrent_sessions: int = 20
 
 
