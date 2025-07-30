@@ -311,11 +311,11 @@ class MCPTools:
                             if suggestions:
                                 return (f"❌ No library found matching '{library_id}'.\n\n"
                                        f"📚 Did you mean one of these?\n" + "\n".join(suggestions) + "\n\n"
-                                       f"💡 Tip: Use the exact library name or copy the ID from search_libraries.")
+                                       "💡 Tip: Use the exact library name or copy the ID from search_libraries.")
                             else:
                                 return f"❌ No library found matching '{library_id}' and no similar libraries found.\n\n💡 Use search_libraries to find available libraries."
                         else:
-                            return f"❌ No libraries have been crawled yet. Use init_crawl to add documentation sources."
+                            return "❌ No libraries have been crawled yet. Use init_crawl to add documentation sources."
                     
                     # Check for exact match first (case-insensitive)
                     exact_match = None
@@ -363,7 +363,7 @@ class MCPTools:
                             
                             return (f"🤔 Multiple libraries match '{library_id}'. Please be more specific:\n\n" + 
                                    "\n".join(suggestions) + "\n\n"
-                                   f"💡 Tip: Use the exact library name for best results.")
+                                   "💡 Tip: Use the exact library name for best results.")
                 
                 # Calculate offset for pagination
                 offset = (page - 1) * limit
