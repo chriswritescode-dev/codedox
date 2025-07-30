@@ -306,13 +306,39 @@ async def get_recent_snippets(
 # Upload endpoints
 @app.post("/upload/markdown")
 async def upload_markdown(request: UploadMarkdownRequest, db: Session = Depends(get_db)) -> Dict[str, Any]:
-    """Upload and process markdown content - NEEDS TO BE UPDATED to use new HTML extraction method."""
-    # TODO: Update this endpoint to use the new HTML extraction + LLM description method
-    # Currently disabled until the new extraction method is implemented for uploads
-    raise HTTPException(
-        status_code=501,
-        detail="Upload functionality is temporarily disabled while being updated to use the new extraction method. Please use the crawl functionality instead."
-    )
+    """Upload and process markdown content using the new extraction method."""
+    try:
+        from ..crawler import UploadProcessor, UploadConfig
+        
+        processor = UploadProcessor()
+        
+        # Create upload configuration
+        config = UploadConfig(
+            name=request.title or "Uploaded Markdown",
+            files=[{
+                'content': request.content,
+                'source_url': request.source_url,
+                'content_type': 'markdown'
+            }],
+            metadata={
+                'uploaded_via': 'api',
+                'original_title': request.title
+            }
+        )
+        
+        # Start processing
+        job_id = await processor.process_upload(config)
+        
+        return {
+            "success": True,
+            "job_id": job_id,
+            "message": "Markdown content submitted for processing",
+            "status_url": f"/upload/status/{job_id}"
+        }
+        
+    except Exception as e:
+        logger.error(f"Failed to process markdown upload: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 @app.post("/upload/file")
@@ -321,13 +347,14 @@ async def upload_file(
     source_url: Optional[str] = None,
     db: Session = Depends(get_db)
 ) -> Dict[str, Any]:
-    """Upload a markdown file for processing."""
+    """Upload a markdown or text file for processing."""
     try:
         # Check file type
-        if not file.filename.endswith(('.md', '.markdown')):
+        allowed_extensions = ('.md', '.markdown', '.txt', '.rst', '.adoc')
+        if not file.filename.endswith(allowed_extensions):
             raise HTTPException(
                 status_code=400,
-                detail="Only markdown files (.md, .markdown) are supported"
+                detail=f"Only these file types are supported: {', '.join(allowed_extensions)}"
             )
         
         # Read file content
@@ -338,19 +365,69 @@ async def upload_file(
         if not source_url:
             source_url = f"file://{file.filename}"
         
-        # Process using markdown upload endpoint
-        request = UploadMarkdownRequest(
-            content=content_str,
-            source_url=source_url,
-            title=file.filename
+        # Determine content type from extension
+        content_type = 'markdown'
+        if file.filename.endswith('.rst'):
+            content_type = 'restructuredtext'
+        elif file.filename.endswith('.adoc'):
+            content_type = 'asciidoc'
+        elif file.filename.endswith('.txt'):
+            content_type = 'text'
+        
+        from ..crawler import UploadProcessor, UploadConfig
+        
+        processor = UploadProcessor()
+        
+        # Create upload configuration
+        config = UploadConfig(
+            name=file.filename,
+            files=[{
+                'content': content_str,
+                'source_url': source_url,
+                'content_type': content_type
+            }],
+            metadata={
+                'uploaded_via': 'api_file',
+                'original_filename': file.filename,
+                'content_type': file.content_type
+            }
         )
         
-        return await upload_markdown(request, db)
+        # Start processing
+        job_id = await processor.process_upload(config)
+        
+        return {
+            "success": True,
+            "job_id": job_id,
+            "message": f"File '{file.filename}' submitted for processing",
+            "status_url": f"/upload/status/{job_id}"
+        }
         
     except UnicodeDecodeError:
         raise HTTPException(status_code=400, detail="Invalid file encoding. Please use UTF-8.")
     except Exception as e:
         logger.error(f"Failed to upload file: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/upload/status/{job_id}")
+async def get_upload_status(job_id: str) -> Dict[str, Any]:
+    """Get the status of an upload job."""
+    try:
+        from ..crawler import UploadProcessor
+        
+        processor = UploadProcessor()
+        status = processor.get_job_status(job_id)
+        
+        if not status:
+            raise HTTPException(status_code=404, detail="Upload job not found")
+        
+        return status
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to get upload status: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 
