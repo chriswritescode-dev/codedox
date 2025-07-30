@@ -15,12 +15,19 @@ def create_browser_config(
     headless: bool = True,
     viewport_width: int = 1920,
     viewport_height: int = 1080,
+    user_agent: str = None,
 ) -> BrowserConfig:
     """Create browser configuration."""
-    return BrowserConfig(
+    config = BrowserConfig(
         headless=headless,
         viewport={"width": viewport_width, "height": viewport_height},
     )
+    
+    # Set custom user agent if provided
+    if user_agent:
+        config.user_agent = user_agent
+    
+    return config
 
 
 def create_crawler_config(
@@ -29,6 +36,7 @@ def create_crawler_config(
     domain_restrictions: Optional[List[str]] = None,
     include_patterns: Optional[List[str]] = None,
     exclude_patterns: Optional[List[str]] = None,
+    user_agent: Optional[str] = None,
 ) -> CrawlerRunConfig:
     """Create unified crawler configuration for both single page and deep crawl.
     
@@ -40,6 +48,7 @@ def create_crawler_config(
         domain_restrictions: List of allowed domains
         include_patterns: URL patterns to include
         exclude_patterns: URL patterns to exclude
+        user_agent: Custom user agent string for HTTP requests
         max_pages: Maximum number of pages to crawl
     
     Returns:
@@ -54,6 +63,10 @@ def create_crawler_config(
         "verbose": True,
         "exclude_external_links": True,
     }
+    
+    # Add custom user agent if provided
+    if user_agent:
+        config_dict["user_agent"] = user_agent
 
     # Add deep crawl strategy if max_depth > 0
     if max_depth > 0:
