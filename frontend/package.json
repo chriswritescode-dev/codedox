@@ -12,6 +12,7 @@
     "install:deps": "npm install"
   },
   "dependencies": {
+    "@radix-ui/react-select": "^2.2.5",
     "@tailwindcss/vite": "^4.1.11",
     "@tanstack/react-query": "^5.17.0",
     "axios": "^1.6.5",
