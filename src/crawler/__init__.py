@@ -1,6 +1,7 @@
 """Web crawling package."""
 
 from .crawl_manager import CrawlManager, CrawlConfig
+from .upload_processor import UploadProcessor, UploadConfig
 from .health_monitor import CrawlHealthMonitor, get_health_monitor
 from .config import create_crawler_config, create_browser_config
 from .job_manager import JobManager
@@ -14,6 +15,8 @@ __all__ = [
     "CrawlManager",
     "CrawlConfig",
     "CrawlResult",
+    "UploadProcessor",
+    "UploadConfig",
     # Managers
     "JobManager",
     "ProgressTracker",

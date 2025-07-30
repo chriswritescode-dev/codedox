@@ -81,10 +81,7 @@ export default function Upload() {
       return
     }
     
-    if (!sourceUrl.trim()) {
-      setError('Please provide a source URL')
-      return
-    }
+    // Source URL is now optional
     
     setUploading(true)
     setError(null)
@@ -93,13 +90,13 @@ export default function Upload() {
     try {
       if (selectedFile) {
         // Use file upload endpoint
-        const result = await uploadFile(selectedFile, sourceUrl, title)
+        const result = await uploadFile(selectedFile, sourceUrl || undefined, title)
         setSuccess(`Successfully uploaded file with ${result.snippets_count} code snippets extracted`)
       } else {
         // Use markdown upload endpoint
         const result = await uploadMarkdown({
           content,
-          source_url: sourceUrl,
+          source_url: sourceUrl || undefined,
           title: title || undefined
         })
         setSuccess(`Successfully uploaded content with ${result.snippets_count} code snippets extracted`)
@@ -130,16 +127,15 @@ export default function Upload() {
         {/* Source URL Input */}
         <div>
           <label htmlFor="source-url" className="block text-sm font-medium">
-            Source URL <span className="text-red-500">*</span>
+            Source URL <span className="text-muted-foreground text-xs">(optional)</span>
           </label>
           <input
             type="url"
             id="source-url"
             value={sourceUrl}
             onChange={(e) => setSourceUrl(e.target.value)}
-            placeholder="https://docs.example.com/guide"
+            placeholder="https://docs.example.com/guide (optional)"
             className="mt-1 w-full px-3 py-2 bg-secondary border border-input rounded-md focus:outline-hidden focus:ring-2 focus:ring-primary"
-            required
           />
           <p className="mt-1 text-sm text-muted-foreground">
             The original URL where this documentation can be found
