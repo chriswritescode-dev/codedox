@@ -1,5 +1,10 @@
-import { Database, FileText, Code, Calendar, Search } from "lucide-react";
+import {  FileText, Code, Calendar, Search, RefreshCw } from "lucide-react";
 import { Link } from "react-router-dom";
+import { useState } from "react";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useNavigate } from "react-router-dom";
+import { api } from "../lib/api";
+import { RecrawlDialog } from "./RecrawlDialog";
 
 interface SourceOverviewProps {
   source: {
@@ -13,6 +18,21 @@ interface SourceOverviewProps {
 }
 
 export function SourceOverview({ source }: SourceOverviewProps) {
+  const [recrawlDialogOpen, setRecrawlDialogOpen] = useState(false);
+  const navigate = useNavigate();
+  const queryClient = useQueryClient();
+
+  const recrawlMutation = useMutation({
+    mutationFn: (ignoreHash: boolean) => api.recrawlSource(source.id, ignoreHash),
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ["sources"] });
+      navigate(`/crawl/${data.id}`);
+    },
+    onError: (error) => {
+      console.error("Failed to recrawl source:", error);
+      alert("Failed to start recrawl: " + (error instanceof Error ? error.message : "Unknown error"));
+    },
+  });
   return (
     <div className="space-y-6">
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
@@ -47,13 +67,34 @@ export function SourceOverview({ source }: SourceOverviewProps) {
         </div>
       </div>
 
-      <Link
-        to={`/search?source=${encodeURIComponent(source.name)}`}
-        className="inline-flex items-center px-4 py-2 bg-primary text-primary-foreground rounded-md hover:bg-primary/90"
-      >
-        <Search className="h-4 w-4 mr-2" />
-        Search all snippets from this source
-      </Link>
+      <div className="flex gap-3">
+        <Link
+          to={`/search?source=${encodeURIComponent(source.name)}`}
+          className="inline-flex items-center px-4 py-2 bg-primary text-primary-foreground rounded-md hover:bg-primary/90"
+        >
+          <Search className="h-4 w-4 mr-2" />
+          Search all snippets from this source
+        </Link>
+        
+        <button
+          onClick={() => setRecrawlDialogOpen(true)}
+          className="inline-flex items-center px-4 py-2 bg-secondary text-secondary-foreground rounded-md hover:bg-secondary/80 cursor-pointer"
+        >
+          <RefreshCw className="h-4 w-4 mr-2" />
+          Recrawl Source
+        </button>
+      </div>
+
+      <RecrawlDialog
+        isOpen={recrawlDialogOpen}
+        sourceName={source.name}
+        sourceUrl={source.base_url}
+        onConfirm={(ignoreHash) => {
+          recrawlMutation.mutate(ignoreHash);
+        }}
+        onCancel={() => setRecrawlDialogOpen(false)}
+        isRecrawling={recrawlMutation.isPending}
+      />
     </div>
   );
 }
