@@ -63,8 +63,18 @@ class ResultProcessor:
             # Check if document exists
             existing_doc = session.query(Document).filter_by(url=result.url).first()
 
-            if existing_doc and existing_doc.content_hash == result.content_hash:
-                # Content unchanged
+            # Check if we should ignore hash (for regeneration)
+            ignore_hash = False
+            if hasattr(result, 'metadata') and result.metadata:
+                # Check if job has ignore_hash flag
+                from ..database.models import CrawlJob
+                job = session.query(CrawlJob).filter_by(id=job_id).first()
+                if job and job.config and isinstance(job.config, dict):
+                    job_metadata = job.config.get('metadata', {})
+                    ignore_hash = job_metadata.get('ignore_hash', False)
+
+            if existing_doc and existing_doc.content_hash == result.content_hash and not ignore_hash:
+                # Content unchanged and not ignoring hash
                 return int(existing_doc.id), 0
 
             # Create or update document
@@ -105,7 +115,15 @@ class ResultProcessor:
             # Check if document exists
             existing_doc = session.query(Document).filter_by(url=result.url).first()
 
-            if existing_doc and existing_doc.content_hash == result.content_hash:
+            # Check if we should ignore hash (for regeneration)
+            ignore_hash = False
+            from ..database.models import CrawlJob
+            job = session.query(CrawlJob).filter_by(id=job_id).first()
+            if job and job.config and isinstance(job.config, dict):
+                job_metadata = job.config.get('metadata', {})
+                ignore_hash = job_metadata.get('ignore_hash', False)
+
+            if existing_doc and existing_doc.content_hash == result.content_hash and not ignore_hash:
                 # Content unchanged - check if this was detected during crawl
                 if hasattr(result, 'metadata') and result.metadata.get('content_unchanged'):
                     # Return with existing snippet count from crawl phase
@@ -114,6 +132,10 @@ class ResultProcessor:
                 else:
                     # Legacy path - content unchanged but not detected during crawl
                     return int(existing_doc.id), 0
+
+            # Log when ignoring hash
+            if ignore_hash and existing_doc and existing_doc.content_hash == result.content_hash:
+                logger.info(f"Ignoring content hash for {result.url} - forcing regeneration")
 
             # Create or update document
             doc = self._create_or_update_document(session, result, job_id, depth, existing_doc)
