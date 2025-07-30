@@ -171,7 +171,7 @@ async def health_check() -> Dict[str, str]:
 
 
 # Crawl endpoints
-@app.post("/crawl/init", response_model=Dict[str, Any])
+@app.post("/api/crawl/init", response_model=Dict[str, Any])
 async def init_crawl(request: CrawlRequest) -> Dict[str, Any]:
     """Initialize a new crawl job."""
     try:
@@ -193,7 +193,7 @@ async def init_crawl(request: CrawlRequest) -> Dict[str, Any]:
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@app.get("/crawl/status/{job_id}")
+@app.get("/api/crawl/status/{job_id}")
 async def get_crawl_status(job_id: str) -> Dict[str, Any]:
     """Get status of a crawl job."""
     try:
@@ -211,7 +211,7 @@ async def get_crawl_status(job_id: str) -> Dict[str, Any]:
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@app.post("/crawl/cancel/{job_id}")
+@app.post("/api/crawl/cancel/{job_id}")
 async def cancel_crawl(job_id: str) -> Dict[str, Any]:
     """Cancel a running crawl job."""
     try:
@@ -231,7 +231,7 @@ async def cancel_crawl(job_id: str) -> Dict[str, Any]:
 
 
 # Search endpoints
-@app.post("/search")
+@app.post("/api/search")
 async def search_code(request: SearchRequest, db: Session = Depends(get_db)) -> Dict[str, Any]:
     """Search for code snippets."""
     try:
@@ -261,7 +261,7 @@ async def search_code(request: SearchRequest, db: Session = Depends(get_db)) -> 
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@app.get("/search/languages")
+@app.get("/api/search/languages")
 async def get_languages(db: Session = Depends(get_db)) -> Dict[str, List[str]]:
     """Get list of available programming languages."""
     try:
@@ -274,7 +274,7 @@ async def get_languages(db: Session = Depends(get_db)) -> Dict[str, List[str]]:
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@app.get("/search/recent")
+@app.get("/api/search/recent")
 async def get_recent_snippets(
     hours: int = Query(default=24, ge=1, le=168),
     language: Optional[str] = None,
@@ -304,7 +304,7 @@ async def get_recent_snippets(
 
 
 # Upload endpoints
-@app.post("/upload/markdown")
+@app.post("/api/upload/markdown")
 async def upload_markdown(request: UploadMarkdownRequest, db: Session = Depends(get_db)) -> Dict[str, Any]:
     """Upload and process markdown content using the new extraction method."""
     try:
@@ -341,7 +341,7 @@ async def upload_markdown(request: UploadMarkdownRequest, db: Session = Depends(
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@app.post("/upload/file")
+@app.post("/api/upload/file")
 async def upload_file(
     file: UploadFile = File(...),
     source_url: Optional[str] = None,
@@ -410,7 +410,7 @@ async def upload_file(
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@app.post("/upload/files")
+@app.post("/api/upload/files")
 async def upload_files(
     files: List[UploadFile] = File(...),
     title: Optional[str] = Form(None),
@@ -486,7 +486,7 @@ async def upload_files(
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@app.get("/upload/status/{job_id}")
+@app.get("/api/upload/status/{job_id}")
 async def get_upload_status(job_id: str) -> Dict[str, Any]:
     """Get the status of an upload job."""
     try:
@@ -511,7 +511,7 @@ async def get_upload_status(job_id: str) -> Dict[str, Any]:
 
 
 # Export endpoint
-@app.get("/export/{job_id}")
+@app.get("/api/export/{job_id}")
 async def export_snippets(
     job_id: str,
     format: str = Query(default="json", regex="^(json|markdown)$"),
