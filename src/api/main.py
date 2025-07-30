@@ -8,7 +8,7 @@ from contextlib import asynccontextmanager
 from typing import List, Optional, Dict, Any, AsyncGenerator
 
 import openai
-from fastapi import FastAPI, HTTPException, Depends, Query, UploadFile, File, Request, Header
+from fastapi import FastAPI, HTTPException, Depends, Query, UploadFile, File, Request, Header, Form
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
@@ -407,6 +407,82 @@ async def upload_file(
         raise HTTPException(status_code=400, detail="Invalid file encoding. Please use UTF-8.")
     except Exception as e:
         logger.error(f"Failed to upload file: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/upload/files")
+async def upload_files(
+    files: List[UploadFile] = File(...),
+    title: Optional[str] = Form(None),
+    db: Session = Depends(get_db)
+) -> Dict[str, Any]:
+    """Upload multiple markdown or text files for processing in a single job."""
+    try:
+        if not files:
+            raise HTTPException(status_code=400, detail="No files provided")
+        
+        # Check file types
+        allowed_extensions = ('.md', '.markdown', '.txt', '.rst', '.adoc')
+        file_configs = []
+        
+        for file in files:
+            if not file.filename.endswith(allowed_extensions):
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"File '{file.filename}' has unsupported type. Allowed: {', '.join(allowed_extensions)}"
+                )
+            
+            # Read file content
+            content = await file.read()
+            content_str = content.decode('utf-8')
+            
+            # Use filename as source URL
+            source_url = f"file://{file.filename}"
+            
+            # Determine content type from extension
+            content_type = 'markdown'
+            if file.filename.endswith('.rst'):
+                content_type = 'restructuredtext'
+            elif file.filename.endswith('.adoc'):
+                content_type = 'asciidoc'
+            elif file.filename.endswith('.txt'):
+                content_type = 'text'
+            
+            file_configs.append({
+                'content': content_str,
+                'source_url': source_url,
+                'content_type': content_type
+            })
+        
+        from ..crawler import UploadProcessor, UploadConfig
+        
+        processor = UploadProcessor()
+        
+        # Create upload configuration for all files
+        config = UploadConfig(
+            name=title or f"Batch Upload ({len(files)} files)",
+            files=file_configs,
+            metadata={
+                'uploaded_via': 'api_files_batch',
+                'file_count': len(files),
+                'filenames': [f.filename for f in files]
+            }
+        )
+        
+        # Start processing
+        job_id = await processor.process_upload(config)
+        
+        return {
+            "status": "processing",
+            "job_id": job_id,
+            "file_count": len(files),
+            "message": f"Upload job started for {len(files)} files"
+        }
+        
+    except UnicodeDecodeError:
+        raise HTTPException(status_code=400, detail="Invalid file encoding. Please use UTF-8.")
+    except Exception as e:
+        logger.error(f"Failed to upload files: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 
