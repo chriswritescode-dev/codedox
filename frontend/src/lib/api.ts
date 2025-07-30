@@ -194,9 +194,10 @@ class APIClient {
     })
   }
 
-  async recrawlSource(id: string): Promise<CrawlJob> {
+  async recrawlSource(id: string, ignoreHash: boolean = false): Promise<CrawlJob> {
     return this.fetch<CrawlJob>(`/sources/${id}/recrawl`, {
       method: 'POST',
+      body: JSON.stringify({ ignore_hash: ignoreHash })
     })
   }
 

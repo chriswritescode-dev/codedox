@@ -12,6 +12,7 @@ A powerful system for crawling documentation websites, extracting code snippets,
 - **Source Management**: Track multiple documentation sources with statistics
 - **Modern Web UI**: React-based dashboard for managing crawls, searching code, and monitoring system activity
 - **Auto Site Content Deduplication**: Only updates or adds content that has changed
+- **Flexible Recrawl**: Choose to skip unchanged content or force regenerate all descriptions and titles
 
 ## Screenshots
 
