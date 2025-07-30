@@ -150,6 +150,19 @@ async def mcp_streamable_endpoint(
     last_event_id: Optional[str] = Header(None)
 ) -> Any:
     """Handle MCP requests using the newest streamable HTTP transport."""
+    # Check authentication if enabled
+    if settings.mcp_auth.enabled:
+        from .auth import get_bearer_token
+        auth_header = request.headers.get("Authorization")
+        token = get_bearer_token(auth_header)
+        
+        if not token or not settings.mcp_auth.is_token_valid(token):
+            from fastapi import HTTPException, status
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Invalid authentication token",
+                headers={"WWW-Authenticate": "Bearer"},
+            )
     return await streamable_transport.handle_request(
         request,
         mcp_session_id,
