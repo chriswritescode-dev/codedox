@@ -1,9 +1,6 @@
 // Use environment variable with fallback to /api
 const API_BASE_URL = import.meta.env.VITE_API_URL || '/api'
 
-console.log(import.meta.env);
-
-
 export interface Source {
   id: string
   name: string
@@ -101,8 +98,6 @@ export interface Statistics {
 class APIClient {
   async fetch<T>(endpoint: string, options?: RequestInit): Promise<T> {
     const url = `${API_BASE_URL}${endpoint}`;
-    console.log('Fetching:', url);
-    console.log('API_BASE_URL:', API_BASE_URL);
     
     try {
       const response = await fetch(url, {
@@ -178,6 +173,17 @@ class APIClient {
     return this.fetch<{ message: string; deleted_count: number }>('/sources/bulk', {
       method: 'DELETE',
       body: JSON.stringify(ids),
+    })
+  }
+
+  async deleteMatches(sourceId: string, params: { query?: string; language?: string } = {}): Promise<{ deleted_count: number; source_id: string; source_name: string }> {
+    return this.fetch<{ deleted_count: number; source_id: string; source_name: string }>(`/snippets/sources/${sourceId}/delete-matches`, {
+      method: 'POST',
+      body: JSON.stringify({
+        source_id: sourceId,
+        query: params.query,
+        language: params.language
+      })
     })
   }
 
