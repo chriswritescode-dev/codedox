@@ -1,4 +1,4 @@
-import { Database, FileText, Code, Calendar, Search } from "lucide-react";
+import {  FileText, Code, Calendar, Search } from "lucide-react";
 import { Link } from "react-router-dom";
 
 interface SourceOverviewProps {

@@ -426,31 +426,40 @@ class PageCrawler:
         # Calculate content hash
         content_hash = hashlib.md5(markdown_content.encode("utf-8")).hexdigest()
         
-        # Check if content has changed
-        with self.db_manager.session_scope() as session:
-            from ..database import check_content_hash
-            content_unchanged, existing_snippet_count = check_content_hash(
-                session, result.url, content_hash
-            )
-            
-            if content_unchanged:
-                logger.info(f"Content unchanged for {result.url}, skipping extraction. "
-                           f"Using {existing_snippet_count} existing snippets.")
-                
-                return CrawlResult(
-                    url=result.url,
-                    title=title,
-                    content=markdown_content,
-                    content_hash=content_hash,
-                    code_blocks=[],
-                    metadata={
-                        "depth": page_depth,
-                        "content_unchanged": True,
-                        "existing_snippet_count": existing_snippet_count,
-                        "skipped_extraction": True,
-                        **page_metadata  # Include all extracted metadata
-                    }
+        # Check if we should ignore hash (for regeneration)
+        ignore_hash = False
+        if job_config and isinstance(job_config, dict):
+            job_metadata = job_config.get('metadata', {})
+            ignore_hash = job_metadata.get('ignore_hash', False)
+            if ignore_hash:
+                logger.info(f"Ignoring content hash for {result.url} - forcing regeneration")
+        
+        # Check if content has changed (skip if ignore_hash is True)
+        if not ignore_hash:
+            with self.db_manager.session_scope() as session:
+                from ..database import check_content_hash
+                content_unchanged, existing_snippet_count = check_content_hash(
+                    session, result.url, content_hash
                 )
+                
+                if content_unchanged:
+                    logger.info(f"Content unchanged for {result.url}, skipping extraction. "
+                               f"Using {existing_snippet_count} existing snippets.")
+                    
+                    return CrawlResult(
+                        url=result.url,
+                        title=title,
+                        content=markdown_content,
+                        content_hash=content_hash,
+                        code_blocks=[],
+                        metadata={
+                            "depth": page_depth,
+                            "content_unchanged": True,
+                            "existing_snippet_count": existing_snippet_count,
+                            "skipped_extraction": True,
+                            **page_metadata  # Include all extracted metadata
+                        }
+                    )
         
         # Content changed or new - extract code blocks from HTML
         logger.info(f"Content changed/new for {result.url}, performing HTML extraction")
