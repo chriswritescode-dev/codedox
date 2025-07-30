@@ -17,22 +17,37 @@ logger = logging.getLogger(__name__)
 class LLMDescriptionGenerator:
     """Handles LLM description generation for code blocks."""
     
-    def __init__(self):
+    def __init__(
+        self,
+        api_key: Optional[str] = None,
+        base_url: Optional[str] = None,
+        model: Optional[str] = None
+    ):
+        """Initialize LLM description generator."""
         self.settings = get_settings()
         self.client = None
-        self._init_client()
+        self.custom_model = model
+        self._init_client(api_key=api_key, base_url=base_url)
     
-    def _init_client(self):
+    def _init_client(
+        self, api_key: Optional[str] = None, base_url: Optional[str] = None
+    ):
         """Initialize OpenAI client if API key is available."""
-        if self.settings.code_extraction.llm_api_key:
-            api_key = self.settings.code_extraction.llm_api_key.get_secret_value()
-            base_url = None
-            if hasattr(self.settings.code_extraction, 'llm_base_url'):
-                base_url = self.settings.code_extraction.llm_base_url
-            
+        if api_key or self.settings.code_extraction.llm_api_key:
+            # Use custom api_key if provided, otherwise use from settings
+            client_api_key = api_key
+            if not client_api_key:
+                client_api_key = self.settings.code_extraction.llm_api_key.get_secret_value()
+
+            # Custom api_key takes precedence for base_url
+            client_base_url = base_url
+            if not client_base_url and hasattr(
+                self.settings.code_extraction, "llm_base_url"
+            ):
+                client_base_url = self.settings.code_extraction.llm_base_url
+
             self.client = openai.AsyncOpenAI(
-                api_key=api_key,
-                base_url=base_url
+                api_key=client_api_key, base_url=client_base_url
             )
     
     async def generate_titles_and_descriptions_batch(
@@ -96,13 +111,17 @@ class LLMDescriptionGenerator:
                         logger.debug(f"LLM title/description attempt {attempt + 1} for code block from {url}")
                         
                         # Make completion call
+                        model = (
+                            self.custom_model
+                            if self.custom_model
+                            else self.settings.code_extraction.llm_extraction_model
+                        )
+                        logger.debug(f"Using LLM model: {model}")
                         response = await self.client.chat.completions.create(
-                            model=self.settings.code_extraction.llm_extraction_model,
-                            messages=[
-                                {"role": "user", "content": prompt}
-                            ],
+                            model=model,
+                            messages=[{"role": "user", "content": prompt}],
                             temperature=0.1,
-                            max_tokens=200  # Slightly more tokens for both title and description
+                            max_tokens=self.settings.code_extraction.llm_max_tokens,
                         )
                         
                         # Extract and parse response
