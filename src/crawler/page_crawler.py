@@ -384,7 +384,8 @@ class PageCrawler:
         result: Any, 
         job_id: str, 
         depth: int,
-        llm_semaphore: Optional[asyncio.Semaphore] = None
+        llm_semaphore: Optional[asyncio.Semaphore] = None,
+        job_config: Optional[Dict[str, Any]] = None
     ) -> Optional[CrawlResult]:
         """Process a single crawl result with HTML extraction + LLM descriptions."""
         try:
@@ -528,11 +529,12 @@ class PageCrawler:
             if custom_api_key or custom_base_url or not self.description_generator:
                 self.description_generator = LLMDescriptionGenerator(
                     api_key=custom_api_key,
-                    base_url=custom_base_url
+                    base_url=custom_base_url,
+                    model=custom_model
                 )
             
             blocks_with_descriptions = await self.description_generator.generate_titles_and_descriptions_batch(
-                html_blocks, result.url, semaphore=llm_semaphore, model=custom_model
+                html_blocks, result.url, semaphore=llm_semaphore
             )
             
             # Convert to the format expected by result processor

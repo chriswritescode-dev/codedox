@@ -1,13 +1,11 @@
 """Database connection and session management."""
 
-import os
 import logging
 from contextlib import contextmanager
 from typing import Generator, Optional
 
 from sqlalchemy import create_engine, text
 from sqlalchemy.orm import sessionmaker, Session
-from sqlalchemy.pool import NullPool
 
 from .models import Base
 from ..config import get_settings
