@@ -16,9 +16,9 @@ import {
   Search,
   Trash2,
   X,
-  ChevronDown,
   Wand2,
 } from "lucide-react";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { ConfirmationDialog } from "../components/ConfirmationDialog";
 import { DocumentList } from "../components/DocumentList";
 import { SnippetList } from "../components/SnippetList";
@@ -232,6 +232,7 @@ export default function SourceDetail() {
     formatSourceMutation.mutate();
   };
 
+
   const docsTotalPages = useMemo(
     () => (documents ? Math.ceil(documents.total / docsPerPage) : 0),
     [documents]
@@ -423,36 +424,41 @@ export default function SourceDetail() {
                     className="w-full pl-10 pr-4 py-2 bg-secondary border border-input rounded-md focus:outline-none focus:ring-2 focus:ring-primary"
                   />
                   {snippetsSearch && (
-                    <button
-                      onClick={() => {
-                        setSnippetsSearch("");
-                      }}
-                      className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
-                    >
-                      <X className="h-4 w-4" />
-                    </button>
+                    <>
+                      <span className="absolute right-12 top-1/2 -translate-y-1/2 text-sm text-muted-foreground">
+                        {snippets && snippets.total > 0 ? `(${snippets.total} matches)` : '(0 matches)'}
+                      </span>
+                      <button
+                        onClick={() => {
+                          setSnippetsSearch("");
+                        }}
+                        className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                      >
+                        <X className="h-4 w-4" />
+                      </button>
+                    </>
                   )}
                 </div>
 
                 {languages && languages.languages.length > 0 && (
-                  <div className="relative min-w-48">
-                    <select
-                      value={selectedLanguage}
-                      onChange={(e) => {
-                        setSelectedLanguage(e.target.value);
-                        setSnippetsPage(1);
-                      }}
-                      className="appearance-none pl-4 pr-10 py-2 bg-secondary border border-input rounded-md focus:outline-none focus:ring-2 focus:ring-primary cursor-pointer bg-right"
-                    >
-                      <option value="">All Languages</option>
+                  <Select value={selectedLanguage} onValueChange={(value) => {
+                    setSelectedLanguage(value === "all" ? "" : value);
+                    setSnippetsPage(1);
+                  }}
+                   
+                  >
+                    <SelectTrigger className="w-[180px] h-[42px]!">
+                      <SelectValue placeholder="All Languages" />
+                    </SelectTrigger>
+                    <SelectContent className="">
+                      <SelectItem value="all">All Languages</SelectItem>
                       {languages.languages.map((lang) => (
-                        <option key={lang.name} value={lang.name}>
+                        <SelectItem key={lang.name} value={lang.name}>
                           {lang.name} ({lang.count})
-                        </option>
+                        </SelectItem>
                       ))}
-                    </select>
-                    <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
-                  </div>
+                    </SelectContent>
+                  </Select>
                 )}
                 </div>
                 
@@ -473,7 +479,7 @@ export default function SourceDetail() {
                     </>
                   )}
                 </button>
-              </div>
+                              </div>
 
               {/* Snippets List */}
               {snippetsLoading ? (
