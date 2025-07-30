@@ -3,10 +3,10 @@
 import logging
 from typing import List, Optional, Dict, Any, Tuple
 from datetime import datetime, timedelta
-from sqlalchemy import text, func, and_
+from sqlalchemy import text, func, and_, or_
 from sqlalchemy.orm import Session
 
-from .models import CodeSnippet, Document, CrawlJob
+from .models import CodeSnippet, Document, CrawlJob, UploadJob
 from ..config import get_settings
 
 logger = logging.getLogger(__name__)
@@ -58,20 +58,22 @@ class CodeSearcher:
             where_clauses = ["cs.search_vector @@ plainto_tsquery(:query)"]
             params = {'query': query}
             
-            # Always join with documents and crawl_jobs to filter out cancelled jobs
+            # Join with documents and both job types
             sql_parts.append("JOIN documents d ON cs.document_id = d.id")
-            sql_parts.append("JOIN crawl_jobs cj ON d.crawl_job_id = cj.id")
+            sql_parts.append("LEFT JOIN crawl_jobs cj ON d.crawl_job_id = cj.id")
+            sql_parts.append("LEFT JOIN upload_jobs uj ON d.upload_job_id = uj.id")
             
-            # Always exclude cancelled jobs
-            where_clauses.append("cj.status != 'cancelled'")
+            # Exclude cancelled jobs from both types
+            where_clauses.append("(cj.status != 'cancelled' OR cj.id IS NULL)")
+            where_clauses.append("(uj.status != 'cancelled' OR uj.id IS NULL)")
             
             if job_id:
-                where_clauses.append("d.crawl_job_id = :job_id")
+                where_clauses.append("(d.crawl_job_id = :job_id OR d.upload_job_id = :job_id)")
                 params['job_id'] = job_id
             
-            # Add source filter by name
+            # Add source filter by name (check both crawl and upload jobs)
             if source:
-                where_clauses.append("cj.name = :source")
+                where_clauses.append("(cj.name = :source OR uj.name = :source)")
                 params['source'] = source
             
             if language:
@@ -132,14 +134,31 @@ class CodeSearcher:
             base_query = self.session.query(CodeSnippet)
             filters = []
             
-            # Always join with Document and CrawlJob to filter out cancelled jobs
-            base_query = base_query.join(Document).join(CrawlJob)
-            filters.append(CrawlJob.status != 'cancelled')
+            # Join with Document and optionally with job tables
+            base_query = base_query.join(Document)
+            base_query = base_query.outerjoin(CrawlJob, Document.crawl_job_id == CrawlJob.id)
+            base_query = base_query.outerjoin(UploadJob, Document.upload_job_id == UploadJob.id)
+            
+            # Exclude cancelled jobs from both types
+            filters.append(or_(
+                CrawlJob.status != 'cancelled',
+                CrawlJob.id == None
+            ))
+            filters.append(or_(
+                UploadJob.status != 'cancelled',
+                UploadJob.id == None
+            ))
             
             if source:
-                filters.append(CrawlJob.name == source)
+                filters.append(or_(
+                    CrawlJob.name == source,
+                    UploadJob.name == source
+                ))
             if job_id:
-                filters.append(Document.crawl_job_id == job_id)
+                filters.append(or_(
+                    Document.crawl_job_id == job_id,
+                    Document.upload_job_id == job_id
+                ))
             
             if language:
                 filters.append(CodeSnippet.language == language.lower())
@@ -246,25 +265,50 @@ class CodeSearcher:
             Tuple of (list of library information dictionaries, total count)
         """
         # Use PostgreSQL's similarity function for fuzzy matching
+        # Union query to get both crawl and upload jobs
         sql_query = """
-        SELECT 
-            cj.id,
-            cj.name,
-            COALESCE(cj.config->>'description', '') as description,
-            cj.config->>'versions' as versions_json,
-            COUNT(DISTINCT cs.id) as snippet_count,
-            similarity(LOWER(cj.name), LOWER(:query)) as name_similarity
-        FROM crawl_jobs cj
-        LEFT JOIN documents d ON d.crawl_job_id = cj.id
-        LEFT JOIN code_snippets cs ON cs.document_id = d.id
-        WHERE cj.status != 'cancelled'
-        AND (
-            LOWER(cj.name) LIKE LOWER(:pattern)
-            OR similarity(LOWER(cj.name), LOWER(:query)) > 0.1
+        WITH all_sources AS (
+            SELECT 
+                cj.id,
+                cj.name,
+                'crawl' as source_type,
+                COALESCE(cj.config->>'description', '') as description,
+                cj.config->>'versions' as versions_json,
+                COUNT(DISTINCT cs.id) as snippet_count,
+                similarity(LOWER(cj.name), LOWER(:query)) as name_similarity
+            FROM crawl_jobs cj
+            LEFT JOIN documents d ON d.crawl_job_id = cj.id
+            LEFT JOIN code_snippets cs ON cs.document_id = d.id
+            WHERE cj.status != 'cancelled'
+            AND (
+                LOWER(cj.name) LIKE LOWER(:pattern)
+                OR similarity(LOWER(cj.name), LOWER(:query)) > 0.1
+            )
+            GROUP BY cj.id, cj.name, cj.config
+            
+            UNION ALL
+            
+            SELECT 
+                uj.id,
+                uj.name,
+                'upload' as source_type,
+                COALESCE(uj.config->>'description', '') as description,
+                NULL as versions_json,
+                COUNT(DISTINCT cs.id) as snippet_count,
+                similarity(LOWER(uj.name), LOWER(:query)) as name_similarity
+            FROM upload_jobs uj
+            LEFT JOIN documents d ON d.upload_job_id = uj.id
+            LEFT JOIN code_snippets cs ON cs.document_id = d.id
+            WHERE uj.status != 'cancelled'
+            AND (
+                LOWER(uj.name) LIKE LOWER(:pattern)
+                OR similarity(LOWER(uj.name), LOWER(:query)) > 0.1
+            )
+            GROUP BY uj.id, uj.name, uj.config
         )
-        GROUP BY cj.id, cj.name, cj.config
+        SELECT * FROM all_sources
         ORDER BY 
-            CASE WHEN LOWER(cj.name) = LOWER(:query) THEN 0 ELSE 1 END,
+            CASE WHEN LOWER(name) = LOWER(:query) THEN 0 ELSE 1 END,
             name_similarity DESC,
             snippet_count DESC
         LIMIT :limit OFFSET :offset
@@ -272,13 +316,25 @@ class CodeSearcher:
         
         # First get total count
         count_query = """
-        SELECT COUNT(DISTINCT cj.id)
-        FROM crawl_jobs cj
-        WHERE cj.status != 'cancelled'
-        AND (
-            LOWER(cj.name) LIKE LOWER(:pattern)
-            OR similarity(LOWER(cj.name), LOWER(:query)) > 0.1
-        )
+        SELECT COUNT(*) FROM (
+            SELECT cj.id
+            FROM crawl_jobs cj
+            WHERE cj.status != 'cancelled'
+            AND (
+                LOWER(cj.name) LIKE LOWER(:pattern)
+                OR similarity(LOWER(cj.name), LOWER(:query)) > 0.1
+            )
+            
+            UNION ALL
+            
+            SELECT uj.id
+            FROM upload_jobs uj
+            WHERE uj.status != 'cancelled'
+            AND (
+                LOWER(uj.name) LIKE LOWER(:pattern)
+                OR similarity(LOWER(uj.name), LOWER(:query)) > 0.1
+            )
+        ) AS all_sources
         """
         
         params = {
@@ -299,6 +355,7 @@ class CodeSearcher:
             library = {
                 'library_id': str(row.id),
                 'name': row.name,
+                'source_type': row.source_type,
                 'description': row.description or 'No description available',
                 'snippet_count': row.snippet_count,
                 'similarity_score': float(row.name_similarity) if row.name_similarity else 0.0

@@ -17,6 +17,7 @@ class SimpleCodeBlock:
     container_type: Optional[str] = None  # example, api-method, tutorial-step, etc.
     context_before: List[str] = field(default_factory=list)
     context_after: List[str] = field(default_factory=list)
+    metadata: dict = field(default_factory=dict)
 
 
 # LLM prompt for getting language, title and description
