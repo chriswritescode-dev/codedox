@@ -5,6 +5,7 @@ import { Link, useNavigate } from 'react-router-dom'
 import { Database, FileText, Code, Trash2, X, Search, Check, RefreshCw } from 'lucide-react'
 import { ConfirmationDialog } from '../components/ConfirmationDialog'
 import { EditableSourceName } from '../components/EditableSourceName'
+import { RecrawlDialog } from '../components/RecrawlDialog'
 
 export default function Sources() {
   const [deleteModalOpen, setDeleteModalOpen] = useState(false);
@@ -17,6 +18,12 @@ export default function Sources() {
     new Set()
   );
   const [isBulkDelete, setIsBulkDelete] = useState(false);
+  const [recrawlDialogOpen, setRecrawlDialogOpen] = useState(false);
+  const [sourceToRecrawl, setSourceToRecrawl] = useState<{
+    id: string;
+    name: string;
+    base_url: string;
+  } | null>(null);
   const queryClient = useQueryClient();
   const navigate = useNavigate();
 
@@ -78,8 +85,11 @@ export default function Sources() {
   });
 
   const recrawlMutation = useMutation({
-    mutationFn: (sourceId: string) => api.recrawlSource(sourceId),
+    mutationFn: ({ sourceId, ignoreHash }: { sourceId: string; ignoreHash: boolean }) => 
+      api.recrawlSource(sourceId, ignoreHash),
     onSuccess: (data) => {
+      setRecrawlDialogOpen(false);
+      setSourceToRecrawl(null);
       // Navigate to the crawl detail page for the new crawl job
       navigate(`/crawl/${data.id}`);
     },
@@ -154,11 +164,12 @@ export default function Sources() {
 
   const handleRecrawlClick = (
     e: React.MouseEvent,
-    sourceId: string
+    source: { id: string; name: string; base_url: string }
   ) => {
     e.preventDefault(); // Prevent navigation
     e.stopPropagation(); // Prevent checkbox toggle
-    recrawlMutation.mutate(sourceId);
+    setSourceToRecrawl(source);
+    setRecrawlDialogOpen(true);
   };
 
   if (isLoading) {
@@ -330,12 +341,12 @@ export default function Sources() {
                     {new Date(source.created_at).toLocaleDateString()}
                   </span>
                   <button
-                    onClick={(e) => handleRecrawlClick(e, source.id)}
+                    onClick={(e) => handleRecrawlClick(e, source)}
                     className="p-1 text-muted-foreground hover:text-primary hover:bg-primary/10 rounded-md opacity-0 group-hover:opacity-100 transition-opacity"
                     title="Recrawl source"
                     disabled={recrawlMutation.isPending}
                   >
-                    <RefreshCw className={`h-4 w-4 ${recrawlMutation.isPending ? 'animate-spin' : ''}`} />
+                    <RefreshCw className="h-4 w-4" />
                   </button>
                   <button
                     onClick={(e) => handleDeleteClick(e, source)}
@@ -403,6 +414,22 @@ export default function Sources() {
           setIsBulkDelete(false);
         }}
       />
+
+      {sourceToRecrawl && (
+        <RecrawlDialog
+          isOpen={recrawlDialogOpen}
+          sourceName={sourceToRecrawl.name}
+          sourceUrl={sourceToRecrawl.base_url}
+          onConfirm={(ignoreHash) => {
+            recrawlMutation.mutate({ sourceId: sourceToRecrawl.id, ignoreHash });
+          }}
+          onCancel={() => {
+            setRecrawlDialogOpen(false);
+            setSourceToRecrawl(null);
+          }}
+          isRecrawling={recrawlMutation.isPending}
+        />
+      )}
     </div>
   );
 }
