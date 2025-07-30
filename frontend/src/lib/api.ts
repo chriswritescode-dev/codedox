@@ -322,7 +322,7 @@ class APIClient {
   // Upload
   async uploadMarkdown(data: {
     content: string
-    source_url: string
+    source_url?: string
     title?: string
   }): Promise<{
     status: string
@@ -341,7 +341,7 @@ class APIClient {
 
   async uploadFile(
     file: File,
-    sourceUrl: string,
+    sourceUrl?: string,
     title?: string
   ): Promise<{
     status: string
