@@ -100,12 +100,18 @@ class APIClient {
     const url = `${API_BASE_URL}${endpoint}`;
     
     try {
+      // Don't set Content-Type for FormData - let browser set it with boundary
+      const isFormData = options?.body instanceof FormData;
+      const headers = isFormData 
+        ? { ...options?.headers }
+        : {
+            'Content-Type': 'application/json',
+            ...options?.headers,
+          };
+      
       const response = await fetch(url, {
         ...options,
-        headers: {
-          'Content-Type': 'application/json',
-          ...options?.headers,
-        },
+        headers,
       })
 
       if (!response.ok) {
