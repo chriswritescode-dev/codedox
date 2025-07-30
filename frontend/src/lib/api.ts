@@ -100,12 +100,18 @@ class APIClient {
     const url = `${API_BASE_URL}${endpoint}`;
     
     try {
+      // Don't set Content-Type for FormData - let browser set it with boundary
+      const isFormData = options?.body instanceof FormData;
+      const headers = isFormData 
+        ? { ...options?.headers }
+        : {
+            'Content-Type': 'application/json',
+            ...options?.headers,
+          };
+      
       const response = await fetch(url, {
         ...options,
-        headers: {
-          'Content-Type': 'application/json',
-          ...options?.headers,
-        },
+        headers,
       })
 
       if (!response.ok) {
@@ -323,7 +329,7 @@ class APIClient {
   // Upload
   async uploadMarkdown(data: {
     content: string
-    source_url: string
+    source_url?: string
     title?: string
   }): Promise<{
     status: string
@@ -342,7 +348,7 @@ class APIClient {
 
   async uploadFile(
     file: File,
-    sourceUrl: string,
+    sourceUrl?: string,
     title?: string
   ): Promise<{
     status: string
@@ -360,6 +366,27 @@ class APIClient {
       body: formData
     })
   }
+
+  async uploadFiles(
+    files: File[],
+    title?: string
+  ): Promise<{
+    status: string
+    job_id: string
+    file_count: number
+    message: string
+  }> {
+    const formData = new FormData()
+    files.forEach(file => {
+      formData.append('files', file)
+    })
+    if (title) formData.append('title', title)
+
+    return this.fetch('/upload/files', {
+      method: 'POST',
+      body: formData
+    })
+  }
 }
 
 export const api = new APIClient()
@@ -367,3 +394,4 @@ export const api = new APIClient()
 // Export individual methods for convenience
 export const uploadMarkdown = api.uploadMarkdown.bind(api)
 export const uploadFile = api.uploadFile.bind(api)
+export const uploadFiles = api.uploadFiles.bind(api)
