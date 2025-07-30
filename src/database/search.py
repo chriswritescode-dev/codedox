@@ -3,7 +3,7 @@
 import logging
 from typing import List, Optional, Dict, Any, Tuple
 from datetime import datetime, timedelta
-from sqlalchemy import text, func, and_, or_
+from sqlalchemy import text, func, and_
 from sqlalchemy.orm import Session
 
 from .models import CodeSnippet, Document, CrawlJob
@@ -113,9 +113,6 @@ class CodeSearcher:
             
             # Use the database function to find related snippets
             if results and len(results) < limit and self.settings.include_related_snippets:
-                # Get IDs of primary results
-                primary_ids = [s.id for s in results]
-                
                 # For now, let's use a simpler approach without the database function
                 # We'll use the existing relationship finding logic
                 related_results = self._find_related_snippets(
@@ -314,7 +311,7 @@ class CodeSearcher:
                     versions = json.loads(row.versions_json)
                     if isinstance(versions, list):
                         library['versions'] = versions
-                except:
+                except (json.JSONDecodeError, ValueError, TypeError):
                     pass
             
             libraries.append(library)
@@ -473,7 +470,6 @@ class CodeSearcher:
         if not primary_results or max_additional <= 0:
             return []
             
-        from ..database.models import SnippetRelationship
         
         related_snippets = []
         related_info = {}  # Map of snippet_id to relationship info
