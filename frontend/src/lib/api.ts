@@ -100,7 +100,7 @@ class APIClient {
     const url = `${API_BASE_URL}${endpoint}`;
     
     try {
-      // Don't set Content-Type for FormData - let browser set it with boundary
+      // Don't set Content-Type for FormData - browser will set it with boundary
       const isFormData = options?.body instanceof FormData;
       const headers = isFormData 
         ? { ...options?.headers }
@@ -329,7 +329,7 @@ class APIClient {
   // Upload
   async uploadMarkdown(data: {
     content: string
-    source_url?: string
+    name: string
     title?: string
   }): Promise<{
     status: string
@@ -348,7 +348,7 @@ class APIClient {
 
   async uploadFile(
     file: File,
-    sourceUrl?: string,
+    name: string,
     title?: string
   ): Promise<{
     status: string
@@ -358,7 +358,7 @@ class APIClient {
   }> {
     const formData = new FormData()
     formData.append('file', file)
-    if (sourceUrl) formData.append('source_url', sourceUrl)
+    formData.append('name', name)
     if (title) formData.append('title', title)
 
     return this.fetch('/upload/file', {
@@ -369,6 +369,7 @@ class APIClient {
 
   async uploadFiles(
     files: File[],
+    name: string,
     title?: string
   ): Promise<{
     status: string
@@ -380,6 +381,7 @@ class APIClient {
     files.forEach(file => {
       formData.append('files', file)
     })
+    formData.append('name', name)
     if (title) formData.append('title', title)
 
     return this.fetch('/upload/files', {

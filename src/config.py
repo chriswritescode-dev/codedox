@@ -3,7 +3,7 @@
 import logging
 import logging.handlers
 from pathlib import Path
-from typing import Optional, List, Any
+from typing import Optional, List, Any, Set
 from pydantic import Field
 from pydantic.types import SecretStr
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -139,6 +139,50 @@ class APIConfig(BaseSettings):
         return [origin.strip() for origin in self.cors_origins.split(',')]
 
 
+class MCPAuthConfig(BaseSettings):
+    """MCP authentication configuration."""
+    model_config = SettingsConfigDict(env_prefix="MCP_AUTH_", extra="allow")
+    
+    enabled: bool = Field(
+        default=False,
+        description="Enable authentication for MCP endpoints"
+    )
+    token: SecretStr = Field(
+        default=SecretStr(""),
+        description="Single authentication token for MCP access"
+    )
+    tokens: Optional[str] = Field(
+        default=None,
+        description="Multiple authentication tokens (comma-separated)"
+    )
+    
+    def get_valid_tokens(self) -> Set[str]:
+        """Get all valid authentication tokens."""
+        tokens = set()
+        
+        # Add single token if configured
+        if self.token.get_secret_value():
+            tokens.add(self.token.get_secret_value())
+        
+        # Add multiple tokens if configured
+        if self.tokens:
+            tokens.update(token.strip() for token in self.tokens.split(',') if token.strip())
+        
+        return tokens
+    
+    def is_token_valid(self, token: str) -> bool:
+        """Check if a token is valid."""
+        if not self.enabled:
+            return True  # No auth required
+        
+        valid_tokens = self.get_valid_tokens()
+        if not valid_tokens:
+            # If auth is enabled but no tokens configured, reject all
+            return False
+        
+        return token in valid_tokens
+
+
 class LoggingConfig(BaseSettings):
     """Logging configuration."""
     model_config = SettingsConfigDict(env_prefix="LOG_", extra="allow")
@@ -177,6 +221,7 @@ class Settings(BaseSettings):
         self.code_extraction = CodeExtractionConfig()
         self.search = SearchConfig()
         self.api = APIConfig()
+        self.mcp_auth = MCPAuthConfig()
         self.logging = LoggingConfig()
 
     def setup_logging(self) -> None:

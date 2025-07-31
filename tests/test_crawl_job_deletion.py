@@ -27,7 +27,6 @@ def test_delete_single_crawl_job_success(client, db: Session):
         crawl_job_id=job.id,
         url="https://example.com/page1",
         title="Test Page",
-        markdown_content="# Test Page\n\nTest content",
         content_type="html"
     )
     db.add(doc)
@@ -193,7 +192,6 @@ def test_cascade_delete_documents_and_snippets(client, db: Session):
             crawl_job_id=job.id,
             url=f"https://example.com/page{i}",
             title=f"Page {i}",
-            markdown_content=f"# Page {i}\n\nContent {i}",
             content_type="html"
         )
         docs.append(doc)

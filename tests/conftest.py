@@ -355,6 +355,12 @@ def client(db: Session) -> TestClient:
     # Set test database override
     app.dependency_overrides[get_db] = lambda: db
     
+    # Mock MCP authentication for tests
+    from src.api.auth import verify_mcp_token
+    async def mock_verify_mcp_token():
+        return True
+    app.dependency_overrides[verify_mcp_token] = mock_verify_mcp_token
+    
     # Create test client
     test_client = TestClient(app)
     
@@ -402,7 +408,6 @@ def sample_document(db: Session, sample_crawl_job: CrawlJob) -> Document:
         url="https://example.com/docs/getting-started",
         title="Getting Started",
         content_type="html",
-        markdown_content="# Getting Started\n\nSample content for testing",
         crawl_job_id=sample_crawl_job.id,
         crawl_depth=1,
         parent_url="https://example.com/docs",
