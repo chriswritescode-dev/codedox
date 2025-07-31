@@ -132,8 +132,19 @@ class APIClient {
   }
 
   // Sources
-  async getSources(): Promise<Source[]> {
-    return this.fetch<Source[]>('/sources')
+  async getSources(params: { limit?: number; offset?: number } = {}): Promise<{
+    sources: Source[]
+    total: number
+    limit: number
+    offset: number
+    has_next: boolean
+    has_previous: boolean
+  }> {
+    const queryParams = new URLSearchParams()
+    if (params.limit !== undefined) queryParams.append('limit', String(params.limit))
+    if (params.offset !== undefined) queryParams.append('offset', String(params.offset))
+    
+    return this.fetch(`/sources?${queryParams}`)
   }
 
   async getSource(id: string): Promise<Source> {
@@ -358,7 +369,7 @@ class APIClient {
   }> {
     const formData = new FormData()
     formData.append('file', file)
-    formData.append('name', name)
+    if (name) formData.append('name', name)
     if (title) formData.append('title', title)
 
     return this.fetch('/upload/file', {
@@ -381,7 +392,7 @@ class APIClient {
     files.forEach(file => {
       formData.append('files', file)
     })
-    formData.append('name', name)
+    if (name) formData.append('name', name)
     if (title) formData.append('title', title)
 
     return this.fetch('/upload/files', {
