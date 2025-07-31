@@ -197,14 +197,18 @@ def setup_database():
             """))
             docs_deleted = result.rowcount
             
-            result = conn.execute(text("""
-                DELETE FROM page_links 
-                WHERE crawl_job_id IN (
-                    SELECT id FROM crawl_jobs 
-                    WHERE name LIKE '%Test%' OR name LIKE '%test%' 
-                       OR start_urls[1] LIKE '%example%'
-                )
-            """))
+            try:
+                result = conn.execute(text("""
+                    DELETE FROM page_links 
+                    WHERE crawl_job_id IN (
+                        SELECT id FROM crawl_jobs 
+                        WHERE name LIKE '%Test%' OR name LIKE '%test%' 
+                           OR start_urls[1] LIKE '%example%'
+                    )
+                """))
+            except Exception:
+                # page_links table doesn't exist, ignore
+                result = type('', (), {'rowcount': 0})()
             links_deleted = result.rowcount
             
             result = conn.execute(text("""
@@ -384,6 +388,7 @@ def sample_crawl_job(db: Session) -> CrawlJob:
     job = CrawlJob(
         id=uuid4(),
         name="Test Documentation",
+        domain="example.com",
         start_urls=["https://example.com/docs"],
         max_depth=2,
         status="completed",

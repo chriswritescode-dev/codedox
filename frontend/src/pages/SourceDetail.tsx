@@ -42,7 +42,19 @@ export default function SourceDetail() {
   if (state.sourceError || !state.source) {
     return (
       <div className="flex items-center justify-center h-64">
-        <div className="text-destructive">Error loading source</div>
+        <div className="text-center">
+          <h1 className="text-2xl font-bold text-destructive mb-2">Source Not Found</h1>
+          <p className="text-muted-foreground mb-4">
+            This source may have been deleted or never existed.
+          </p>
+          <a
+            href="/sources"
+            className="inline-flex items-center text-primary hover:underline"
+          >
+            <ArrowLeft className="h-4 w-4 mr-1" />
+            Back to sources
+          </a>
+        </div>
       </div>
     );
   }

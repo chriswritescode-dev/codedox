@@ -4,7 +4,7 @@ import json
 import logging
 import uuid
 from typing import Any, Dict, List, Optional, Union
-from fastapi import Request, Response, HTTPException, Header
+from fastapi import Request, Response, HTTPException, APIRouter, Header
 from fastapi.responses import StreamingResponse, JSONResponse
 # Use FastAPI's StreamingResponse for SSE instead of MCP's EventSourceResponse
 # to avoid the asyncio event loop issues in tests
@@ -13,6 +13,7 @@ from mcp.server import Server
 from mcp.shared.exceptions import McpError
 
 logger = logging.getLogger(__name__)
+router = APIRouter(prefix="/mcp")
 
 
 class JSONRPCMessage(BaseModel):
@@ -23,6 +24,31 @@ class JSONRPCMessage(BaseModel):
     params: Optional[Union[Dict[str, Any], List[Any]]] = None
     result: Optional[Any] = None
     error: Optional[Dict[str, Any]] = None
+
+
+# Create a single transport instance
+transport = None
+
+@router.post("")
+async def handle_mcp_streamable_request(
+    request: Request,
+    mcp_session_id: Optional[str] = Header(None),
+    accept: str = Header(None),
+    origin: Optional[str] = Header(None),
+    last_event_id: Optional[str] = Header(None)
+) -> Response:
+    """Handle incoming MCP streamable HTTP requests."""
+    global transport
+    
+    # Initialize transport if not already done
+    if transport is None:
+        from mcp.server import Server
+        mcp_server = Server("codedox")
+        transport = StreamableTransport(mcp_server)
+    
+    return await transport.handle_request(
+        request, mcp_session_id, accept, origin, last_event_id
+    )
 
 
 class StreamableTransport:
