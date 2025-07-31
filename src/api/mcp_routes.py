@@ -3,7 +3,7 @@
 import json
 import logging
 from typing import AsyncGenerator, Dict, Any
-from fastapi import APIRouter, HTTPException, Depends
+from fastapi import APIRouter, HTTPException, Depends, Body, Request
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
@@ -49,9 +49,12 @@ async def list_tools() -> Dict[str, Any]:
 
 
 @router.post("/execute/{tool_name}", dependencies=[Depends(verify_mcp_token)])
-async def execute_tool(tool_name: str, params: Dict[str, Any]) -> Dict[str, Any]:
+async def execute_tool(tool_name: str, request: Request) -> Dict[str, Any]:
     """Execute a specific MCP tool."""
     try:
+        # Get params from request body
+        params = await request.json()
+        
         # Get tool definitions to validate required parameters
         tool_defs = {tool["name"]: tool for tool in mcp_server.get_tool_definitions()}
         
@@ -86,9 +89,12 @@ async def execute_tool(tool_name: str, params: Dict[str, Any]) -> Dict[str, Any]
 
 
 @router.post("/stream/execute/{tool_name}", dependencies=[Depends(verify_mcp_token)])
-async def execute_tool_stream(tool_name: str, params: Dict[str, Any]) -> StreamingResponse:
+async def execute_tool_stream(tool_name: str, request: Request) -> StreamingResponse:
     """Execute a tool and stream the response."""
     try:
+        # Get params from request body
+        params = await request.json()
+        
         # Get tool definitions to validate
         tool_defs = {tool["name"]: tool for tool in mcp_server.get_tool_definitions()}
         
@@ -127,13 +133,24 @@ async def execute_tool_stream(tool_name: str, params: Dict[str, Any]) -> Streami
 
 
 @router.post("/stream", dependencies=[Depends(verify_mcp_token)])
-async def mcp_stream(request: MCPRequest) -> StreamingResponse:
+async def mcp_stream(request: Request) -> StreamingResponse:
     """
     MCP streaming endpoint that handles multiple request types.
     Compatible with LLM tools that expect streaming responses.
     """
-    method = request.method
-    params = request.params
+    # Parse request body
+    try:
+        body = await request.json()
+        mcp_request = MCPRequest(**body)
+    except Exception as e:
+        return StreamingResponse(
+            stream_response({"error": f"Invalid request format: {str(e)}"}),
+            media_type="text/event-stream",
+            status_code=400
+        )
+    
+    method = mcp_request.method
+    params = mcp_request.params
     
     try:
         if method == "initialize":
