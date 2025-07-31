@@ -355,6 +355,12 @@ def client(db: Session) -> TestClient:
     # Set test database override
     app.dependency_overrides[get_db] = lambda: db
     
+    # Mock MCP authentication for tests
+    from src.api.auth import verify_mcp_token
+    async def mock_verify_mcp_token():
+        return True
+    app.dependency_overrides[verify_mcp_token] = mock_verify_mcp_token
+    
     # Create test client
     test_client = TestClient(app)
     

@@ -2,7 +2,7 @@
 
 import logging
 from typing import Optional
-from fastapi import HTTPException, Request, status
+from fastapi import HTTPException, Request, status, Depends
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 
 from ..config import get_settings
@@ -75,7 +75,7 @@ class MCPAuthMiddleware:
 mcp_auth = MCPAuthMiddleware()
 
 
-async def verify_mcp_token(request: Request, credentials: HTTPAuthorizationCredentials = security) -> bool:
+async def verify_mcp_token(request: Request, credentials: Optional[HTTPAuthorizationCredentials] = Depends(security)) -> bool:
     """Dependency for MCP authentication.
     
     Use this as a dependency in FastAPI routes:
