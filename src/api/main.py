@@ -9,6 +9,7 @@ from fastapi import FastAPI, HTTPException, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
+from sqlalchemy import text
 
 from ..config import get_settings
 from ..database import get_db
@@ -115,7 +116,7 @@ async def health_check_db(db: Session = Depends(get_db)):
     """Database health check endpoint."""
     try:
         # Simple query to test DB connection
-        db.execute("SELECT 1")
+        db.execute(text("SELECT 1"))
         return {"status": "healthy", "database": "connected"}
     except Exception as e:
         logger.error(f"Database health check failed: {e}")
@@ -132,7 +133,7 @@ async def get_statistics(db: Session = Depends(get_db)):
         
         # Get counts
         total_sources = db.query(
-            func.count(distinct(func.coalesce(CrawlJob.primary_domain, CrawlJob.name)))
+            func.count(distinct(CrawlJob.name))
         ).filter(
             CrawlJob.status == 'completed'
         ).scalar() or 0
@@ -226,6 +227,12 @@ if settings.environment == "development":
     if frontend_dir.exists():
         app.mount("/", StaticFiles(directory=str(frontend_dir), html=True), name="static")
         logger.info(f"Serving frontend from {frontend_dir}")
+
+
+def get_application() -> FastAPI:
+    """Get the FastAPI application instance."""
+    return app
+
 
 if __name__ == "__main__":
     import uvicorn

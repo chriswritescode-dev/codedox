@@ -6,6 +6,7 @@ import { Database, FileText, Code, Trash2, X, Search, Check, RefreshCw } from 'l
 import { ConfirmationDialog } from '../components/ConfirmationDialog'
 import { EditableSourceName } from '../components/EditableSourceName'
 import { RecrawlDialog } from '../components/RecrawlDialog'
+import { PaginationControls } from '../components/PaginationControls'
 
 export default function Sources() {
   const [deleteModalOpen, setDeleteModalOpen] = useState(false);
@@ -24,6 +25,8 @@ export default function Sources() {
     name: string;
     base_url: string;
   } | null>(null);
+  const [currentPage, setCurrentPage] = useState(1);
+  const [itemsPerPage, setItemsPerPage] = useState(20);
   const queryClient = useQueryClient();
   const navigate = useNavigate();
 
@@ -32,11 +35,13 @@ export default function Sources() {
     isLoading,
     error,
   } = useQuery({
-    queryKey: ["sources"],
+    queryKey: ["sources", currentPage, itemsPerPage, searchQuery],
     queryFn: () => {
       console.log("Fetching sources...");
-      return api.getSources();
+      const offset = (currentPage - 1) * itemsPerPage;
+      return api.getSources({ limit: itemsPerPage, offset });
     },
+    keepPreviousData: true,
   });
 
   const deleteMutation = useMutation({
@@ -104,11 +109,11 @@ export default function Sources() {
 
   // Filter sources based on search query
   const filteredSources = useMemo(() => {
-    if (!sources) return [];
-    if (!searchQuery) return sources;
+    if (!sources?.sources) return [];
+    if (!searchQuery) return sources.sources;
 
     const query = searchQuery.toLowerCase();
-    return sources.filter(
+    return sources.sources.filter(
       (source) =>
         source.name.toLowerCase().includes(query) ||
         source.base_url.toLowerCase().includes(query)
@@ -160,6 +165,16 @@ export default function Sources() {
 
   const handleUpdateSourceName = async (id: string, newName: string) => {
     await updateSourceNameMutation.mutateAsync({ id, name: newName });
+  };
+
+  const handlePageChange = (page: number) => {
+    setCurrentPage(page);
+  };
+
+  const handleItemsPerPageChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
+    const newItemsPerPage = parseInt(e.target.value);
+    setItemsPerPage(newItemsPerPage);
+    setCurrentPage(1); // Reset to first page when changing items per page
   };
 
   const handleRecrawlClick = (
@@ -429,6 +444,41 @@ export default function Sources() {
           }}
           isRecrawling={recrawlMutation.isPending}
         />
+      )}
+
+      {/* Pagination Controls */}
+      {sources && (
+        <div className="mt-8">
+          <div className="flex items-center justify-between mb-4">
+            <div className="flex items-center gap-4">
+              <div className="flex items-center gap-2">
+                <label htmlFor="items-per-page" className="text-sm text-muted-foreground">
+                  Items per page:
+                </label>
+                <select
+                  id="items-per-page"
+                  value={itemsPerPage}
+                  onChange={handleItemsPerPageChange}
+                  className="w-20 px-2 py-1 bg-secondary border border-input rounded-md focus:outline-none focus:ring-2 focus:ring-primary"
+                >
+                  <option value={10}>10</option>
+                  <option value={20}>20</option>
+                  <option value={50}>50</option>
+                  <option value={100}>100</option>
+                </select>
+              </div>
+            </div>
+          </div>
+          
+          <PaginationControls
+            currentPage={currentPage}
+            totalPages={Math.ceil(sources.total / itemsPerPage)}
+            onPageChange={handlePageChange}
+            totalItems={sources.total}
+            itemsPerPage={itemsPerPage}
+            currentItemsCount={filteredSources.length}
+          />
+        </div>
       )}
     </div>
   );

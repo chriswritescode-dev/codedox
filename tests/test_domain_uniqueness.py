@@ -276,7 +276,9 @@ class TestDomainApiIntegration:
         response = client.get("/api/sources")
         assert response.status_code == 200
         
-        sources = response.json()
+        data = response.json()
+        assert "sources" in data
+        sources = data["sources"]
         assert len(sources) > 0
         assert "domain" in sources[0]
         assert sources[0]["domain"] == "nextjs.org"

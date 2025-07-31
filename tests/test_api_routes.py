@@ -16,11 +16,11 @@ class TestHealthEndpoints:
 
     def test_database_health(self, client):
         """Test database health endpoint."""
-        response = client.get("/api/health/database")
+        response = client.get("/api/health/db")
         assert response.status_code == 200
         data = response.json()
         assert data["status"] == "healthy"
-        assert "Database is connected" in data["message"]
+        assert data["database"] == "connected"
 
 
 class TestStatisticsEndpoint:
@@ -62,9 +62,9 @@ class TestStatisticsEndpoint:
         assert recent["id"] == str(sample_crawl_job.id)
         assert recent["name"] == "Test Documentation"
         assert recent["status"] == "completed"
-        assert recent["base_url"] == "https://example.com/docs"
-        assert recent["urls_crawled"] == 10
+        assert recent["domain"] == "example.com"
         assert recent["snippets_extracted"] == 3
+        assert recent["start_urls"] == ["https://example.com/docs"]
 
 
 class TestSourcesEndpoints:
@@ -74,7 +74,14 @@ class TestSourcesEndpoints:
         """Test getting sources with no data."""
         response = client.get("/api/sources")
         assert response.status_code == 200
-        assert response.json() == []
+        assert response.json() == {
+            "sources": [],
+            "total": 0,
+            "limit": 20,
+            "offset": 0,
+            "has_next": False,
+            "has_previous": False,
+        }
 
     def test_get_sources_with_data(
         self, client, sample_crawl_job, sample_document, sample_code_snippets
@@ -82,8 +89,10 @@ class TestSourcesEndpoints:
         """Test getting sources with data."""
         response = client.get("/api/sources")
         assert response.status_code == 200
-        sources = response.json()
-
+        data = response.json()
+        
+        assert "sources" in data
+        sources = data["sources"]
         assert len(sources) == 1
         source = sources[0]
         assert source["id"] == str(sample_crawl_job.id)
@@ -111,7 +120,7 @@ class TestSourcesEndpoints:
         fake_id = str(uuid4())
         response = client.get(f"/api/sources/{fake_id}")
         assert response.status_code == 404
-        assert response.json()["detail"] == "Resource not found"
+        assert response.json()["detail"] == "Source not found"
 
 
 class TestCrawlJobEndpoints:
@@ -169,7 +178,7 @@ class TestCrawlJobEndpoints:
         fake_id = str(uuid4())
         response = client.get(f"/api/crawl-jobs/{fake_id}")
         assert response.status_code == 404
-        assert response.json()["detail"] == "Resource not found"
+        assert response.json()["detail"] == "Crawl job not found"
 
     def test_create_crawl_job(self, client, mock_mcp_tools):
         """Test creating a new crawl job."""
@@ -265,7 +274,7 @@ class TestSnippetEndpoints:
         fake_id = "999999"
         response = client.get(f"/api/snippets/{fake_id}")
         assert response.status_code == 404
-        assert response.json()["detail"] == "Resource not found"
+        assert response.json()["detail"] == "Snippet not found"
 
 
 class TestBulkDeleteEndpoints:
