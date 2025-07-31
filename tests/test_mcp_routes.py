@@ -142,8 +142,8 @@ class TestMCPExecuteEndpoints:
             json={"param": "value"}
         )
         assert response.status_code == 404
-        # Due to the global 404 handler, we get a generic message
-        assert response.json()["detail"] == "Resource not found"
+        # The actual message for unknown tools
+        assert response.json()["detail"] == "Unknown tool: invalid_tool"
     
     def test_execute_missing_params(self, client, mock_mcp_tools):
         """Test executing tool with missing required params."""

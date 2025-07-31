@@ -132,12 +132,25 @@ async def upload_markdown(
 
             # Save enhanced code snippets
             for block in enhanced_blocks:
+                # Calculate code hash
+                code_hash = hashlib.md5(block.code.encode()).hexdigest()
+
+                # Check if snippet already exists
+                existing_snippet = (
+                    db.query(CodeSnippet).filter(CodeSnippet.code_hash == code_hash).first()
+                )
+
+                if existing_snippet:
+                    logger.info(f"Skipping duplicate code snippet with hash {code_hash}")
+                    continue
+
                 snippet = CodeSnippet(
                     document_id=doc.id,
                     title=block.title or "",
                     description=block.description or "",
                     language=block.language or "unknown",
                     code_content=block.code,
+                    code_hash=code_hash,
                     snippet_type="code",
                     source_url=doc_url,
                     functions=[],
@@ -170,7 +183,7 @@ async def upload_markdown(
 @router.post("/file")
 async def upload_file(
     file: UploadFile = File(...),
-    name: str = Form(..., description="Name for this upload batch"),
+    name: Optional[str] = Form(None, description="Name for this upload batch"),
     title: Optional[str] = Form(None, description="Optional title"),
     db: Session = Depends(get_db),
 ) -> Dict[str, Any]:
@@ -189,7 +202,9 @@ async def upload_file(
 
         # Process using markdown upload endpoint
         request = UploadMarkdownRequest(
-            content=content_str, name=name, title=title or file.filename
+            content=content_str,
+            name=name or title or file.filename.rsplit(".", 1)[0],
+            title=title or file.filename,
         )
 
         return await upload_markdown(request, db)
@@ -206,7 +221,7 @@ async def upload_file(
 @router.post("/files")
 async def upload_files(
     files: List[UploadFile] = File(...),
-    name: str = Form(...),
+    name: Optional[str] = Form(None),
     title: Optional[str] = Form(None),
     db: Session = Depends(get_db),
 ) -> Dict[str, Any]:
@@ -216,8 +231,8 @@ async def upload_files(
             raise HTTPException(status_code=400, detail="No files provided")
 
         # Create a source for all files
-        source_name = f"{name}"
-        url = f"upload://{name}/batch"
+        source_name = name or title or f"Upload {datetime.utcnow().strftime('%Y-%m-%d')}"
+        url = f"upload://{source_name}/batch"
 
         # Check if source already exists
         existing_job = db.query(CrawlJob).filter(CrawlJob.name == source_name).first()
@@ -271,10 +286,10 @@ async def upload_files(
                 content_str = content.decode("utf-8")
 
                 # Create URL for this file
-                file_url = f"upload://{name}/{file.filename}"
+                file_url = f"upload://{source_name}/{file.filename}"
 
                 # Create document
-                content_hash = hashlib.sha256(content_str.encode()).hexdigest()
+                content_hash = hashlib.md5(content_str.encode()).hexdigest()
 
                 # Check if document already exists
                 existing_doc = (
@@ -318,13 +333,25 @@ async def upload_files(
 
                 # Create code snippets
                 for block in code_blocks:
+                    # Calculate code hash
+                    code_hash = hashlib.md5(block.code.encode()).hexdigest()
+
+                    # Check if snippet already exists
+                    existing_snippet = (
+                        db.query(CodeSnippet).filter(CodeSnippet.code_hash == code_hash).first()
+                    )
+
+                    if existing_snippet:
+                        logger.info(f"Skipping duplicate code snippet with hash {code_hash}")
+                        continue
+
                     snippet = CodeSnippet(
                         document_id=document.id,
                         title=block.title or f"Code Block from {file.filename}",
                         description=block.description,
                         language=block.language or "text",
                         code_content=block.code,
-                        code_hash=hashlib.sha256(block.code.encode()).hexdigest(),
+                        code_hash=code_hash,
                         source_url=file_url,
                         created_at=datetime.utcnow(),
                         updated_at=datetime.utcnow(),

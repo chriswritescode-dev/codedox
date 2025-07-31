@@ -58,7 +58,7 @@ def test_delete_single_crawl_job_not_found(client, db: Session):
     fake_id = str(uuid4())
     response = client.delete(f"/api/crawl-jobs/{fake_id}")
     assert response.status_code == 404
-    assert response.json()["detail"] == "Resource not found"
+    assert response.json()["detail"] == "Crawl job not found"
 
 
 def test_delete_running_crawl_job_fails(client, db: Session):
@@ -171,7 +171,7 @@ def test_bulk_delete_nonexistent_jobs(client, db: Session):
     fake_ids = [str(uuid4()) for _ in range(3)]
     response = client.request("DELETE", "/api/crawl-jobs/bulk", json=fake_ids)
     assert response.status_code == 404
-    assert response.json()["detail"] == "Resource not found"
+    assert response.json()["detail"] == "No deletable jobs found with provided IDs"
 
 
 def test_cascade_delete_documents_and_snippets(client, db: Session):

@@ -25,12 +25,16 @@ class UpdateSourceRequest(BaseModel):
 
 
 @router.get("/sources")
-async def get_sources(db: Session = Depends(get_db)) -> List[Dict[str, Any]]:
-    """Get all sources (completed crawl jobs and upload jobs)."""
+async def get_sources(
+    limit: int = Query(20, le=100),
+    offset: int = Query(0, ge=0),
+    db: Session = Depends(get_db)
+) -> Dict[str, Any]:
+    """Get paginated sources (completed crawl jobs and upload jobs)."""
     result = []
     
-    # Get completed crawl jobs
-    crawl_sources = db.query(CrawlJob).filter_by(status='completed').all()
+    # Get completed crawl jobs with pagination
+    crawl_sources = db.query(CrawlJob).filter_by(status='completed').offset(offset).limit(limit).all()
     for source in crawl_sources:
         # Count actual snippets in database
         snippet_count = db.query(CodeSnippet).join(Document).filter(
@@ -49,8 +53,8 @@ async def get_sources(db: Session = Depends(get_db)) -> List[Dict[str, Any]]:
             "snippets_count": snippet_count,
         })
     
-    # Get completed upload jobs
-    upload_sources = db.query(UploadJob).filter_by(status='completed').all()
+    # Get completed upload jobs with pagination
+    upload_sources = db.query(UploadJob).filter_by(status='completed').offset(offset).limit(limit).all()
     for source in upload_sources:
         # Count actual snippets in database
         snippet_count = db.query(CodeSnippet).join(Document).filter(
@@ -73,7 +77,19 @@ async def get_sources(db: Session = Depends(get_db)) -> List[Dict[str, Any]]:
     # Sort by updated_at descending
     result.sort(key=lambda x: x['updated_at'], reverse=True)
     
-    return result
+    # Get total count for pagination
+    total_crawl = db.query(CrawlJob).filter_by(status='completed').count()
+    total_upload = db.query(UploadJob).filter_by(status='completed').count()
+    total = total_crawl + total_upload
+    
+    return {
+        "sources": result,
+        "total": total,
+        "limit": limit,
+        "offset": offset,
+        "has_next": offset + limit < total,
+        "has_previous": offset > 0,
+    }
 
 
 @router.get("/sources/{source_id}")
@@ -249,17 +265,21 @@ async def get_source_snippets(
 @router.get("/sources/{source_id}/languages")
 async def get_source_languages(source_id: str, db: Session = Depends(get_db)) -> Dict[str, List[Dict[str, Any]]]:
     """Get unique languages used in a source's code snippets."""
-    source = db.query(CrawlJob).filter_by(id=source_id).first()
+    # Find the source (either crawl job or upload job)
+    crawl_source = db.query(CrawlJob).filter_by(id=source_id).first()
+    upload_source = db.query(UploadJob).filter_by(id=source_id).first()
     
-    if not source:
+    if not crawl_source and not upload_source:
         raise HTTPException(status_code=404, detail="Source not found")
+    
+    source_type = "crawl" if crawl_source else "upload"
     
     # Get unique languages with counts
     language_stats = db.query(
         CodeSnippet.language,
         func.count(CodeSnippet.id).label('count')
     ).join(Document).filter(
-        Document.crawl_job_id == source_id,
+        (Document.crawl_job_id == source_id) if source_type == "crawl" else (Document.upload_job_id == source_id),
         CodeSnippet.language.isnot(None)
     ).group_by(CodeSnippet.language).all()
     
@@ -273,7 +293,7 @@ async def get_source_languages(source_id: str, db: Session = Depends(get_db)) ->
 
 @router.delete("/sources/bulk")
 async def delete_sources_bulk(source_ids: List[str], db: Session = Depends(get_db)) -> Dict[str, Any]:
-    """Delete multiple sources (crawl jobs) and all their associated data."""
+    """Delete multiple sources (crawl jobs or upload jobs) and all their associated data."""
     if not source_ids:
         raise HTTPException(status_code=400, detail="No source IDs provided")
     
@@ -291,14 +311,21 @@ async def delete_sources_bulk(source_ids: List[str], db: Session = Depends(get_d
     if not valid_ids:
         raise HTTPException(status_code=404, detail="No sources found with provided IDs")
     
-    # Find all sources to delete
+    # Find all crawl job sources to delete
     sources = db.query(CrawlJob).filter(CrawlJob.id.in_(valid_ids)).all()
+    deleted_count = len(sources)
+    
+    # If we don't find enough sources, check for upload jobs
+    if deleted_count < len(valid_ids):
+        remaining_ids = [id for id in valid_ids if not any(s.id == id for s in sources)]
+        upload_sources = db.query(UploadJob).filter(UploadJob.id.in_(remaining_ids)).all()
+        sources.extend(upload_sources)
+        deleted_count = len(sources)
     
     if not sources:
         raise HTTPException(status_code=404, detail="No sources found with provided IDs")
     
     # Delete all sources (cascade will handle documents and snippets)
-    deleted_count = len(sources)
     for source in sources:
         db.delete(source)
     
@@ -316,37 +343,68 @@ async def update_source_name(
     request: UpdateSourceRequest,
     db: Session = Depends(get_db)
 ) -> Dict[str, Any]:
-    """Update source name."""
+    """Update source name for both crawl jobs and upload jobs."""
+    # Try crawl job first
     source = db.query(CrawlJob).filter_by(id=source_id).first()
+    is_upload_job = False
     
     if not source:
-        raise HTTPException(status_code=404, detail="Source not found")
+        source = db.query(UploadJob).filter_by(id=source_id).first()
+        if not source:
+            raise HTTPException(status_code=404, detail="Source not found")
+        is_upload_job = True
     
     # Update the name
-    source.name = request.name  # type: ignore[assignment]
-    source.updated_at = datetime.utcnow()  # type: ignore[assignment]
+    source.name = request.name
+    source.updated_at = datetime.utcnow()
     db.commit()
     
     # Return updated source info
-    return {
-        "id": str(source.id),
-        "name": source.name,
-        "domain": source.domain,
-        "base_url": source.start_urls[0] if source.start_urls else "",
-        "created_at": source.created_at.isoformat(),
-        "updated_at": source.updated_at.isoformat(),
-        "documents_count": len(source.documents),
-        "snippets_count": source.snippets_extracted,
-    }
+    if is_upload_job:
+        upload_source = source  # type: ignore
+        return {
+            "id": str(upload_source.id),
+            "name": upload_source.name,
+            "source_type": "upload",
+            "domain": "upload",
+            "base_url": f"Uploaded: {upload_source.created_at.strftime('%Y-%m-%d')}",
+            "created_at": upload_source.created_at.isoformat(),
+            "updated_at": upload_source.updated_at.isoformat(),
+            "documents_count": len(upload_source.documents),
+            "snippets_count": len([doc for doc in upload_source.documents for doc in doc.code_snippets]),
+            "file_count": upload_source.file_count,
+        }
+    else:
+        crawl_source = source  # type: ignore
+        return {
+            "id": str(crawl_source.id),
+            "name": crawl_source.name,
+            "source_type": "crawl",
+            "domain": crawl_source.domain,
+            "base_url": crawl_source.start_urls[0] if crawl_source.start_urls else "",
+            "created_at": crawl_source.created_at.isoformat(),
+            "updated_at": crawl_source.updated_at.isoformat(),
+            "documents_count": len(crawl_source.documents),
+            "snippets_count": crawl_source.snippets_extracted,
+        }
 
 
 @router.delete("/sources/{source_id}")
 async def delete_source(source_id: str, db: Session = Depends(get_db)) -> Dict[str, str]:
-    """Delete a source (crawl job) and all its associated data."""
+    """Delete a source (crawl job or upload job) and all its associated data."""
+    # Try crawl job first
     source = db.query(CrawlJob).filter_by(id=source_id).first()
     
+    # If not found, try upload job
     if not source:
-        raise HTTPException(status_code=404, detail="Source not found")
+        source = db.query(UploadJob).filter_by(id=source_id).first()
+        if not source:
+            raise HTTPException(status_code=404, detail="Source not found")
+        
+        # The cascade delete will handle documents and code snippets
+        db.delete(source)
+        db.commit()
+        return {"message": "Source deleted successfully"}
     
     # The cascade delete will handle documents and code snippets
     db.delete(source)
@@ -366,7 +424,12 @@ async def recrawl_source(
     request: RecrawlRequest = RecrawlRequest(),
     db: Session = Depends(get_db)
 ) -> Dict[str, Any]:
-    """Recrawl an existing source (completed crawl job)."""
+    """Recrawl an existing source (completed crawl job only)."""
+    # Check if it's an upload job first
+    upload_job = db.query(UploadJob).filter_by(id=source_id).first()
+    if upload_job:
+        raise HTTPException(status_code=400, detail="Recrawl is not available for uploaded sources")
+    
     # Get the original crawl job
     original_job = db.query(CrawlJob).filter_by(id=source_id).first()
     if not original_job:
