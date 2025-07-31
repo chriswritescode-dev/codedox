@@ -53,7 +53,10 @@ async def execute_tool(tool_name: str, request: Request) -> Dict[str, Any]:
     """Execute a specific MCP tool."""
     try:
         # Get params from request body
-        params = await request.json()
+        try:
+            params = await request.json()
+        except Exception as e:
+            raise HTTPException(status_code=422, detail=f"Invalid JSON: {str(e)}")
         
         # Get tool definitions to validate required parameters
         tool_defs = {tool["name"]: tool for tool in mcp_server.get_tool_definitions()}
@@ -93,7 +96,10 @@ async def execute_tool_stream(tool_name: str, request: Request) -> StreamingResp
     """Execute a tool and stream the response."""
     try:
         # Get params from request body
-        params = await request.json()
+        try:
+            params = await request.json()
+        except Exception as e:
+            raise HTTPException(status_code=422, detail=f"Invalid JSON: {str(e)}")
         
         # Get tool definitions to validate
         tool_defs = {tool["name"]: tool for tool in mcp_server.get_tool_definitions()}
