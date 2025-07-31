@@ -11,7 +11,7 @@ from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from ...database import get_db, CodeSearcher
-from ...database.models import CrawlJob, Document, CodeSnippet
+from ...database.models import CrawlJob, UploadJob, Document, CodeSnippet
 from ...mcp_server import MCPTools
 
 logger = logging.getLogger(__name__)
@@ -26,12 +26,12 @@ class UpdateSourceRequest(BaseModel):
 
 @router.get("/sources")
 async def get_sources(db: Session = Depends(get_db)) -> List[Dict[str, Any]]:
-    """Get all sources (completed crawl jobs)."""
-    # Use completed crawl jobs as sources
-    sources = db.query(CrawlJob).filter_by(status='completed').all()
-    
+    """Get all sources (completed crawl jobs and upload jobs)."""
     result = []
-    for source in sources:
+    
+    # Get completed crawl jobs
+    crawl_sources = db.query(CrawlJob).filter_by(status='completed').all()
+    for source in crawl_sources:
         # Count actual snippets in database
         snippet_count = db.query(CodeSnippet).join(Document).filter(
             Document.crawl_job_id == source.id
@@ -40,6 +40,7 @@ async def get_sources(db: Session = Depends(get_db)) -> List[Dict[str, Any]]:
         result.append({
             "id": str(source.id),
             "name": source.name,
+            "source_type": "crawl",
             "domain": source.domain,
             "base_url": source.start_urls[0] if source.start_urls else "",
             "created_at": source.created_at.isoformat(),
@@ -48,31 +49,78 @@ async def get_sources(db: Session = Depends(get_db)) -> List[Dict[str, Any]]:
             "snippets_count": snippet_count,
         })
     
+    # Get completed upload jobs
+    upload_sources = db.query(UploadJob).filter_by(status='completed').all()
+    for source in upload_sources:
+        # Count actual snippets in database
+        snippet_count = db.query(CodeSnippet).join(Document).filter(
+            Document.upload_job_id == source.id
+        ).count()
+        
+        result.append({
+            "id": str(source.id),
+            "name": source.name,
+            "source_type": "upload",
+            "domain": "upload",
+            "base_url": f"Uploaded: {source.created_at.strftime('%Y-%m-%d')}",
+            "created_at": source.created_at.isoformat(),
+            "updated_at": source.updated_at.isoformat(),
+            "documents_count": len(source.documents),
+            "snippets_count": snippet_count,
+            "file_count": source.file_count,
+        })
+    
+    # Sort by updated_at descending
+    result.sort(key=lambda x: x['updated_at'], reverse=True)
+    
     return result
 
 
 @router.get("/sources/{source_id}")
 async def get_source(source_id: str, db: Session = Depends(get_db)) -> Dict[str, Any]:
-    """Get a specific source (crawl job)."""
-    source = db.query(CrawlJob).filter_by(id=source_id).first()
+    """Get a specific source (crawl job or upload job)."""
+    # Try crawl job first
+    crawl_source = db.query(CrawlJob).filter_by(id=source_id).first()
+    if crawl_source:
+        # Count actual snippets in database
+        snippet_count = db.query(CodeSnippet).join(Document).filter(
+            Document.crawl_job_id == crawl_source.id
+        ).count()
+        
+        return {
+            "id": str(crawl_source.id),
+            "name": crawl_source.name,
+            "source_type": "crawl",
+            "domain": crawl_source.domain,
+            "base_url": crawl_source.start_urls[0] if crawl_source.start_urls else "",
+            "created_at": crawl_source.created_at.isoformat(),
+            "updated_at": crawl_source.updated_at.isoformat(),
+            "documents_count": len(crawl_source.documents),
+            "snippets_count": snippet_count,
+        }
     
-    if not source:
-        raise HTTPException(status_code=404, detail="Source not found")
+    # Try upload job
+    upload_source = db.query(UploadJob).filter_by(id=source_id).first()
+    if upload_source:
+        # Count actual snippets in database
+        snippet_count = db.query(CodeSnippet).join(Document).filter(
+            Document.upload_job_id == upload_source.id
+        ).count()
+        
+        return {
+            "id": str(upload_source.id),
+            "name": upload_source.name,
+            "source_type": "upload",
+            "domain": "upload",
+            "base_url": f"Uploaded: {upload_source.created_at.strftime('%Y-%m-%d')}",
+            "created_at": upload_source.created_at.isoformat(),
+            "updated_at": upload_source.updated_at.isoformat(),
+            "documents_count": len(upload_source.documents),
+            "snippets_count": snippet_count,
+            "file_count": upload_source.file_count,
+        }
     
-    # Count actual snippets in database
-    snippet_count = db.query(CodeSnippet).join(Document).filter(
-        Document.crawl_job_id == source.id
-    ).count()
-    
-    return {
-        "id": str(source.id),
-        "name": source.name,
-        "base_url": source.start_urls[0] if source.start_urls else "",
-        "created_at": source.created_at.isoformat(),
-        "updated_at": source.updated_at.isoformat(),
-        "documents_count": len(source.documents),
-        "snippets_count": snippet_count,
-    }
+    raise HTTPException(status_code=404, detail="Source not found")
 
 
 @router.get("/sources/{source_id}/documents")
@@ -83,16 +131,24 @@ async def get_source_documents(
     db: Session = Depends(get_db)
 ) -> Dict[str, Any]:
     """Get paginated documents for a specific source."""
-    source = db.query(CrawlJob).filter_by(id=source_id).first()
+    # Check if it's a crawl job or upload job
+    crawl_source = db.query(CrawlJob).filter_by(id=source_id).first()
+    upload_source = db.query(UploadJob).filter_by(id=source_id).first()
     
-    if not source:
+    if not crawl_source and not upload_source:
         raise HTTPException(status_code=404, detail="Source not found")
     
+    # Build query based on source type
+    if crawl_source:
+        query = db.query(Document).filter_by(crawl_job_id=source_id)
+    else:
+        query = db.query(Document).filter_by(upload_job_id=source_id)
+    
     # Get total count
-    total = db.query(Document).filter_by(crawl_job_id=source_id).count()
+    total = query.count()
     
     # Get paginated documents
-    documents = db.query(Document).filter_by(crawl_job_id=source_id)\
+    documents = query\
         .order_by(Document.created_at.desc())\
         .offset(offset)\
         .limit(limit)\
@@ -104,7 +160,7 @@ async def get_source_documents(
                 "id": doc.id,
                 "url": doc.url,
                 "title": doc.title or "Untitled",
-                "crawl_depth": doc.crawl_depth,
+                "crawl_depth": doc.crawl_depth if crawl_source else 0,
                 "snippets_count": len(doc.code_snippets),
                 "created_at": doc.created_at.isoformat(),
             }
@@ -126,10 +182,14 @@ async def get_source_snippets(
     db: Session = Depends(get_db)
 ) -> Dict[str, Any]:
     """Get paginated code snippets for a specific source with optional search."""
-    source = db.query(CrawlJob).filter_by(id=source_id).first()
+    # Check if it's a crawl job or upload job
+    crawl_source = db.query(CrawlJob).filter_by(id=source_id).first()
+    upload_source = db.query(UploadJob).filter_by(id=source_id).first()
     
-    if not source:
+    if not crawl_source and not upload_source:
         raise HTTPException(status_code=404, detail="Source not found")
+    
+    source = crawl_source or upload_source
     
     # If query is provided, use the search functionality
     if query:
@@ -142,10 +202,13 @@ async def get_source_snippets(
             offset=offset
         )
     else:
-        # Build query for snippets
-        snippet_query = db.query(CodeSnippet)\
-            .join(Document)\
-            .filter(Document.crawl_job_id == source_id)
+        # Build query for snippets based on source type
+        snippet_query = db.query(CodeSnippet).join(Document)
+        
+        if crawl_source:
+            snippet_query = snippet_query.filter(Document.crawl_job_id == source_id)
+        else:
+            snippet_query = snippet_query.filter(Document.upload_job_id == source_id)
         
         if language:
             snippet_query = snippet_query.filter(CodeSnippet.language == language)

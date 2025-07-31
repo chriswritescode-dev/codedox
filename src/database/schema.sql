@@ -37,6 +37,24 @@ CREATE TABLE IF NOT EXISTS crawl_jobs (
     max_retries INTEGER DEFAULT 3
 );
 
+-- Upload job tracking
+CREATE TABLE IF NOT EXISTS upload_jobs (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    name TEXT NOT NULL,
+    source_type VARCHAR(20) DEFAULT 'upload' CHECK (source_type IN ('upload', 'file', 'api')),
+    file_count INTEGER DEFAULT 0,
+    status VARCHAR(20) DEFAULT 'pending' CHECK (status IN ('pending', 'running', 'completed', 'failed', 'cancelled')),
+    processed_files INTEGER DEFAULT 0,
+    snippets_extracted INTEGER DEFAULT 0,
+    started_at TIMESTAMP,
+    completed_at TIMESTAMP,
+    error_message TEXT,
+    config JSONB DEFAULT '{}',
+    created_by TEXT,
+    created_at TIMESTAMP DEFAULT NOW(),
+    updated_at TIMESTAMP DEFAULT NOW()
+);
+
 -- Documents/pages crawled
 CREATE TABLE IF NOT EXISTS documents (
     id SERIAL PRIMARY KEY,
@@ -45,12 +63,20 @@ CREATE TABLE IF NOT EXISTS documents (
     content_type VARCHAR(50) DEFAULT 'markdown',
     content_hash VARCHAR(64),
     crawl_job_id UUID REFERENCES crawl_jobs(id) ON DELETE CASCADE,
+    upload_job_id UUID REFERENCES upload_jobs(id) ON DELETE CASCADE,
+    source_type VARCHAR(20) DEFAULT 'crawl' CHECK (source_type IN ('crawl', 'upload')),
     crawl_depth INTEGER DEFAULT 0,
     parent_url TEXT,
     last_crawled TIMESTAMP DEFAULT NOW(),
     meta_data JSONB DEFAULT '{}',
     created_at TIMESTAMP DEFAULT NOW(),
-    updated_at TIMESTAMP DEFAULT NOW()
+    updated_at TIMESTAMP DEFAULT NOW(),
+    
+    -- Ensure document is linked to either crawl or upload job
+    CONSTRAINT check_job_link CHECK (
+        (crawl_job_id IS NOT NULL AND upload_job_id IS NULL AND source_type = 'crawl') OR
+        (upload_job_id IS NOT NULL AND crawl_job_id IS NULL AND source_type = 'upload')
+    )
 );
 
 -- Code snippets extracted from documents
@@ -93,9 +119,16 @@ CREATE INDEX IF NOT EXISTS idx_crawl_jobs_status ON crawl_jobs(status);
 CREATE INDEX IF NOT EXISTS idx_crawl_jobs_created_by ON crawl_jobs(created_by);
 CREATE INDEX IF NOT EXISTS idx_crawl_jobs_created_at ON crawl_jobs(created_at DESC);
 
+-- Upload jobs indexes
+CREATE INDEX IF NOT EXISTS idx_upload_jobs_status ON upload_jobs(status);
+CREATE INDEX IF NOT EXISTS idx_upload_jobs_created_by ON upload_jobs(created_by);
+CREATE INDEX IF NOT EXISTS idx_upload_jobs_created_at ON upload_jobs(created_at DESC);
+
 -- Documents indexes
 CREATE INDEX IF NOT EXISTS idx_documents_url ON documents(url);
 CREATE INDEX IF NOT EXISTS idx_documents_crawl_job_id ON documents(crawl_job_id);
+CREATE INDEX IF NOT EXISTS idx_documents_upload_job_id ON documents(upload_job_id);
+CREATE INDEX IF NOT EXISTS idx_documents_source_type ON documents(source_type);
 CREATE INDEX IF NOT EXISTS idx_documents_content_hash ON documents(content_hash);
 CREATE INDEX IF NOT EXISTS idx_documents_crawl_depth ON documents(crawl_depth);
 CREATE INDEX IF NOT EXISTS idx_documents_created_at ON documents(created_at DESC);
@@ -126,6 +159,10 @@ $$ LANGUAGE plpgsql;
 
 DROP TRIGGER IF EXISTS update_crawl_jobs_updated_at ON crawl_jobs;
 CREATE TRIGGER update_crawl_jobs_updated_at BEFORE UPDATE ON crawl_jobs
+    FOR EACH ROW EXECUTE FUNCTION update_updated_at();
+
+DROP TRIGGER IF EXISTS update_upload_jobs_updated_at ON upload_jobs;
+CREATE TRIGGER update_upload_jobs_updated_at BEFORE UPDATE ON upload_jobs
     FOR EACH ROW EXECUTE FUNCTION update_updated_at();
 
 DROP TRIGGER IF EXISTS update_documents_updated_at ON documents;
@@ -163,20 +200,56 @@ CREATE TRIGGER update_code_snippets_search_vector
 -- View for source statistics
 CREATE OR REPLACE VIEW source_statistics AS
 SELECT 
-    cj.name as name,
-    cj.domain as domain,
-    cj.config->'metadata'->>'repository' as repository,
-    cj.config->'metadata'->>'description' as description,
-    cj.status,
-    COUNT(DISTINCT d.id) as document_count,
-    COUNT(DISTINCT cs.id) as snippet_count,
-    SUM(LENGTH(cs.code_content)) as total_characters,
-    MAX(cs.created_at) as last_updated,
-    cj.id as crawl_job_id
-FROM crawl_jobs cj
-LEFT JOIN documents d ON d.crawl_job_id = cj.id
-LEFT JOIN code_snippets cs ON cs.document_id = d.id
-GROUP BY cj.id, cj.name, cj.domain, cj.status, cj.config;
+    name,
+    domain,
+    repository,
+    description,
+    status,
+    document_count,
+    snippet_count,
+    total_characters,
+    last_updated,
+    job_id,
+    job_type
+FROM (
+    -- Crawl jobs
+    SELECT 
+        cj.name as name,
+        cj.domain as domain,
+        cj.config->'metadata'->>'repository' as repository,
+        cj.config->'metadata'->>'description' as description,
+        cj.status,
+        COUNT(DISTINCT d.id) as document_count,
+        COUNT(DISTINCT cs.id) as snippet_count,
+        SUM(LENGTH(cs.code_content)) as total_characters,
+        MAX(cs.created_at) as last_updated,
+        cj.id as job_id,
+        'crawl' as job_type
+    FROM crawl_jobs cj
+    LEFT JOIN documents d ON d.crawl_job_id = cj.id
+    LEFT JOIN code_snippets cs ON cs.document_id = d.id
+    GROUP BY cj.id, cj.name, cj.domain, cj.status, cj.config
+    
+    UNION ALL
+    
+    -- Upload jobs
+    SELECT 
+        uj.name as name,
+        NULL as domain,
+        uj.config->'metadata'->>'repository' as repository,
+        uj.config->'metadata'->>'description' as description,
+        uj.status,
+        COUNT(DISTINCT d.id) as document_count,
+        COUNT(DISTINCT cs.id) as snippet_count,
+        SUM(LENGTH(cs.code_content)) as total_characters,
+        MAX(cs.created_at) as last_updated,
+        uj.id as job_id,
+        'upload' as job_type
+    FROM upload_jobs uj
+    LEFT JOIN documents d ON d.upload_job_id = uj.id
+    LEFT JOIN code_snippets cs ON cs.document_id = d.id
+    GROUP BY uj.id, uj.name, uj.status, uj.config
+) combined_stats;
 
 -- Function for full-text search
 CREATE OR REPLACE FUNCTION search_code_snippets(
