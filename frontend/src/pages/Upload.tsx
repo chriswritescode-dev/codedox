@@ -1,6 +1,6 @@
 import { useState, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Upload as UploadIcon, FileText, AlertCircle, CheckCircle2, Loader2 } from 'lucide-react'
+import { Upload as UploadIcon, FileText, AlertCircle, CheckCircle2, Loader2, X } from 'lucide-react'
 import { uploadMarkdown, uploadFile } from '../lib/api'
 
 export default function Upload() {
@@ -11,10 +11,10 @@ export default function Upload() {
   const [success, setSuccess] = useState<string | null>(null)
   
   // Form fields
-  const [sourceUrl, setSourceUrl] = useState('')
+  const [name, setName] = useState('')
   const [title, setTitle] = useState('')
   const [content, setContent] = useState('')
-  const [selectedFile, setSelectedFile] = useState<File | null>(null)
+  const [selectedFiles, setSelectedFiles] = useState<File[]>([])
 
   const handleDragEnter = useCallback((e: React.DragEvent) => {
     e.preventDefault()
@@ -39,50 +39,46 @@ export default function Upload() {
     setIsDragging(false)
     
     const files = Array.from(e.dataTransfer.files)
-    if (files.length > 0) {
-      const file = files[0]
-      if (file.type === 'text/markdown' || file.type === 'text/plain' || file.name.endsWith('.md')) {
-        setSelectedFile(file)
-        // Read file content
-        const reader = new FileReader()
-        reader.onload = (e) => {
-          const text = e.target?.result as string
-          setContent(text)
-          setTitle(file.name.replace(/\.(md|txt)$/, ''))
-        }
-        reader.readAsText(file)
-      } else {
-        setError('Please upload a markdown (.md) or text (.txt) file')
-      }
+    const validFiles = files.filter(file => 
+      file.type === 'text/markdown' || file.type === 'text/plain' || file.name.endsWith('.md') || file.name.endsWith('.txt')
+    )
+    
+    if (validFiles.length > 0) {
+      setSelectedFiles(prev => [...prev, ...validFiles])
+    } else if (files.length > 0) {
+      setError('Please upload markdown (.md) or text (.txt) files')
     }
   }, [])
 
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files
     if (files && files.length > 0) {
-      const file = files[0]
-      setSelectedFile(file)
-      // Read file content
-      const reader = new FileReader()
-      reader.onload = (e) => {
-        const text = e.target?.result as string
-        setContent(text)
-        setTitle(file.name.replace(/\.(md|txt)$/, ''))
+      const validFiles = Array.from(files).filter(file =>
+        file.type === 'text/markdown' || file.type === 'text/plain' || file.name.endsWith('.md') || file.name.endsWith('.txt')
+      )
+      
+      if (validFiles.length > 0) {
+        setSelectedFiles(prev => [...prev, ...validFiles])
+      } else {
+        setError('Please upload markdown (.md) or text (.txt) files')
       }
-      reader.readAsText(file)
     }
+  }
+  
+  const removeFile = (index: number) => {
+    setSelectedFiles(prev => prev.filter((_, i) => i !== index))
   }
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     
-    if (!content.trim()) {
-      setError('Please provide content to upload')
+    if (!name.trim()) {
+      setError('Please provide a name for this upload')
       return
     }
     
-    if (!sourceUrl.trim()) {
-      setError('Please provide a source URL')
+    if (selectedFiles.length === 0 && !content.trim()) {
+      setError('Please select files or provide content to upload')
       return
     }
     
@@ -91,19 +87,28 @@ export default function Upload() {
     setSuccess(null)
     
     try {
-      if (selectedFile) {
-        // Use file upload endpoint
-        const result = await uploadFile(selectedFile, sourceUrl, title)
-        setSuccess(`Successfully uploaded file with ${result.snippets_count} code snippets extracted`)
-      } else {
-        // Use markdown upload endpoint
+      let totalSnippets = 0
+      let uploadedCount = 0
+      
+      // Upload each file
+      for (const file of selectedFiles) {
+        const result = await uploadFile(file, name, title)
+        totalSnippets += result.snippets_count
+        uploadedCount++
+      }
+      
+      // Upload pasted content if any
+      if (content.trim()) {
         const result = await uploadMarkdown({
           content,
-          source_url: sourceUrl,
-          title: title || undefined
+          name,
+          title: title || 'Pasted Content'
         })
-        setSuccess(`Successfully uploaded content with ${result.snippets_count} code snippets extracted`)
+        totalSnippets += result.snippets_count
+        uploadedCount++
       }
+      
+      setSuccess(`Successfully uploaded ${uploadedCount} item(s) with ${totalSnippets} total code snippets extracted`)
       
       // Clear form after successful upload
       setTimeout(() => {
@@ -127,22 +132,22 @@ export default function Upload() {
       </div>
 
       <form onSubmit={handleSubmit} className="space-y-6">
-        {/* Source URL Input */}
+        {/* Name Input */}
         <div>
-          <label htmlFor="source-url" className="block text-sm font-medium">
-            Source URL <span className="text-red-500">*</span>
+          <label htmlFor="name" className="block text-sm font-medium">
+            Name <span className="text-red-500">*</span>
           </label>
           <input
-            type="url"
-            id="source-url"
-            value={sourceUrl}
-            onChange={(e) => setSourceUrl(e.target.value)}
-            placeholder="https://docs.example.com/guide"
+            type="text"
+            id="name"
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            placeholder="e.g., React Hooks Documentation"
             className="mt-1 w-full px-3 py-2 bg-secondary border border-input rounded-md focus:outline-hidden focus:ring-2 focus:ring-primary"
             required
           />
           <p className="mt-1 text-sm text-muted-foreground">
-            The original URL where this documentation can be found
+            A descriptive name for this documentation upload
           </p>
         </div>
 
@@ -188,17 +193,33 @@ export default function Upload() {
                     className="sr-only"
                     accept=".md,.txt,text/markdown,text/plain"
                     onChange={handleFileSelect}
+                    multiple
                   />
                 </label>
                 <span className="text-muted-foreground"> or drag and drop</span>
               </div>
-              <p className="text-xs text-muted-foreground mt-1">Markdown or text files up to 10MB</p>
+              <p className="text-xs text-muted-foreground mt-1">Multiple markdown or text files up to 10MB each</p>
             </div>
             
-            {selectedFile && (
-              <div className="mt-4 flex items-center justify-center space-x-2 text-sm text-muted-foreground">
-                <FileText className="h-4 w-4" />
-                <span>{selectedFile.name}</span>
+            {selectedFiles.length > 0 && (
+              <div className="mt-4 space-y-2">
+                <p className="text-sm font-medium text-center">Selected Files:</p>
+                {selectedFiles.map((file, index) => (
+                  <div key={index} className="flex items-center justify-between bg-secondary/50 rounded px-3 py-2">
+                    <div className="flex items-center space-x-2">
+                      <FileText className="h-4 w-4 text-muted-foreground" />
+                      <span className="text-sm">{file.name}</span>
+                      <span className="text-xs text-muted-foreground">({(file.size / 1024).toFixed(1)} KB)</span>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => removeFile(index)}
+                      className="text-muted-foreground hover:text-destructive"
+                    >
+                      <X className="h-4 w-4" />
+                    </button>
+                  </div>
+                ))}
               </div>
             )}
           </div>
@@ -247,7 +268,7 @@ export default function Upload() {
         <div className="flex justify-end">
           <button
             type="submit"
-            disabled={uploading || !content.trim() || !sourceUrl.trim()}
+            disabled={uploading || !name.trim() || (selectedFiles.length === 0 && !content.trim())}
             className="flex items-center justify-center px-4 py-2 bg-primary text-primary-foreground rounded-md hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed"
           >
             {uploading ? (
