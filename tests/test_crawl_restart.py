@@ -161,7 +161,6 @@ class TestCrawlRestart:
                     url=f"{unique_url_base}/page{i}",
                     title=f"Page {i}",
                     content_type="html",
-                    markdown_content=f"# Page {i}\n\nContent for page {i}",
                     crawl_job_id=partial_job.id,
                     crawl_depth=1 if i < 4 else 2
                 )

@@ -91,7 +91,6 @@ class Document(Base):  # type: ignore[misc,valid-type]
     url = Column(Text, unique=True, nullable=False, index=True)
     title = Column(Text)
     content_type = Column(String(50), default='html')
-    markdown_content = Column(Text)
     content_hash = Column(String(64), index=True)
     crawl_job_id = Column(UUID(as_uuid=True), ForeignKey('crawl_jobs.id', ondelete='CASCADE'))
     crawl_depth = Column(Integer, default=0)
