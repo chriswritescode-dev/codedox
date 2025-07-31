@@ -48,11 +48,6 @@ class SearchRequest(BaseModel):
     offset: int = Field(default=0, ge=0, description="Pagination offset")
 
 
-class UploadMarkdownRequest(BaseModel):
-    """Request model for uploading markdown content."""
-    content: str = Field(..., description="Markdown content to process")
-    source_url: str = Field(..., description="Source URL for the content")
-    title: Optional[str] = Field(None, description="Optional title")
 
 
 # Application lifespan manager
@@ -316,55 +311,7 @@ async def get_recent_snippets(
         raise HTTPException(status_code=500, detail=str(e))
 
 
-# Upload endpoints
-@app.post("/upload/markdown")
-async def upload_markdown(request: UploadMarkdownRequest, db: Session = Depends(get_db)) -> Dict[str, Any]:
-    """Upload and process markdown content - NEEDS TO BE UPDATED to use new HTML extraction method."""
-    # TODO: Update this endpoint to use the new HTML extraction + LLM description method
-    # Currently disabled until the new extraction method is implemented for uploads
-    raise HTTPException(
-        status_code=501,
-        detail="Upload functionality is temporarily disabled while being updated to use the new extraction method. Please use the crawl functionality instead."
-    )
-
-
-@app.post("/upload/file")
-async def upload_file(
-    file: UploadFile = File(...),
-    source_url: Optional[str] = None,
-    db: Session = Depends(get_db)
-) -> Dict[str, Any]:
-    """Upload a markdown file for processing."""
-    try:
-        # Check file type
-        if not file.filename.endswith(('.md', '.markdown')):
-            raise HTTPException(
-                status_code=400,
-                detail="Only markdown files (.md, .markdown) are supported"
-            )
-        
-        # Read file content
-        content = await file.read()
-        content_str = content.decode('utf-8')
-        
-        # Use filename as source URL if not provided
-        if not source_url:
-            source_url = f"file://{file.filename}"
-        
-        # Process using markdown upload endpoint
-        request = UploadMarkdownRequest(
-            content=content_str,
-            source_url=source_url,
-            title=file.filename
-        )
-        
-        return await upload_markdown(request, db)
-        
-    except UnicodeDecodeError:
-        raise HTTPException(status_code=400, detail="Invalid file encoding. Please use UTF-8.")
-    except Exception as e:
-        logger.error(f"Failed to upload file: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+# Upload endpoints are now in routes/upload.py
 
 
 # Snippet endpoints are now in routes/snippets.py

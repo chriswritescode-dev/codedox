@@ -100,12 +100,18 @@ class APIClient {
     const url = `${API_BASE_URL}${endpoint}`;
     
     try {
-      const response = await fetch(url, {
-        ...options,
-        headers: {
+      // Don't set Content-Type for FormData - browser will set it with boundary
+      const isFormData = options?.body instanceof FormData;
+      const headers = isFormData ? 
+        { ...options?.headers } : 
+        {
           'Content-Type': 'application/json',
           ...options?.headers,
-        },
+        };
+      
+      const response = await fetch(url, {
+        ...options,
+        headers,
       })
 
       if (!response.ok) {
@@ -323,7 +329,7 @@ class APIClient {
   // Upload
   async uploadMarkdown(data: {
     content: string
-    source_url: string
+    name: string
     title?: string
   }): Promise<{
     status: string
@@ -342,7 +348,7 @@ class APIClient {
 
   async uploadFile(
     file: File,
-    sourceUrl: string,
+    name: string,
     title?: string
   ): Promise<{
     status: string
@@ -352,7 +358,7 @@ class APIClient {
   }> {
     const formData = new FormData()
     formData.append('file', file)
-    if (sourceUrl) formData.append('source_url', sourceUrl)
+    formData.append('name', name)
     if (title) formData.append('title', title)
 
     return this.fetch('/upload/file', {
