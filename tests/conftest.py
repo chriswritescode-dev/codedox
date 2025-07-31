@@ -402,7 +402,6 @@ def sample_document(db: Session, sample_crawl_job: CrawlJob) -> Document:
         url="https://example.com/docs/getting-started",
         title="Getting Started",
         content_type="html",
-        markdown_content="# Getting Started\n\nSample content for testing",
         crawl_job_id=sample_crawl_job.id,
         crawl_depth=1,
         parent_url="https://example.com/docs",

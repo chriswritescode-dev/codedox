@@ -43,7 +43,6 @@ CREATE TABLE IF NOT EXISTS documents (
     url TEXT UNIQUE NOT NULL,
     title TEXT,
     content_type VARCHAR(50) DEFAULT 'markdown',
-    markdown_content TEXT,
     content_hash VARCHAR(64),
     crawl_job_id UUID REFERENCES crawl_jobs(id) ON DELETE CASCADE,
     crawl_depth INTEGER DEFAULT 0,

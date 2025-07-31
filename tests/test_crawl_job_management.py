@@ -131,8 +131,7 @@ class TestCrawlJobManagement:
                     url=f"https://example.com/{job_id}/page{i}",  # Make URL unique per test
                     title=f"Page {i}",
                     crawl_job_id=job_id,
-                    content_type="html",
-                    markdown_content=f"# Page {i}\n\nContent {i}"
+                    content_type="html"
                 )
                 session.add(doc)
                 session.flush()
