@@ -207,19 +207,49 @@ MCP tools are automatically available when running the API server at `http://loc
 - URL: `http://localhost:8000/mcp`
 - Transport: Streamable HTTP
 
+### MCP Authentication (for remote deployments)
+
+CodeDox supports token-based authentication for MCP endpoints to secure remote deployments:
+
+```bash
+# Enable authentication in .env
+MCP_AUTH_ENABLED=true
+MCP_AUTH_TOKEN=your-secure-token-here
+
+# Generate a secure token
+openssl rand -hex 32
+```
+
+When authentication is enabled, include the token in all MCP requests:
+
+```bash
+# With authentication
+curl -H "Authorization: Bearer your-secure-token-here" \
+  http://localhost:8000/mcp/tools
+
+# Multiple tokens supported
+MCP_AUTH_TOKENS=token1,token2,token3
+```
+
 **Direct API Usage:**
 ```bash
-# List tools
+# List tools (no auth)
 curl http://localhost:8000/mcp/tools
+
+# List tools (with auth)
+curl -H "Authorization: Bearer your-token" \
+  http://localhost:8000/mcp/tools
 
 # Search for libraries
 curl -X POST http://localhost:8000/mcp/execute/search_libraries \
   -H "Content-Type: application/json" \
+  -H "Authorization: Bearer your-token" \
   -d '{"query": "nextjs"}'
 
 # Get code snippets
 curl -X POST http://localhost:8000/mcp/execute/get_content \
   -H "Content-Type: application/json" \
+  -H "Authorization: Bearer your-token" \
   -d '{"library_id": "library-id-here", "query": "authentication"}'
 ```
 
