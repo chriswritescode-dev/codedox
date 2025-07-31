@@ -19,7 +19,8 @@ class TestEndToEndWorkflow:
         # Step 2: List sources
         response = client.get("/api/sources")
         assert response.status_code == 200
-        sources = response.json()
+        data = response.json()
+        sources = data["sources"]
         assert len(sources) == 1
         source_id = sources[0]["id"]
         
@@ -130,7 +131,8 @@ class TestAPIConsistency:
         
         # Check in sources
         response = client.get("/api/sources")
-        sources = response.json()
+        data = response.json()
+        sources = data["sources"]
         if sources:
             assert isinstance(sources[0]["id"], str)
         
