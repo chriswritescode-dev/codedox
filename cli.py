@@ -176,39 +176,73 @@ def cancel(job_id: str):
 @cli.command()
 @click.argument('file_path', type=click.Path(exists=True))
 @click.option('--source-url', help='Source URL for the content')
-def upload(file_path: str, source_url: Optional[str]):
+@click.option('--name', help='Name for the uploaded content')
+def upload(file_path: str, source_url: Optional[str], name: Optional[str]):
     """Upload a markdown file for processing."""
-    from src.parser import CodeExtractor
-    from src.language import LanguageDetector
-    from src.config import settings
+    import os
+    from src.crawler import UploadProcessor, UploadConfig
     
-    with open(file_path, 'r', encoding='utf-8') as f:
-        content = f.read()
-    
-    if not source_url:
-        source_url = f"file://{file_path}"
-    
-    extractor = CodeExtractor(
-        use_tree_sitter=getattr(settings.code_extraction, 'use_tree_sitter_validation', True),
-        min_quality_score=getattr(settings.code_extraction, 'min_ast_quality_score', 0.7)
-    )
-    detector = LanguageDetector()
-    
-    with console.status("[bold green]Processing markdown..."):
-        blocks = extractor.extract_from_content(content, source_url, "markdown")
-    
-    console.print(f"[green]✓[/green] Found {len(blocks)} code blocks")
-    
-    for i, block in enumerate(blocks, 1):
-        if block.language == 'unknown':
-            detection = detector.detect(block.content)
-            block.language = detection.language
+    async def run_upload():
+        with open(file_path, 'r', encoding='utf-8') as f:
+            content = f.read()
         
-        console.print(f"\n[bold]Block {i}:[/bold]")
-        console.print(f"Language: [cyan]{block.language}[/cyan]")
-        console.print(f"Lines: {block.lines_of_code}")
-        if block.title:
-            console.print(f"Title: {block.title}")
+        final_source_url = source_url if source_url else f"file://{os.path.abspath(file_path)}"
+        final_name = name if name else os.path.basename(file_path)
+        
+        # Determine content type from extension
+        content_type = 'markdown'
+        if file_path.endswith('.rst'):
+            content_type = 'restructuredtext'
+        elif file_path.endswith('.adoc'):
+            content_type = 'asciidoc'
+        elif file_path.endswith('.txt'):
+            content_type = 'text'
+        
+        processor = UploadProcessor()
+        
+        with Progress(
+            SpinnerColumn(),
+            TextColumn("[progress.description]{task.description}"),
+            console=console
+        ) as progress:
+            task = progress.add_task(f"Uploading '{final_name}'...", total=None)
+            
+            config = UploadConfig(
+                name=final_name,
+                files=[{
+                    'content': content,
+                    'source_url': final_source_url,
+                    'content_type': content_type
+                }],
+                metadata={
+                    'uploaded_via': 'cli',
+                    'original_path': file_path
+                }
+            )
+            
+            job_id = await processor.process_upload(config)
+            
+            console.print(f"[green]✓[/green] Upload job started!")
+            console.print(f"Job ID: [cyan]{job_id}[/cyan]")
+            console.print(f"File: {file_path}")
+            console.print(f"Name: {name}")
+            
+            # Wait for completion
+            progress.update(task, description="Processing file...")
+            
+            while True:
+                await asyncio.sleep(1)
+                status = processor.get_job_status(job_id)
+                if status and status['status'] in ['completed', 'failed']:
+                    break
+            
+            if status['status'] == 'completed':
+                console.print(f"[green]✓[/green] Processing completed!")
+                console.print(f"Snippets extracted: {status.get('snippets_extracted', 0)}")
+            else:
+                console.print(f"[red]✗[/red] Processing failed: {status.get('error_message', 'Unknown error')}")
+    
+    asyncio.run(run_upload())
 
 
 @cli.command()
