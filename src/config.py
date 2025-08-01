@@ -67,6 +67,20 @@ class CrawlingConfig(BaseSettings):
     content_size_limit: int = 50000
     user_agent: str = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36"
     max_concurrent_sessions: int = 20
+    
+    # Concurrent crawl management
+    max_concurrent_crawls: int = Field(
+        default=5,
+        description="Maximum concurrent crawl sessions per job"
+    )
+    task_cancellation_timeout: float = Field(
+        default=5.0,
+        description="Timeout in seconds when cancelling crawl tasks"
+    )
+    heartbeat_stall_threshold: int = Field(
+        default=60,
+        description="Seconds without heartbeat before considering job stalled"
+    )
 
 
 class CodeExtractionConfig(BaseSettings):
