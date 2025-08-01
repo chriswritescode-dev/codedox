@@ -119,7 +119,7 @@ class PageCrawler:
                 results = []
 
                 # Configure rate limiter and dispatcher
-                max_concurrent = job_config.get("max_concurrent_crawls", 20) if job_config else 20
+                max_concurrent = job_config.get("max_concurrent_crawls", get_settings().crawling.max_concurrent_crawls) if job_config else get_settings().crawling.max_concurrent_crawls
                 logger.info(f"Setting up dispatcher with max_concurrent_crawls={max_concurrent}")
 
                 rate_limiter = RateLimiter(base_delay=(1.0, 2.0), max_delay=30.0, max_retries=4)
@@ -162,11 +162,10 @@ class PageCrawler:
                     workers.append(worker)
                 logger.info(f"All {worker_count} workers created")
                 
-                # Track progress
+                # Track progress for UI updates only
                 crawl_progress = {
                     'crawled_count': 0,
                     'processed_count': 0,
-                    'snippet_count': 0,
                     'last_ws_count': 0
                 }
                 
@@ -212,7 +211,6 @@ class PageCrawler:
                                     job_id,
                                     processed_pages=crawl_progress['processed_count'],
                                     total_pages=crawled_count,
-                                    snippets_extracted=crawl_progress['snippet_count'],
                                     documents_crawled=crawl_progress['processed_count'],
                                     send_notification=True
                                 )
@@ -246,7 +244,6 @@ class PageCrawler:
                                     job_id,
                                     processed_pages=crawl_progress['processed_count'],
                                     total_pages=crawled_count,
-                                    snippets_extracted=crawl_progress['snippet_count'],
                                     documents_crawled=crawl_progress['processed_count'],
                                     send_notification=True
                                 )
@@ -355,17 +352,11 @@ class PageCrawler:
             results.append(result)
             crawl_progress['processed_count'] += 1
             
-            # Count snippets
-            if result.code_blocks:
-                crawl_progress['snippet_count'] += len(result.code_blocks)
-            elif result.metadata.get('content_unchanged'):
-                # Count existing snippets from unchanged content
-                existing_count = result.metadata.get('existing_snippet_count', 0)
-                crawl_progress['snippet_count'] += existing_count
-                # Track skipped pages
+            # Track skipped pages for logging
+            if result.metadata.get('content_unchanged'):
                 crawl_progress['skipped_count'] = crawl_progress.get('skipped_count', 0) + 1
             
-            # Send progress update
+            # Send progress update without snippet count (handled by crawl_manager)
             if progress_tracker:
                 should_update = crawl_progress['processed_count'] - crawl_progress['last_ws_count'] >= 3
                 if should_update:
@@ -374,7 +365,6 @@ class PageCrawler:
                         job_id,
                         processed_pages=crawl_progress['processed_count'],
                         total_pages=crawl_progress['crawled_count'],
-                        snippets_extracted=crawl_progress['snippet_count'],
                         documents_crawled=crawl_progress['processed_count'],
                         send_notification=True
                     )

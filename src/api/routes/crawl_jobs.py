@@ -12,6 +12,7 @@ from ...database import get_db
 from ...database.models import CrawlJob, FailedPage
 from ...mcp_server import MCPTools
 from ...crawler import CrawlManager
+from ...config import get_settings
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -24,7 +25,7 @@ class CreateCrawlJobRequest(BaseModel):
     max_depth: int = 2
     domain_filter: Optional[str] = None
     url_patterns: Optional[List[str]] = None
-    max_concurrent_crawls: int = 20
+    max_concurrent_crawls: int = None
 
 
 @router.get("/crawl-jobs")

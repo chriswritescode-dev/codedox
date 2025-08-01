@@ -74,8 +74,10 @@ class ResultProcessor:
                     ignore_hash = job_metadata.get('ignore_hash', False)
 
             if existing_doc and existing_doc.content_hash == result.content_hash and not ignore_hash:
-                # Content unchanged and not ignoring hash
-                return int(existing_doc.id), 0
+                # Content unchanged and not ignoring hash - count existing snippets
+                existing_snippet_count = session.query(CodeSnippet).filter_by(document_id=existing_doc.id).count()
+                logger.info(f"[SNIPPET_COUNT] Content unchanged for {result.url}, returning {existing_snippet_count} existing snippets")
+                return int(existing_doc.id), existing_snippet_count
 
             # Create or update document
             doc = self._create_or_update_document(session, result, job_id, depth, existing_doc)
@@ -124,14 +126,10 @@ class ResultProcessor:
                 ignore_hash = job_metadata.get('ignore_hash', False)
 
             if existing_doc and existing_doc.content_hash == result.content_hash and not ignore_hash:
-                # Content unchanged - check if this was detected during crawl
-                if hasattr(result, 'metadata') and result.metadata.get('content_unchanged'):
-                    # Return with existing snippet count from crawl phase
-                    existing_snippet_count = result.metadata.get('existing_snippet_count', 0)
-                    return int(existing_doc.id), existing_snippet_count
-                else:
-                    # Legacy path - content unchanged but not detected during crawl
-                    return int(existing_doc.id), 0
+                # Content unchanged - always return existing snippet count
+                existing_snippet_count = session.query(CodeSnippet).filter_by(document_id=existing_doc.id).count()
+                logger.info(f"[SNIPPET_COUNT] Content unchanged for {result.url}, returning {existing_snippet_count} existing snippets")
+                return int(existing_doc.id), existing_snippet_count
 
             # Log when ignoring hash
             if ignore_hash and existing_doc and existing_doc.content_hash == result.content_hash:
@@ -589,7 +587,7 @@ If you cannot determine the name, respond with "UNKNOWN"."""
         # Commit snippets
         session.commit()
         
-        logger.info(f"Processed {snippet_count} new snippets for document {doc.id}")
+        logger.info(f"[SNIPPET_COUNT] Processed {snippet_count} new snippets for document {doc.id}")
 
         return snippet_count
 
