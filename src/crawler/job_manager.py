@@ -129,9 +129,15 @@ class JobManager:
                 existing_snippets = session.query(CodeSnippet).join(Document).filter(
                     Document.crawl_job_id == existing_job.id
                 ).count()
-                logger.info(f"Preserving {existing_snippets} existing snippets for job {existing_job.id}")
+                logger.info(f"[SNIPPET_COUNT] Reusing job {existing_job.id} with {existing_snippets} existing snippets")
                 existing_job.snippets_extracted = existing_snippets
-                existing_job.config = config
+                
+                # Store base snippet count in config for tracking
+                if not existing_job.config:
+                    existing_job.config = {}
+                existing_job.config.update(config)
+                existing_job.config['base_snippet_count'] = existing_snippets
+                logger.info(f"[SNIPPET_COUNT] Set base_snippet_count to {existing_snippets} for job {existing_job.id}")
 
                 session.commit()
                 return str(existing_job.id)
@@ -214,7 +220,9 @@ class JobManager:
             if total_pages is not None:
                 job.total_pages = total_pages
             if snippets_extracted is not None:
+                old_count = job.snippets_extracted
                 job.snippets_extracted = snippets_extracted
+                logger.info(f"[SNIPPET_COUNT] Job {job_id} snippets updated: {old_count} -> {snippets_extracted}")
             if documents_crawled is not None:
                 job.documents_crawled = documents_crawled
 

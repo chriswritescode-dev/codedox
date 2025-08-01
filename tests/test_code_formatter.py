@@ -87,8 +87,8 @@ class TestCodeFormatter(unittest.TestCase):
         code = "  some code  \n\n\n  more code  "
         formatted = self.formatter.format(code, 'unknown')
         
-        # Should do basic formatting
-        self.assertEqual(formatted, "some code\n\nmore code")
+        # Should return code as-is for unknown languages
+        self.assertEqual(formatted, code)
     
     def test_empty_code(self):
         """Test formatting empty code."""

@@ -13,6 +13,7 @@ from sqlalchemy.orm import Session
 from ...database import get_db, CodeSearcher
 from ...database.models import CrawlJob, UploadJob, Document, CodeSnippet
 from ...mcp_server import MCPTools
+from ...config import get_settings
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -441,11 +442,11 @@ async def recrawl_source(
     try:
         # Use the same init_crawl method that MCP and web UI use
         # Get configuration from original job config if available
-        max_concurrent = 20  # default
+        max_concurrent = get_settings().crawling.max_concurrent_crawls  # default
         url_patterns = None  # default
         
         if original_job.config and isinstance(original_job.config, dict):
-            max_concurrent = original_job.config.get('max_concurrent_crawls', 20)
+            max_concurrent = original_job.config.get('max_concurrent_crawls', get_settings().crawling.max_concurrent_crawls)
             # Preserve URL patterns from original crawl
             url_patterns = original_job.config.get('url_patterns', original_job.config.get('include_patterns'))
         
