@@ -137,6 +137,9 @@ class JobManager:
                     existing_job.config = {}
                 existing_job.config.update(config)
                 existing_job.config['base_snippet_count'] = existing_snippets
+                # Flag the config column as modified for SQLAlchemy
+                from sqlalchemy.orm.attributes import flag_modified
+                flag_modified(existing_job, 'config')
                 logger.info(f"[SNIPPET_COUNT] Set base_snippet_count to {existing_snippets} for job {existing_job.id}")
 
                 session.commit()

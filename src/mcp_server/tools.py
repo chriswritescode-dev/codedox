@@ -87,7 +87,6 @@ class MCPTools:
                 domain_restrictions=domain_restrictions,
                 include_patterns=url_patterns or [],
                 metadata=metadata,
-                max_pages=settings.crawling.max_pages_per_job,
                 max_concurrent_crawls=max_concurrent_crawls or settings.crawling.max_concurrent_crawls
             )
             
