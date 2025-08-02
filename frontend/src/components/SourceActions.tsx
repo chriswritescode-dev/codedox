@@ -1,7 +1,5 @@
-import React from 'react';
 import { Trash2 } from 'lucide-react';
 import { ConfirmationDialog } from './ConfirmationDialog';
-import { EditableSourceName } from './EditableSourceName';
 import { FormatSourceDialog } from './FormatSourceDialog';
 
 interface SourceActionsProps {
@@ -12,16 +10,12 @@ interface SourceActionsProps {
   formatPreview: any;
   deleteMutation: any;
   deleteMatchesMutation: any;
-  updateSourceNameMutation: any;
-  formatPreviewMutation: any;
   formatSourceMutation: any;
-  handleFormatAll: () => void;
   handleConfirmFormat: () => void;
   setDeleteModalOpen: (open: boolean) => void;
   setDeleteMatchesModalOpen: (open: boolean) => void;
   setFormatDialogOpen: (open: boolean) => void;
   setFormatPreview: (preview: any) => void;
-  handleUpdateSourceName: (id: string, name: string) => void;
   handleConfirmDelete: () => void;
 }
 
@@ -33,16 +27,12 @@ export function SourceActions({
   formatPreview,
   deleteMutation,
   deleteMatchesMutation,
-  updateSourceNameMutation,
-  formatPreviewMutation,
   formatSourceMutation,
-  handleFormatAll,
   handleConfirmFormat,
   setDeleteModalOpen,
   setDeleteMatchesModalOpen,
   setFormatDialogOpen,
   setFormatPreview,
-  handleUpdateSourceName,
   handleConfirmDelete,
 }: SourceActionsProps) {
   return (
