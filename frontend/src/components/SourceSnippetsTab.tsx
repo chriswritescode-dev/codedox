@@ -1,6 +1,5 @@
 import { Search, Trash2, X, Wand2 } from "lucide-react";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { ConfirmationDialog } from "./ConfirmationDialog";
 import { SnippetList } from "./SnippetList";
 import { PaginationControls } from "./PaginationControls";
 import { Spinner } from "./Spinner";
@@ -19,10 +18,7 @@ interface SourceSnippetsTabProps {
   setSelectedLanguage: (lang: string) => void;
   setSnippetsSearch: (search: string) => void;
   formatPreviewMutation: any;
-  formatSourceMutation: any;
-  handleConfirmFormat: () => void;
   setDeleteMatchesModalOpen: (open: boolean) => void;
-  deleteMatchesMutation: any;
 }
 
 export function SourceSnippetsTab({
@@ -39,10 +35,7 @@ export function SourceSnippetsTab({
   setSelectedLanguage,
   setSnippetsSearch,
   formatPreviewMutation,
-  formatSourceMutation,
-  handleConfirmFormat,
   setDeleteMatchesModalOpen,
-  deleteMatchesMutation,
 }: SourceSnippetsTabProps) {
   return (
     <div className="space-y-4">

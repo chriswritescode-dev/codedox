@@ -22,17 +22,20 @@ check_container() {
     # Check if container is running
     if docker ps --format "table {{.Names}}" | grep -q "^${container}$"; then
         # Check health status if available
-        health=$(docker inspect --format='{{.State.Health.Status}}' $container 2>/dev/null || echo "none")
+        health=$(docker inspect --format='{{if .State.Health}}{{.State.Health.Status}}{{else}}none{{end}}' $container 2>/dev/null || echo "none")
         
         if [ "$health" = "healthy" ]; then
             echo -e "${GREEN}✓ Healthy${NC}"
             return 0
-        elif [ "$health" = "none" ]; then
+        elif [ "$health" = "none" ] || [ -z "$health" ]; then
             # No health check, just check if running
             running=$(docker inspect --format='{{.State.Running}}' $container 2>/dev/null || echo "false")
             if [ "$running" = "true" ]; then
                 echo -e "${GREEN}✓ Running${NC}"
                 return 0
+            else
+                echo -e "${RED}✗ Not running${NC}"
+                return 1
             fi
         else
             echo -e "${YELLOW}⚠ Status: $health${NC}"
@@ -75,7 +78,7 @@ check_postgres() {
     echo -n "Checking PostgreSQL... "
     
     while [ $attempt -lt $max_attempts ]; do
-        if docker exec codedox_postgres pg_isready -U postgres > /dev/null 2>&1; then
+        if docker exec codedox-postgres pg_isready -U postgres > /dev/null 2>&1; then
             echo -e "${GREEN}✓ Ready${NC}"
             return 0
         fi
@@ -103,9 +106,9 @@ main() {
     # 2. Check if services are up
     echo -e "\n2. Checking containers..."
     
-    check_container "codedox_postgres" "PostgreSQL container" || all_passed=false
-    check_container "codedox_api" "API container" || all_passed=false
-    check_container "codedox_frontend" "Frontend container" || all_passed=false
+    check_container "codedox-postgres" "PostgreSQL container" || all_passed=false
+    check_container "codedox-api" "API container" || all_passed=false
+    check_container "codedox-frontend" "Frontend container" || all_passed=false
     
     # 3. Check database
     echo -e "\n3. Checking database..."
@@ -114,7 +117,7 @@ main() {
     # 4. Check service endpoints
     echo -e "\n4. Checking service endpoints..."
     
-    check_endpoint "http://localhost:8000/health" "API health" || all_passed=false
+    check_endpoint "http://localhost:8000/api/health" "API health" || all_passed=false
     check_endpoint "http://localhost:8000/mcp/tools" "MCP tools" || all_passed=false
     check_endpoint "http://localhost:5173" "Frontend" || all_passed=false
     
@@ -122,9 +125,7 @@ main() {
     echo -e "\n5. Running functional tests..."
     echo -n "Testing API search... "
     
-    if curl -s -X POST http://localhost:8000/search \
-        -H "Content-Type: application/json" \
-        -d '{"query":"test","limit":1}' \
+    if curl -s "http://localhost:8000/api/search?query=test&limit=1" \
         -o /dev/null -w "%{http_code}" | grep -q "200"; then
         echo -e "${GREEN}✓ Working${NC}"
     else
@@ -146,7 +147,7 @@ main() {
         echo -e "${RED}❌ Some services failed health checks${NC}"
         echo -e "\nTroubleshooting:"
         echo "  • View logs: docker-compose logs"
-        echo "  • Check specific service: docker logs codedox_api"
+        echo "  • Check specific service: docker logs codedox-api"
         echo "  • Restart services: docker-compose restart"
         exit 1
     fi

@@ -7,7 +7,12 @@ RUN apt-get update && apt-get install -y \
     g++ \
     python3-dev \
     libpq-dev \
+    curl \
     && rm -rf /var/lib/apt/lists/*
+
+# Install uv
+RUN curl -LsSf https://astral.sh/uv/install.sh | sh
+ENV PATH="/root/.local/bin:${PATH}"
 
 # Set working directory
 WORKDIR /app
@@ -15,14 +20,13 @@ WORKDIR /app
 # Copy requirements
 COPY requirements.txt .
 
-# Install Python dependencies
-RUN pip install --no-cache-dir --upgrade pip \
-    && pip install --no-cache-dir -r requirements.txt
+# Install Python dependencies using uv
+RUN uv pip install --system -r requirements.txt
 
 # Runtime stage
 FROM python:3.10-slim
 
-# Install runtime dependencies
+# Install runtime dependencies including curl for uv
 RUN apt-get update && apt-get install -y \
     curl \
     gnupg
@@ -53,6 +57,12 @@ RUN apt-get update && apt-get install -y \
     libgtk-3-0 \
     libasound2 \
     && rm -rf /var/lib/apt/lists/*
+
+# Install uv in runtime stage
+RUN curl -LsSf https://astral.sh/uv/install.sh | sh && \
+    mv /root/.local/bin/uv /usr/local/bin/ && \
+    mv /root/.local/bin/uvx /usr/local/bin/ && \
+    chmod +x /usr/local/bin/uv /usr/local/bin/uvx
 
 # Create non-root user
 RUN useradd -m -u 1000 codedox
@@ -94,7 +104,7 @@ RUN mkdir -p ${PLAYWRIGHT_BROWSERS_PATH} && \
     python -m playwright install chromium --with-deps && \
     chmod -R 755 ${PLAYWRIGHT_BROWSERS_PATH}
 
-# Set environment for codedox user to find browsers
+# Set environment for codedox user to find browsers and uv
 USER codedox
 ENV PLAYWRIGHT_BROWSERS_PATH=/opt/playwright-browsers
 

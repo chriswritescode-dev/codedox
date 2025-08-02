@@ -1,6 +1,6 @@
 import { useState, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Upload as UploadIcon, FileText, AlertCircle, CheckCircle2, Loader2, X, FileCode } from 'lucide-react'
+import { Upload as UploadIcon, AlertCircle, CheckCircle2, Loader2, X, FileCode } from 'lucide-react'
 import { uploadMarkdown, uploadFiles } from '../lib/api'
 
 export default function Upload() {
