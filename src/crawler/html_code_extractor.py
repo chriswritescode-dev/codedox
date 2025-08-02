@@ -399,8 +399,43 @@ class HTMLCodeExtractor:
     
     def _extract_text_no_extra_spaces(self, element: Tag) -> str:
         """Extract text from element without adding spaces between syntax highlighting spans."""
-        # Use .strings to get all text content without BeautifulSoup adding separators
-        return ''.join(element.strings)
+        # Handle different ways HTML might represent code with line breaks
+        result = []
+        
+        # Track if we're at the start of a new line-like element
+        for elem in element.descendants:
+            if isinstance(elem, str):
+                # Preserve actual text content
+                result.append(elem)
+            elif hasattr(elem, 'name'):
+                if elem.name == 'br':
+                    # Convert <br> tags to newlines
+                    result.append('\n')
+                elif elem.name in ['div', 'p']:
+                    # For block elements, check if this is a direct child
+                    # and add newline before its content (except for first element)
+                    parent_chain = []
+                    current = elem
+                    while current and current != element:
+                        parent_chain.append(current)
+                        current = current.parent
+                    
+                    # Only add newline for direct children divs/p
+                    if len(parent_chain) == 1 and result and not (result[-1].endswith('\n') or result[-1] == ''):
+                        result.append('\n')
+        
+        text = ''.join(result)
+        
+        # Clean up the result
+        lines = text.split('\n')
+        cleaned_lines = []
+        for line in lines:
+            # Preserve indentation but remove trailing whitespace
+            cleaned_lines.append(line.rstrip())
+        
+        # Join with newlines and remove any trailing whitespace
+        # Also remove any leading empty lines
+        return '\n'.join(cleaned_lines).strip()
     
     def _is_inline_code(self, element: Tag) -> bool:
         """Check if this is inline code (not a block)."""
