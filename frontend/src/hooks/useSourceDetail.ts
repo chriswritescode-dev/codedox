@@ -1,6 +1,6 @@
 import { useState, useMemo, useEffect } from "react";
-import { useParams, useSearchParams, useNavigate } from "react-router-dom";
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useSearchParams, useNavigate } from "react-router-dom";
+import { useQuery, useMutation, useQueryClient, UseMutationResult } from "@tanstack/react-query";
 import { api } from "../lib/api";
 import { useDebounce } from "./useDebounce";
 
@@ -50,11 +50,11 @@ interface SourceDetailState {
   setFormatPreview: (preview: SourceDetailState["formatPreview"]) => void;
   
   // Mutations
-  deleteMutation: ReturnType<typeof useMutation>;
-  deleteMatchesMutation: ReturnType<typeof useMutation>;
-  updateSourceNameMutation: ReturnType<typeof useMutation>;
-  formatPreviewMutation: ReturnType<typeof useMutation>;
-  formatSourceMutation: ReturnType<typeof useMutation>;
+  deleteMutation: UseMutationResult<any, any, void, unknown>;
+  deleteMatchesMutation: UseMutationResult<any, any, void, unknown>;
+  updateSourceNameMutation: UseMutationResult<any, any, { name: string }, unknown>;
+  formatPreviewMutation: UseMutationResult<any, any, void, unknown>;
+  formatSourceMutation: UseMutationResult<any, any, void, unknown>;
   
   // Query data
   source: any;

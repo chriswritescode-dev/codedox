@@ -272,6 +272,13 @@ class APIClient {
     })
   }
 
+  async cancelBulkCrawlJobs(ids: string[]): Promise<{ message: string; cancelled_count: number }> {
+    return this.fetch<{ message: string; cancelled_count: number }>('/crawl-jobs/bulk/cancel', {
+      method: 'POST',
+      body: JSON.stringify(ids),
+    })
+  }
+
   // Search
   async search(params: {
     source_name?: string
