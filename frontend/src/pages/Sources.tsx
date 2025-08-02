@@ -41,7 +41,6 @@ export default function Sources() {
       const offset = (currentPage - 1) * itemsPerPage;
       return api.getSources({ limit: itemsPerPage, offset });
     },
-    keepPreviousData: true,
   });
 
   const deleteMutation = useMutation({
@@ -155,8 +154,8 @@ export default function Sources() {
   };
 
   const selectAll = () => {
-    const allIds = new Set(filteredSources.map((s) => s.id));
-    setSelectedSources(allIds);
+    const allIds = new Set(filteredSources.map((s: any) => s.id));
+    setSelectedSources(allIds as Set<string>);
   };
 
   const deselectAll = () => {
@@ -308,13 +307,13 @@ export default function Sources() {
         </div>
       </div>
 
-      {sources && sources.length === 0 && (
+      {sources && (sources as any).sources.length === 0 && (
         <div className="text-center py-12 text-muted-foreground">
           No sources found. Start by crawling some documentation.
         </div>
       )}
 
-      {filteredSources.length === 0 && sources && sources.length > 0 && (
+      {filteredSources.length === 0 && sources && (sources as any).sources.length > 0 && (
         <div className="text-center py-12 text-muted-foreground">
           No sources match your search.
         </div>
@@ -322,7 +321,7 @@ export default function Sources() {
 
       {filteredSources.length > 0 && (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-          {filteredSources.map((source) => (
+          {filteredSources.map((source: any) => (
             <div
               key={source.id}
               className={`relative bg-secondary/50 rounded-lg p-6 hover:bg-secondary transition-colors group ${
@@ -472,9 +471,9 @@ export default function Sources() {
           
           <PaginationControls
             currentPage={currentPage}
-            totalPages={Math.ceil(sources.total / itemsPerPage)}
+            totalPages={Math.ceil((sources as any).total / itemsPerPage)}
             onPageChange={handlePageChange}
-            totalItems={sources.total}
+            totalItems={(sources as any).total}
             itemsPerPage={itemsPerPage}
             currentItemsCount={filteredSources.length}
           />
