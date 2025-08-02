@@ -118,7 +118,7 @@ class CrawlManager:
         job_data = self.job_manager.get_job_status(job_id)
         job_config = job_data.get("config", {}) if job_data else {}
         base_snippet_count = job_config.get("base_snippet_count", 0)
-        return base_snippet_count, base_snippet_count
+        return base_snippet_count, 0  # Return base count and 0 for new snippets
 
     async def _check_job_cancelled(self, job_id: str) -> None:
         """Check if job is cancelled and raise CancelledError if so."""
@@ -129,7 +129,7 @@ class CrawlManager:
 
     async def _update_crawl_progress(
         self, job_id: str, processed_count: int, visited_urls: Set[str], 
-        total_snippets: int, docs_count: int, last_ws_count: int
+        total_snippets: int, docs_count: int, last_ws_count: int, base_snippet_count: int
     ) -> int:
         """Update crawl progress and return new last_ws_count if notification sent."""
         send_notification = self.progress_tracker.should_send_update(
@@ -140,7 +140,7 @@ class CrawlManager:
             job_id,
             processed_pages=processed_count,
             total_pages=len(visited_urls),
-            snippets_extracted=total_snippets,
+            snippets_extracted=base_snippet_count + total_snippets,
             documents_crawled=docs_count,
             send_notification=send_notification,
         )
@@ -242,7 +242,7 @@ class CrawlManager:
 
                 # Update progress
                 last_ws_count = await self._update_crawl_progress(
-                    job_id, processed_count, visited_urls, total_snippets, docs, last_ws_count
+                    job_id, processed_count, visited_urls, total_snippets, docs, last_ws_count, base_snippet_count
                 )
 
     async def _execute_single_crawl(self, job_id: str, config: CrawlConfig) -> None:
@@ -296,7 +296,7 @@ class CrawlManager:
 
                 # Update progress
                 last_ws_count = await self._update_crawl_progress(
-                    job_id, processed_count, visited_urls, total_snippets, processed_count, last_ws_count
+                    job_id, processed_count, visited_urls, total_snippets, processed_count, last_ws_count, base_snippet_count
                 )
 
     async def cancel_job(self, job_id: str) -> bool:
