@@ -61,7 +61,6 @@ class CrawlingConfig(BaseSettings):
     model_config = SettingsConfigDict(env_prefix="CRAWL_", extra="allow")
 
     default_max_depth: int = 2
-    max_pages_per_job: int = 500
     respect_robots_txt: bool = True
     max_concurrent_pages: int = 3
     content_size_limit: int = 50000
