@@ -367,7 +367,7 @@ class TestBulkDeleteEndpoints:
         response = client.request("DELETE", "/api/crawl-jobs/bulk", json=fake_ids)
         assert response.status_code == 404
         assert response.json()["detail"] in [
-            "No deletable jobs found with provided IDs",
+            "No jobs found with provided IDs",
             "Resource not found",
         ]
 

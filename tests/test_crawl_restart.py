@@ -219,12 +219,14 @@ class TestCrawlRestart:
         """Test restarting a crawl with updated configuration."""
         db_manager = get_db_manager()
         
-        # Create original job
+        # Create original job with unique domain
+        unique_domain = f"https://test-{uuid4().hex[:8]}.example.com"
         with db_manager.session_scope() as session:
             original_job = CrawlJob(
                 id=uuid4(),
                 name="Config Update Test",
-                start_urls=["https://example.com"],
+                start_urls=[unique_domain],
+                domain=unique_domain.replace("https://", "").replace("http://", ""),
                 max_depth=1,  # Original depth
                 status="completed",
                 config={
@@ -238,7 +240,7 @@ class TestCrawlRestart:
         # Create new job with updated config
         new_config = CrawlConfig(
             name="Config Update Test - Extended",
-            start_urls=["https://example.com"],
+            start_urls=[unique_domain],
             max_depth=3,  # Increased depth
             max_pages=50  # Increased page limit
         )
@@ -255,6 +257,7 @@ class TestCrawlRestart:
             with db_manager.session_scope() as session:
                 new_job = session.query(CrawlJob).filter_by(id=new_job_id).first()
                 assert new_job.max_depth == 3
+                # The config should be updated with the new max_pages value
                 assert new_job.config["max_pages"] == 50
                 # Delay is handled by crawler internally, not tracked in our config
     

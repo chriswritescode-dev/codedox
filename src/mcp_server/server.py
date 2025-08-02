@@ -46,7 +46,7 @@ class MCPServer:
                 max_depth=arguments.get("max_depth", 1),
                 domain_filter=arguments.get("domain_filter"),
                 metadata=arguments.get("metadata", {}),
-                max_concurrent_crawls=arguments.get("max_concurrent_crawls", 20),
+                max_concurrent_crawls=arguments.get("max_concurrent_crawls"),
             )
         elif name == "search_libraries":
             return await self.tools.search_libraries(

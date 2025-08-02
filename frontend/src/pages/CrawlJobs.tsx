@@ -34,6 +34,7 @@ export default function CrawlJobs() {
   } | null>(null);
   const [selectedJobs, setSelectedJobs] = useState<Set<string>>(new Set());
   const [isBulkDelete, setIsBulkDelete] = useState(false);
+  const [isBulkCancel, setIsBulkCancel] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const navigate = useNavigate();
   const queryClient = useQueryClient();
@@ -98,9 +99,16 @@ export default function CrawlJobs() {
   };
 
   const confirmCancel = () => {
-    if (jobToCancel) {
+    if (isBulkCancel) {
+      bulkCancelMutation.mutate(Array.from(selectedJobs));
+    } else if (jobToCancel) {
       cancelMutation.mutate(jobToCancel.id);
     }
+  };
+
+  const handleBulkCancel = () => {
+    setIsBulkCancel(true);
+    setCancelModalOpen(true);
   };
 
   const deleteMutation = useMutation({
@@ -136,6 +144,23 @@ export default function CrawlJobs() {
     },
   });
 
+  const bulkCancelMutation = useMutation({
+    mutationFn: (jobIds: string[]) => api.cancelBulkCrawlJobs(jobIds),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["crawl-jobs"] });
+      setCancelModalOpen(false);
+      setSelectedJobs(new Set());
+      setIsBulkCancel(false);
+    },
+    onError: (error) => {
+      console.error("Failed to cancel jobs:", error);
+      alert(
+        "Failed to cancel jobs: " +
+          (error instanceof Error ? error.message : "Unknown error")
+      );
+    },
+  });
+
   // Filter jobs based on search query
   const filteredJobs = useMemo(() => {
     if (!jobs) return [];
@@ -149,11 +174,16 @@ export default function CrawlJobs() {
     );
   }, [jobs, searchQuery]);
 
-  // Only allow deletion of completed, failed, or cancelled jobs
+  // Only allow deletion of completed, failed, cancelled, or paused jobs
   const deletableJobs = useMemo(() => {
     return filteredJobs.filter((job) =>
-      ["completed", "failed", "cancelled"].includes(job.status)
+      ["completed", "failed", "cancelled", "paused"].includes(job.status)
     );
+  }, [filteredJobs]);
+
+  // Jobs that can be cancelled (running or stalled)
+  const cancellableJobs = useMemo(() => {
+    return filteredJobs.filter((job) => job.status === "running");
   }, [filteredJobs]);
 
   const handleDeleteClick = (
@@ -211,7 +241,7 @@ export default function CrawlJobs() {
   };
 
   const selectAll = () => {
-    const allIds = new Set(deletableJobs.map((j) => j.id));
+    const allIds = new Set(filteredJobs.map((j) => j.id));
     setSelectedJobs(allIds);
   };
 
@@ -331,7 +361,7 @@ export default function CrawlJobs() {
         </div>
 
         {/* Bulk Actions Bar */}
-        {deletableJobs.length > 0 && (
+        {filteredJobs.length > 0 && (
           <div className="flex items-center justify-between p-4 bg-secondary/50 rounded-md">
             <div className="flex items-center gap-4">
               {/* Select All Checkbox */}
@@ -339,8 +369,8 @@ export default function CrawlJobs() {
                 <div
                   onClick={() => {
                     if (
-                      selectedJobs.size === deletableJobs.length &&
-                      deletableJobs.length > 0
+                      selectedJobs.size === filteredJobs.length &&
+                      filteredJobs.length > 0
                     ) {
                       deselectAll();
                     } else {
@@ -351,35 +381,50 @@ export default function CrawlJobs() {
                 >
                   <div
                     className={`w-5 h-5 rounded border-2 flex items-center justify-center ${
-                      selectedJobs.size === deletableJobs.length &&
-                      deletableJobs.length > 0
+                      selectedJobs.size === filteredJobs.length &&
+                      filteredJobs.length > 0
                         ? "bg-primary border-primary"
                         : selectedJobs.size > 0 &&
-                          selectedJobs.size < deletableJobs.length
+                          selectedJobs.size < filteredJobs.length
                         ? "bg-primary/50 border-primary"
                         : "border-input bg-background"
                     }`}
                   >
-                    {selectedJobs.size === deletableJobs.length &&
-                      deletableJobs.length > 0 && (
+                    {selectedJobs.size === filteredJobs.length &&
+                      filteredJobs.length > 0 && (
                         <Check className="h-3 w-3 text-primary-foreground" />
                       )}
                     {selectedJobs.size > 0 &&
-                      selectedJobs.size < deletableJobs.length && (
+                      selectedJobs.size < filteredJobs.length && (
                         <div className="w-2 h-2 bg-primary-foreground rounded-sm" />
                       )}
                   </div>
                 </div>
                 <span className="text-sm font-medium">
-                  {selectedJobs.size} of {deletableJobs.length} deletable
-                  selected
+                  {selectedJobs.size} of {filteredJobs.length} selected
+                  {(() => {
+                    const selectedCancellable = Array.from(selectedJobs).filter(id => 
+                      cancellableJobs.some(job => job.id === id)
+                    ).length;
+                    const selectedDeletable = Array.from(selectedJobs).filter(id => 
+                      deletableJobs.some(job => job.id === id)
+                    ).length;
+                    if (selectedCancellable > 0 && selectedDeletable > 0) {
+                      return ` (${selectedCancellable} running, ${selectedDeletable} deletable)`;
+                    } else if (selectedCancellable > 0) {
+                      return ` (${selectedCancellable} running)`;
+                    } else if (selectedDeletable > 0) {
+                      return ` (${selectedDeletable} deletable)`;
+                    }
+                    return "";
+                  })()}
                 </span>
               </div>
               <button
                 onClick={selectAll}
                 className="text-sm text-muted-foreground hover:text-foreground"
               >
-                Select all deletable {!!searchQuery && "matching"}
+                Select all {!!searchQuery && "matching"}
               </button>
               {selectedJobs.size > 0 && (
                 <>
@@ -393,17 +438,42 @@ export default function CrawlJobs() {
                 </>
               )}
             </div>
-            <button
-              onClick={handleBulkDelete}
-              disabled={selectedJobs.size === 0}
-              className={`px-4 py-2 rounded-md transition-colors ${
-                selectedJobs.size > 0
-                  ? "bg-destructive text-destructive-foreground hover:bg-destructive/90"
-                  : "bg-secondary text-muted-foreground cursor-not-allowed"
-              }`}
-            >
-              Delete Selected
-            </button>
+            <div className="flex items-center gap-2">
+              {(() => {
+                const selectedCancellable = Array.from(selectedJobs).filter(id => 
+                  cancellableJobs.some(job => job.id === id)
+                ).length;
+                const selectedDeletable = Array.from(selectedJobs).filter(id => 
+                  deletableJobs.some(job => job.id === id)
+                ).length;
+                
+                return (
+                  <>
+                    {selectedCancellable > 0 && (
+                      <button
+                        onClick={handleBulkCancel}
+                        className="px-4 py-2 rounded-md bg-yellow-600 text-white hover:bg-yellow-700"
+                      >
+                        Cancel {selectedCancellable} Running
+                      </button>
+                    )}
+                    {selectedDeletable > 0 && (
+                      <button
+                        onClick={handleBulkDelete}
+                        className="px-4 py-2 rounded-md bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                      >
+                        Delete {selectedDeletable} Selected
+                      </button>
+                    )}
+                    {selectedJobs.size > 0 && selectedCancellable === 0 && selectedDeletable === 0 && (
+                      <span className="text-sm text-muted-foreground">
+                        No actions available for selected jobs
+                      </span>
+                    )}
+                  </>
+                );
+              })()}
+            </div>
           </div>
         )}
       </div>
@@ -459,27 +529,25 @@ export default function CrawlJobs() {
                 return (
                   <tr key={job.id} className="hover:bg-secondary/80">
                     <td className="w-12 px-6 py-4">
-                      {isDeletable && (
+                      <div
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          toggleSelectJob(job.id);
+                        }}
+                        className="cursor-pointer"
+                      >
                         <div
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            toggleSelectJob(job.id);
-                          }}
-                          className="cursor-pointer"
+                          className={`w-5 h-5 rounded border-2 flex items-center justify-center ${
+                            selectedJobs.has(job.id)
+                              ? "bg-primary border-primary"
+                              : "border-input bg-background hover:border-primary"
+                          }`}
                         >
-                          <div
-                            className={`w-5 h-5 rounded border-2 flex items-center justify-center ${
-                              selectedJobs.has(job.id)
-                                ? "bg-primary border-primary"
-                                : "border-input bg-background hover:border-primary"
-                            }`}
-                          >
-                            {selectedJobs.has(job.id) && (
-                              <Check className="h-3 w-3 text-primary-foreground" />
-                            )}
-                          </div>
+                          {selectedJobs.has(job.id) && (
+                            <Check className="h-3 w-3 text-primary-foreground" />
+                          )}
                         </div>
-                      )}
+                      </div>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">
                       <Link
@@ -587,13 +655,22 @@ export default function CrawlJobs() {
       <ConfirmationDialog
         isOpen={cancelModalOpen}
         title="Confirm Cancel"
-        message={`Are you sure you want to cancel the job "${jobToCancel?.name}"? This action cannot be undone.`}
-        confirmText="Cancel Job"
+        message={
+          isBulkCancel
+            ? `Are you sure you want to cancel ${selectedJobs.size} running job${
+                selectedJobs.size > 1 ? "s" : ""
+              }? This action cannot be undone.`
+            : `Are you sure you want to cancel the job "${jobToCancel?.name}"? This action cannot be undone.`
+        }
+        confirmText={isBulkCancel ? "Cancel Jobs" : "Cancel Job"}
         cancelText="Keep Running"
         variant="destructive"
-        isConfirming={cancelMutation.isPending}
+        isConfirming={cancelMutation.isPending || bulkCancelMutation.isPending}
         onConfirm={confirmCancel}
-        onCancel={() => setCancelModalOpen(false)}
+        onCancel={() => {
+          setCancelModalOpen(false);
+          setIsBulkCancel(false);
+        }}
       />
 
       {/* Delete Confirmation Modal */}
