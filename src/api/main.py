@@ -5,17 +5,18 @@ import sys
 from contextlib import asynccontextmanager
 from pathlib import Path
 
-from fastapi import FastAPI, HTTPException, Depends
+from fastapi import Depends, FastAPI, HTTPException, WebSocket
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
-from sqlalchemy.orm import Session
 from sqlalchemy import text
+from sqlalchemy.orm import Session
 
 from ..config import get_settings
 from ..database import get_db
-from .routes import sources, crawl_jobs, search, snippets, upload
 from .mcp_routes import router as mcp_router
 from .mcp_streamable import router as mcp_streamable_router
+from .routes import crawl_jobs, search, snippets, sources, upload
+from .websocket import websocket_endpoint
 
 # Setup logging
 logging.basicConfig(
@@ -36,7 +37,7 @@ async def lifespan(app: FastAPI):
     logger.info("Starting CodeDox API...")
     logger.info(f"Environment: {settings.environment}")
     logger.info(f"Debug mode: {settings.debug}")
-    
+
     # Test database connection
     from ..database import get_db_manager
     db_manager = get_db_manager()
@@ -44,24 +45,25 @@ async def lifespan(app: FastAPI):
         logger.error("Failed to connect to database. Please ensure PostgreSQL is running and the database exists.")
         logger.error("Run 'python cli.py init' to initialize the database.")
         raise RuntimeError("Database connection failed")
-    
+
     # Start health monitor (skip in test environment)
     import os
     if os.getenv("TESTING") != "true":
-        from ..crawler.health_monitor import get_health_monitor
         import asyncio
+
+        from ..crawler.health_monitor import get_health_monitor
         health_monitor = get_health_monitor()
         health_task = asyncio.create_task(health_monitor.start())
         logger.info("Started crawl job health monitor")
     else:
         health_monitor = None
         health_task = None
-    
+
     yield
-    
+
     # Shutdown
     logger.info("Shutting down CodeDox API...")
-    
+
     # Stop health monitor if running
     if health_monitor and health_task:
         await health_monitor.stop()
@@ -70,7 +72,7 @@ async def lifespan(app: FastAPI):
             await health_task
         except asyncio.CancelledError:
             pass
-    
+
     logger.info("CodeDox API shutdown complete")
 
 # Create FastAPI app
@@ -98,6 +100,12 @@ app.include_router(snippets.router, prefix="/api", tags=["snippets"])
 app.include_router(upload.router, prefix="/api", tags=["upload"])
 app.include_router(mcp_router, tags=["mcp"])
 app.include_router(mcp_streamable_router, tags=["mcp-streamable"])
+
+# WebSocket endpoint
+@app.websocket("/ws/{client_id}")
+async def websocket_route(websocket: WebSocket, client_id: str):
+    """WebSocket endpoint for real-time updates."""
+    await websocket_endpoint(websocket, client_id)
 
 # Root redirect
 @app.get("/")
@@ -127,34 +135,36 @@ async def health_check_db(db: Session = Depends(get_db)):
 async def get_statistics(db: Session = Depends(get_db)):
     """Get system statistics."""
     try:
-        from ..database.models import CrawlJob, Document, CodeSnippet
-        from sqlalchemy import func, distinct, and_
         from datetime import datetime, timedelta
-        
+
+        from sqlalchemy import distinct, func
+
+        from ..database.models import CodeSnippet, CrawlJob, Document
+
         # Get counts
         total_sources = db.query(
             func.count(distinct(CrawlJob.name))
         ).filter(
             CrawlJob.status == 'completed'
         ).scalar() or 0
-        
+
         total_documents = db.query(func.count(Document.id)).scalar() or 0
         total_snippets = db.query(func.count(CodeSnippet.id)).scalar() or 0
-        
+
         # Get language distribution
         language_stats = db.query(
             CodeSnippet.language,
             func.count(CodeSnippet.id).label('count')
         ).group_by(CodeSnippet.language).all()
-        
+
         languages = {lang: count for lang, count in language_stats if lang}
-        
+
         # Get recent crawls (last 7 days)
         seven_days_ago = datetime.utcnow() - timedelta(days=7)
         recent_crawls = db.query(CrawlJob).filter(
             CrawlJob.created_at >= seven_days_ago
         ).order_by(CrawlJob.created_at.desc()).limit(10).all()
-        
+
         return {
             "total_sources": total_sources,
             "total_documents": total_documents,
@@ -162,7 +172,7 @@ async def get_statistics(db: Session = Depends(get_db)):
             "languages": languages,
             "recent_crawls": [job.to_dict() for job in recent_crawls]
         }
-        
+
     except Exception as e:
         logger.error(f"Failed to get statistics: {e}")
         raise HTTPException(status_code=500, detail=str(e))
@@ -176,12 +186,13 @@ async def get_recent_snippets(
 ):
     """Get recently extracted code snippets."""
     try:
-        from ..database.models import CodeSnippet, Document, CrawlJob
         from datetime import datetime, timedelta
-        
+
+        from ..database.models import CodeSnippet, CrawlJob, Document
+
         # Calculate time threshold
         time_threshold = datetime.utcnow() - timedelta(hours=hours)
-        
+
         # Query recent snippets with joins for source info
         snippets = db.query(
             CodeSnippet,
@@ -197,7 +208,7 @@ async def get_recent_snippets(
         ).order_by(
             CodeSnippet.created_at.desc()
         ).limit(limit).all()
-        
+
         # Format results
         results = []
         for snippet, doc_title, doc_url, source_name in snippets:
@@ -206,13 +217,13 @@ async def get_recent_snippets(
             snippet_dict['document_url'] = doc_url
             snippet_dict['source_name'] = source_name
             results.append(snippet_dict)
-        
+
         return {
             "snippets": results,
             "hours": hours,
             "count": len(results)
         }
-        
+
     except Exception as e:
         logger.error(f"Failed to get recent snippets: {e}")
         raise HTTPException(status_code=500, detail=str(e))

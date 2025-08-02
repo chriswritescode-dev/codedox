@@ -27,7 +27,7 @@ class CrawlConfig:
     include_patterns: List[str] = field(default_factory=list)
     exclude_patterns: List[str] = field(default_factory=list)
     max_pages: int = 100
-    max_concurrent_crawls: int = 20
+    max_concurrent_crawls: int = 5
     respect_robots_txt: bool = False
     content_types: List[str] = field(default_factory=lambda: ["text/markdown", "text/plain"])
     min_content_length: int = 100
@@ -98,7 +98,7 @@ class CrawlManager:
             existing_task.cancel()
             # Wait briefly for cancellation to complete
             try:
-                await asyncio.wait_for(existing_task, timeout=5.0)
+                await asyncio.wait_for(existing_task, timeout=self.settings.crawling.task_cancellation_timeout)
             except (asyncio.CancelledError, asyncio.TimeoutError):
                 pass
             # Remove from active tasks
@@ -113,6 +113,40 @@ class CrawlManager:
 
         return job_id
 
+    def _initialize_crawl_tracking(self, job_id: str) -> tuple[int, int]:
+        """Initialize tracking variables for crawl execution."""
+        job_data = self.job_manager.get_job_status(job_id)
+        job_config = job_data.get("config", {}) if job_data else {}
+        base_snippet_count = job_config.get("base_snippet_count", 0)
+        return base_snippet_count, 0  # Return base count and 0 for new snippets
+
+    async def _check_job_cancelled(self, job_id: str) -> None:
+        """Check if job is cancelled and raise CancelledError if so."""
+        job_status = self.job_manager.get_job_status(job_id)
+        if job_status and job_status.get("status") == "cancelled":
+            logger.info(f"Job {job_id} has been cancelled, stopping crawl")
+            raise asyncio.CancelledError("Job cancelled by user")
+
+    async def _update_crawl_progress(
+        self, job_id: str, processed_count: int, visited_urls: Set[str], 
+        total_snippets: int, docs_count: int, last_ws_count: int, base_snippet_count: int
+    ) -> int:
+        """Update crawl progress and return new last_ws_count if notification sent."""
+        send_notification = self.progress_tracker.should_send_update(
+            processed_count, last_ws_count
+        )
+        
+        await self.progress_tracker.update_progress(
+            job_id,
+            processed_pages=processed_count,
+            total_pages=len(visited_urls),
+            snippets_extracted=base_snippet_count + total_snippets,
+            documents_crawled=docs_count,
+            send_notification=send_notification,
+        )
+        
+        return processed_count if send_notification else last_ws_count
+
     async def _execute_crawl(self, job_id: str, config: CrawlConfig) -> None:
         """Execute the crawl job."""
         try:
@@ -124,7 +158,7 @@ class CrawlManager:
             # Start tracking
             await self.progress_tracker.start_tracking(job_id)
 
-            # Execute crawl based on depth
+            # Execute crawl based on depth - single page or deep crawl
             if config.max_depth > 0:
                 await self._execute_deep_crawl(job_id, config)
             else:
@@ -133,13 +167,12 @@ class CrawlManager:
             # Get final job status to preserve snippet count
             final_status = self.job_manager.get_job_status(job_id)
             final_snippet_count = final_status.get("snippets_extracted", 0) if final_status else 0
+            base_count = final_status.get("config", {}).get("base_snippet_count", 0) if final_status else 0
+            
+            logger.info(f"[SNIPPET_COUNT] Job {job_id} completion - Base: {base_count}, Final: {final_snippet_count}, New: {final_snippet_count - base_count}")
 
             # Complete job immediately after crawl
             self.job_manager.complete_job(job_id, success=True)
-
-            # Ensure final snippet count is preserved
-            if final_snippet_count > 0:
-                self.job_manager.update_job_status(job_id, snippets_extracted=final_snippet_count)
 
             await self.progress_tracker.send_completion(job_id, success=True)
 
@@ -164,10 +197,13 @@ class CrawlManager:
         """Execute deep crawl."""
         visited_urls: Set[str] = set()
         processed_count = 0
-        total_snippets = 0
         last_ws_count = 0
 
-        # Get job config
+        # Initialize tracking
+        base_snippet_count, total_snippets = self._initialize_crawl_tracking(job_id)
+        logger.info(f"[SNIPPET_COUNT] Starting deep crawl for job {job_id} with base count: {base_snippet_count}")
+        
+        # Get job config for domain restrictions
         job_data = self.job_manager.get_job_status(job_id)
         job_config = job_data.get("config", {}) if job_data else {}
 
@@ -182,10 +218,7 @@ class CrawlManager:
                 break
 
             # Check if job is cancelled
-            job_status = self.job_manager.get_job_status(job_id)
-            if job_status and job_status.get("status") == "cancelled":
-                logger.info(f"Job {job_id} has been cancelled, stopping crawl")
-                raise asyncio.CancelledError("Job cancelled by user")
+            await self._check_job_cancelled(job_id)
 
             # Crawl from this start URL
             logger.info(f"DEBUG: About to call crawl_page for {start_url}")
@@ -204,28 +237,23 @@ class CrawlManager:
                 processed_count += len(results)
                 total_snippets += snippets
                 visited_urls.update(r.url for r in results)
+                
+                logger.info(f"[SNIPPET_COUNT] Deep crawl batch - New snippets: {snippets}, Total: {total_snippets} (base: {base_snippet_count})")
 
                 # Update progress
-                await self.progress_tracker.update_progress(
-                    job_id,
-                    processed_pages=processed_count,
-                    total_pages=len(visited_urls),
-                    snippets_extracted=total_snippets,
-                    documents_crawled=docs,
-                    send_notification=self.progress_tracker.should_send_update(
-                        processed_count, last_ws_count
-                    ),
+                last_ws_count = await self._update_crawl_progress(
+                    job_id, processed_count, visited_urls, total_snippets, docs, last_ws_count, base_snippet_count
                 )
-
-                if self.progress_tracker.should_send_update(processed_count, last_ws_count):
-                    last_ws_count = processed_count
 
     async def _execute_single_crawl(self, job_id: str, config: CrawlConfig) -> None:
         """Execute single page crawl."""
         visited_urls: Set[str] = set()
         processed_count = 0
-        total_snippets = 0
         last_ws_count = 0
+        
+        # Initialize tracking
+        base_snippet_count, total_snippets = self._initialize_crawl_tracking(job_id)
+        logger.info(f"[SNIPPET_COUNT] Starting single crawl for job {job_id} with base count: {base_snippet_count}")
 
         # Process each URL
         for url in config.start_urls:
@@ -236,10 +264,7 @@ class CrawlManager:
                 continue
 
             # Check if job is cancelled
-            job_status = self.job_manager.get_job_status(job_id)
-            if job_status and job_status.get("status") == "cancelled":
-                logger.info(f"Job {job_id} has been cancelled, stopping crawl")
-                raise asyncio.CancelledError("Job cancelled by user")
+            await self._check_job_cancelled(job_id)
 
             visited_urls.add(url)
 
@@ -266,21 +291,13 @@ class CrawlManager:
 
                     processed_count += 1
                     total_snippets += snippet_count
+                    
+                    logger.info(f"[SNIPPET_COUNT] Single crawl page - New snippets: {snippet_count}, Total: {total_snippets} (base: {base_snippet_count})")
 
                 # Update progress
-                await self.progress_tracker.update_progress(
-                    job_id,
-                    processed_pages=processed_count,
-                    total_pages=len(visited_urls),
-                    snippets_extracted=total_snippets,
-                    documents_crawled=processed_count,
-                    send_notification=self.progress_tracker.should_send_update(
-                        processed_count, last_ws_count
-                    ),
+                last_ws_count = await self._update_crawl_progress(
+                    job_id, processed_count, visited_urls, total_snippets, processed_count, last_ws_count, base_snippet_count
                 )
-
-                if self.progress_tracker.should_send_update(processed_count, last_ws_count):
-                    last_ws_count = processed_count
 
     async def cancel_job(self, job_id: str) -> bool:
         """Cancel a crawl job."""
@@ -295,7 +312,7 @@ class CrawlManager:
                 task.cancel()
                 # Wait a moment for cancellation to propagate
                 try:
-                    await asyncio.wait_for(task, timeout=5.0)
+                    await asyncio.wait_for(task, timeout=self.settings.crawling.task_cancellation_timeout)
                 except (asyncio.CancelledError, asyncio.TimeoutError):
                     pass
             # Remove from active tasks
@@ -317,13 +334,13 @@ class CrawlManager:
 
         # Check if stalled
         if job_status["status"] == "running" and job_status.get("last_heartbeat"):
-            from datetime import datetime
+            from datetime import datetime, timezone
 
             last_heartbeat = datetime.fromisoformat(
                 job_status["last_heartbeat"].replace("Z", "+00:00")
             )
-            time_since_heartbeat = (datetime.utcnow() - last_heartbeat).total_seconds()
-            if time_since_heartbeat < 60:  # 1 minute
+            time_since_heartbeat = (datetime.now(timezone.utc) - last_heartbeat).total_seconds()
+            if time_since_heartbeat < self.settings.crawling.heartbeat_stall_threshold:
                 logger.info(f"Job {job_id} is still active")
                 return False
 
@@ -399,7 +416,7 @@ class CrawlManager:
 
         # Create retry config outside session, preserving max_concurrent_crawls
         original_config = job_dict.get("config", {})
-        max_concurrent = original_config.get("max_concurrent_crawls", 20)
+        max_concurrent = original_config.get("max_concurrent_crawls", self.settings.crawling.max_concurrent_crawls)
         
         retry_config = CrawlConfig(
             name=f"{job_dict['name']} - Retry Failed Pages",
@@ -432,6 +449,6 @@ class CrawlManager:
             include_patterns=config_data.get("include_patterns", []),
             exclude_patterns=config_data.get("exclude_patterns", []),
             max_pages=config_data.get("max_pages", 100),
-            max_concurrent_crawls=config_data.get("max_concurrent_crawls", 20),
+            max_concurrent_crawls=config_data.get("max_concurrent_crawls", self.settings.crawling.max_concurrent_crawls),
             metadata=config_data.get("metadata", {}),
         )

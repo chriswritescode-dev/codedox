@@ -1,4 +1,3 @@
-import { useState } from "react";
 import {
   useParams,
   Link,
@@ -27,7 +26,7 @@ export default function SourceDetail() {
     state.deleteMutation.mutate();
   };
   
-  const handleUpdateSourceName = async (sourceId: string, newName: string) => {
+  const handleUpdateSourceName = async (_sourceId: string, newName: string) => {
     await state.updateSourceNameMutation.mutateAsync({ name: newName });
   };
 
@@ -100,16 +99,12 @@ export default function SourceDetail() {
             formatPreview={state.formatPreview}
             deleteMutation={state.deleteMutation}
             deleteMatchesMutation={state.deleteMatchesMutation}
-            updateSourceNameMutation={state.updateSourceNameMutation}
-            formatPreviewMutation={state.formatPreviewMutation}
             formatSourceMutation={state.formatSourceMutation}
-            handleFormatAll={() => state.formatPreviewMutation.mutate()}
             handleConfirmFormat={() => state.formatSourceMutation.mutate()}
             setDeleteModalOpen={state.setDeleteModalOpen}
             setDeleteMatchesModalOpen={state.setDeleteMatchesModalOpen}
             setFormatDialogOpen={state.setFormatDialogOpen}
             setFormatPreview={state.setFormatPreview}
-            handleUpdateSourceName={handleUpdateSourceName}
             handleConfirmDelete={handleConfirmDelete}
           />
         </div>
@@ -182,10 +177,7 @@ export default function SourceDetail() {
               setSelectedLanguage={state.setSelectedLanguage}
               setSnippetsSearch={state.setSnippetsSearch}
               formatPreviewMutation={state.formatPreviewMutation}
-              formatSourceMutation={state.formatSourceMutation}
-              handleConfirmFormat={() => state.formatSourceMutation.mutate()}
               setDeleteMatchesModalOpen={state.setDeleteMatchesModalOpen}
-              deleteMatchesMutation={state.deleteMatchesMutation}
             />
           )}
         </div>

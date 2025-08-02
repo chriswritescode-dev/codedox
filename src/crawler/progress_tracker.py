@@ -190,8 +190,12 @@ class ProgressTracker:
         try:
             notify_func = _get_notify_function()
             await notify_func(job_id, status, data)
+            logger.debug(f"[WEBSOCKET] Successfully sent update for job {job_id}: {status}")
         except Exception as e:
-            logger.error(f"Failed to send WebSocket update: {e}")
+            logger.error(f"[WEBSOCKET] Failed to send update for job {job_id}: {e}")
+            # Log specific error details for 403 errors
+            if "403" in str(e):
+                logger.error(f"[WEBSOCKET] 403 Forbidden error - possible authentication issue for job {job_id}")
 
     async def send_completion(
         self, job_id: str, success: bool = True, error: Optional[str] = None

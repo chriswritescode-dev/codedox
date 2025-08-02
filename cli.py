@@ -39,7 +39,7 @@ def init(drop: bool):
 @click.option('--depth', default=1, help='Maximum crawl depth (0-3)')
 @click.option('--domain', help='Domain restriction pattern')
 @click.option('--url-patterns', multiple=True, help='URL patterns to include (e.g., "*docs*", "*guide*")')
-@click.option('--concurrent', default=20, help='Maximum concurrent crawl sessions (default: 20)')
+@click.option('--concurrent', default=None, help='Maximum concurrent crawl sessions (default: from config)')
 def crawl(name: str, urls: tuple, depth: int, domain: Optional[str], url_patterns: tuple, 
           concurrent: int):
     """Start a new crawl job."""
