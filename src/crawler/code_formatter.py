@@ -191,7 +191,27 @@ class CodeFormatter:
             "yml": "yaml",
         }
 
+        # Map language to file extension for proper syntax inference
+        extension_map = {
+            "javascript": "js",
+            "js": "js",
+            "jsx": "jsx",
+            "typescript": "ts",
+            "ts": "ts",
+            "tsx": "tsx",
+            "css": "css",
+            "scss": "scss",
+            "less": "less",
+            "json": "json",
+            "markdown": "md",
+            "md": "md",
+            "html": "html",
+            "yaml": "yaml",
+            "yml": "yml",
+        }
+
         parser = parser_map.get(language, "babel")
+        extension = extension_map.get(language, "js")
 
         try:
             # Use secure temp file context manager
@@ -214,7 +234,7 @@ class CodeFormatter:
                         "--parser",
                         parser,
                         "--stdin-filepath",
-                        f"code.{language}",
+                        f"code.{extension}",
                     ],
                     input=code,
                     capture_output=True,
@@ -235,7 +255,7 @@ class CodeFormatter:
                     for fallback_parser in fallback_parsers:
                         logger.debug(f"Trying fallback parser: {fallback_parser}")
                         fallback_result = self._try_prettier_with_parser(
-                            code, fallback_parser, config_path
+                            code, fallback_parser, config_path, extension
                         )
                         if fallback_result:
                             logger.info(
@@ -490,11 +510,19 @@ class CodeFormatter:
         }
         return fallback_map.get(parser, [])
 
-    def _try_prettier_with_parser(self, code: str, parser: str, config_path: str) -> str | None:
+    def _try_prettier_with_parser(self, code: str, parser: str, config_path: str, extension: str = "js") -> str | None:
         """Try formatting with a specific Prettier parser."""
         try:
             result = subprocess.run(
-                [self.prettier_path, "--config", config_path, "--parser", parser],
+                [
+                    self.prettier_path, 
+                    "--config", 
+                    config_path, 
+                    "--parser", 
+                    parser,
+                    "--stdin-filepath",
+                    f"code.{extension}",
+                ],
                 input=code,
                 capture_output=True,
                 text=True,
