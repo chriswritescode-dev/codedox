@@ -35,7 +35,7 @@ export default function Sources() {
     isLoading,
     error,
   } = useQuery({
-    queryKey: ["sources", currentPage, itemsPerPage, searchQuery],
+    queryKey: ["sources", currentPage, itemsPerPage],
     queryFn: () => {
       console.log("Fetching sources...");
       const offset = (currentPage - 1) * itemsPerPage;
