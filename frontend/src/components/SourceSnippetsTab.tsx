@@ -38,11 +38,11 @@ export function SourceSnippetsTab({
   setDeleteMatchesModalOpen,
 }: SourceSnippetsTabProps) {
   return (
-    <div className="space-y-4">
+    <div className="space-y-4 w-full">
       {/* Search and Filter Bar */}
       <div className="flex items-center justify-between mb-4 gap-2">
-        <div className="flex gap-3 flex-1">
-          <div className="flex-1 relative">
+        <div className="flex gap-3 flex-1 min-w-0">
+          <div className="flex-1 relative min-w-[300px]">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
             <input
               type="text"
@@ -118,28 +118,30 @@ export function SourceSnippetsTab({
               </div>
 
       {/* Snippets List */}
-      {snippetsLoading ? (
-        <div className="text-center py-8 text-muted-foreground">
-          Searching snippets...
-        </div>
-      ) : snippets ? (
-        <>
-          <SnippetList
-            snippets={snippets.snippets}
-            showSource={false}
-          />
-          {snippetsTotalPages > 1 && (
-            <PaginationControls
-              currentPage={snippetsPage}
-              totalPages={snippetsTotalPages}
-              onPageChange={setSnippetsPage}
-              totalItems={snippets.total}
-              itemsPerPage={snippetsPerPage}
-              currentItemsCount={snippets.snippets.length}
+      <div className="min-h-[200px]">
+        {snippetsLoading ? (
+          <div className="text-center py-8 text-muted-foreground">
+            Searching snippets...
+          </div>
+        ) : snippets ? (
+          <>
+            <SnippetList
+              snippets={snippets.snippets}
+              showSource={false}
             />
-          )}
-        </>
-      ) : null}
+            {snippetsTotalPages > 1 && (
+              <PaginationControls
+                currentPage={snippetsPage}
+                totalPages={snippetsTotalPages}
+                onPageChange={setSnippetsPage}
+                totalItems={snippets.total}
+                itemsPerPage={snippetsPerPage}
+                currentItemsCount={snippets.snippets.length}
+              />
+            )}
+          </>
+        ) : null}
+      </div>
     </div>
   );
 }

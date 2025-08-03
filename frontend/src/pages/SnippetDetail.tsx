@@ -96,19 +96,20 @@ export default function SnippetDetail() {
   }
 
   return (
-    <div className="space-y-6 max-w-6xl mx-auto">
-      <div className="flex items-center gap-4">
-        <Link
-          to={location.state?.from || "/search"}
-          className="flex items-center text-sm text-muted-foreground hover:text-foreground"
-        >
-          <ArrowLeft className="h-4 w-4 mr-1" />
-          Back
-        </Link>
-      </div>
+    <div className="w-full">
+      <div className="space-y-6 max-w-6xl mx-auto w-full">
+        <div className="flex items-center gap-4">
+          <Link
+            to={location.state?.from || "/search"}
+            className="flex items-center text-sm text-muted-foreground hover:text-foreground"
+          >
+            <ArrowLeft className="h-4 w-4 mr-1" />
+            Back
+          </Link>
+        </div>
 
-      <div className="bg-secondary/50 rounded-lg p-6">
-        <div className="flex items-start justify-between mb-4">
+        <div className="bg-secondary/50 rounded-lg p-6">
+          <div className="flex items-start justify-between mb-4">
           <div>
             <h1 className="text-2xl font-bold flex items-center gap-2">
               <Code className="h-6 w-6" />
@@ -199,6 +200,7 @@ export default function SnippetDetail() {
           }}
         />
       )}
+      </div>
     </div>
   );
 }

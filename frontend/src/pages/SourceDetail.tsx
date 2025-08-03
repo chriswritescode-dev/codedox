@@ -59,8 +59,9 @@ export default function SourceDetail() {
   }
 
   return (
-    <div className="space-y-6 max-w-6xl mx-auto">
-      <div className="flex items-center gap-4">
+    <div className="w-full">
+      <div className="space-y-6 max-w-6xl mx-auto w-full">
+        <div className="flex items-center gap-4">
         <Link
           to="/sources"
           className="flex items-center text-sm text-muted-foreground hover:text-foreground"
@@ -181,6 +182,7 @@ export default function SourceDetail() {
             />
           )}
         </div>
+      </div>
       </div>
     </div>
   );
