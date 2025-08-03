@@ -78,7 +78,8 @@ class CrawlJob(Base):  # type: ignore[misc,valid-type]
             'failed_pages_count': len(self.failed_pages) if hasattr(self, 'failed_pages') else 0,
             'started_at': self.started_at.isoformat() if self.started_at else None,
             'completed_at': self.completed_at.isoformat() if self.completed_at else None,
-            'created_at': self.created_at.isoformat()
+            'created_at': self.created_at.isoformat(),
+            'config': self.config
         }
 
 
