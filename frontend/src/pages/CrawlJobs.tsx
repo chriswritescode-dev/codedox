@@ -19,6 +19,7 @@ import {
 import ProgressBar from "../components/ProgressBar";
 import { ConfirmationDialog } from "../components/ConfirmationDialog";
 import { NewCrawlDialog } from "../components/NewCrawlDialog";
+import { PaginationControls } from "../components/PaginationControls";
 
 export default function CrawlJobs() {
   const [showModal, setShowModal] = useState(false);
@@ -36,10 +37,12 @@ export default function CrawlJobs() {
   const [isBulkDelete, setIsBulkDelete] = useState(false);
   const [isBulkCancel, setIsBulkCancel] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
+  const [currentPage, setCurrentPage] = useState(1);
+  const [itemsPerPage, setItemsPerPage] = useState(10);
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const {
-    data: jobs,
+    data: allJobs,
     isLoading,
     error,
   } = useQuery({
@@ -163,16 +166,23 @@ export default function CrawlJobs() {
 
   // Filter jobs based on search query
   const filteredJobs = useMemo(() => {
-    if (!jobs) return [];
-    if (!searchQuery) return jobs;
+    if (!allJobs) return [];
+    if (!searchQuery) return allJobs;
 
     const query = searchQuery.toLowerCase();
-    return jobs.filter(
+    return allJobs.filter(
       (job) =>
         job.name.toLowerCase().includes(query) ||
         job.base_url.toLowerCase().includes(query)
     );
-  }, [jobs, searchQuery]);
+  }, [allJobs, searchQuery]);
+
+  // Paginate the filtered jobs
+  const paginatedJobs = useMemo(() => {
+    const startIndex = (currentPage - 1) * itemsPerPage;
+    const endIndex = startIndex + itemsPerPage;
+    return filteredJobs.slice(startIndex, endIndex);
+  }, [filteredJobs, currentPage, itemsPerPage]);
 
   // Only allow deletion of completed, failed, cancelled, or paused jobs
   const deletableJobs = useMemo(() => {
@@ -275,6 +285,16 @@ export default function CrawlJobs() {
     return `${hours}h ago`;
   };
 
+  const handlePageChange = (page: number) => {
+    setCurrentPage(page);
+  };
+
+  const handleItemsPerPageChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
+    const newItemsPerPage = parseInt(e.target.value);
+    setItemsPerPage(newItemsPerPage);
+    setCurrentPage(1); // Reset to first page when changing items per page
+  };
+
   const getStatusIcon = (status: string, job: any) => {
     // Check for stalled state
     if (status === "running" && isJobStalled(job)) {
@@ -322,22 +342,23 @@ export default function CrawlJobs() {
   }
 
   return (
-    <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-3xl font-bold">Crawl Jobs</h1>
-          <p className="text-muted-foreground mt-2">
-            Monitor and manage documentation crawls
-          </p>
+    <div className="flex flex-col h-full">
+      <div className="flex-1 space-y-6 pb-6">
+        <div className="flex items-center justify-between">
+          <div>
+            <h1 className="text-3xl font-bold">Crawl Jobs</h1>
+            <p className="text-muted-foreground mt-2">
+              Monitor and manage documentation crawls
+            </p>
+          </div>
+          <button
+            onClick={() => setShowModal(true)}
+            className="flex items-center px-4 py-2 bg-primary text-primary-foreground rounded-md hover:bg-primary/90"
+          >
+            <Plus className="h-4 w-4 mr-2" />
+            New Crawl
+          </button>
         </div>
-        <button
-          onClick={() => setShowModal(true)}
-          className="flex items-center px-4 py-2 bg-primary text-primary-foreground rounded-md hover:bg-primary/90"
-        >
-          <Plus className="h-4 w-4 mr-2" />
-          New Crawl
-        </button>
-      </div>
 
       {/* Search and Selection Controls */}
       <div className="space-y-4">
@@ -478,13 +499,13 @@ export default function CrawlJobs() {
         )}
       </div>
 
-      {!!jobs && jobs.length === 0 && (
+      {!!allJobs && allJobs.length === 0 && (
         <div className="text-center py-12 text-muted-foreground">
           No crawl jobs found. Create one to get started.
         </div>
       )}
 
-      {filteredJobs.length === 0 && !!jobs && jobs.length > 0 && (
+      {filteredJobs.length === 0 && !!allJobs && allJobs.length > 0 && (
         <div className="text-center py-12 text-muted-foreground">
           No jobs match your search.
         </div>
@@ -520,7 +541,7 @@ export default function CrawlJobs() {
               </tr>
             </thead>
             <tbody className="divide-y divide-border">
-              {filteredJobs.map((job) => {
+              {paginatedJobs.map((job) => {
                 const isDeletable = [
                   "completed",
                   "failed",
@@ -694,6 +715,42 @@ export default function CrawlJobs() {
           setIsBulkDelete(false);
         }}
       />
+      </div>
+
+      {/* Pagination Controls */}
+      {allJobs && filteredJobs.length > 0 && (
+        <div className="mt-8">
+          <div className="flex items-center justify-between mb-4">
+            <div className="flex items-center gap-4">
+              <div className="flex items-center gap-2">
+                <label htmlFor="items-per-page" className="text-sm text-muted-foreground">
+                  Items per page:
+                </label>
+                <select
+                  id="items-per-page"
+                  value={itemsPerPage}
+                  onChange={handleItemsPerPageChange}
+                  className="w-20 px-2 py-1 bg-secondary border border-input rounded-md focus:outline-none focus:ring-2 focus:ring-primary"
+                >
+                  <option value={10}>10</option>
+                  <option value={20}>20</option>
+                  <option value={50}>50</option>
+                  <option value={100}>100</option>
+                </select>
+              </div>
+            </div>
+          </div>
+          
+          <PaginationControls
+            currentPage={currentPage}
+            totalPages={Math.ceil(filteredJobs.length / itemsPerPage)}
+            onPageChange={handlePageChange}
+            totalItems={filteredJobs.length}
+            itemsPerPage={itemsPerPage}
+            currentItemsCount={paginatedJobs.length}
+          />
+        </div>
+      )}
     </div>
   );
 }

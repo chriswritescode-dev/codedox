@@ -113,7 +113,13 @@ class PageCrawler:
                 logger.info(f"Job {job_id} is already cancelled before starting crawl")
                 raise asyncio.CancelledError("Job cancelled before crawl started")
             
+            # Check current async task status
+            current_task = asyncio.current_task()
+            logger.info(f"Current task: {current_task}, cancelled: {current_task.cancelled() if current_task else 'No task'}")
+            
             logger.info(f"Creating AsyncWebCrawler with config: {self.browser_config}")
+            logger.info(f"Browser config details - headless: {self.browser_config.headless}, viewport: {self.browser_config.viewport_width}x{self.browser_config.viewport_height}")
+            
             async with AsyncWebCrawler(config=self.browser_config) as crawler:
                 logger.info("AsyncWebCrawler created successfully")
                 results = []
@@ -398,6 +404,19 @@ class PageCrawler:
         if not html_content:
             logger.warning(f"No HTML content found in result for {result.url}")
             return None
+        
+        # Debug: Save raw HTML to file
+        import os
+        from pathlib import Path
+        debug_html_dir = Path("logs/html_raw_debug") / job_id
+        debug_html_dir.mkdir(parents=True, exist_ok=True)
+        from urllib.parse import urlparse
+        parsed_url = urlparse(result.url)
+        html_filename = f"{parsed_url.netloc}_{parsed_url.path.replace('/', '_')}.html"
+        html_filename = html_filename.replace("__", "_").strip("_") or "index.html"
+        with open(debug_html_dir / html_filename, 'w', encoding='utf-8') as f:
+            f.write(html_content)
+        logger.info(f"Saved raw HTML to: {debug_html_dir / html_filename}")
         
         # Also get markdown for content hash comparison (for change detection)
         markdown_content = self._extract_markdown_content(result)

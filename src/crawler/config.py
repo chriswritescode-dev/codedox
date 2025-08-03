@@ -56,7 +56,7 @@ def create_crawler_config(
     """
     config_dict = {
         
-        "wait_until": "domcontentloaded",
+        "wait_until": "networkidle",
         "page_timeout": 60000,
         "cache_mode": CacheMode.BYPASS,
         "stream": True,

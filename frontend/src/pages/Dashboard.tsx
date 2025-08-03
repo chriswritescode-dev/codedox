@@ -2,6 +2,7 @@ import { useQuery } from '@tanstack/react-query'
 import { api } from '../lib/api'
 import { FileText, Code, Database, Clock } from 'lucide-react'
 import { Link } from 'react-router-dom'
+import QuickSearch from '../components/QuickSearch'
 
 export default function Dashboard() {
   
@@ -33,6 +34,9 @@ export default function Dashboard() {
   return (
     <div className="space-y-6">
       <h1 className="text-3xl font-bold">CodeDox Dashboard</h1>
+
+      {/* Quick Search */}
+      <QuickSearch />
 
       {/* Statistics Cards */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
