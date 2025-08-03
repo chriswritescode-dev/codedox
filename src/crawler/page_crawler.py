@@ -164,7 +164,8 @@ class PageCrawler:
                             extraction_semaphore,
                             job_id,
                             depth,
-                            progress_tracker
+                            progress_tracker,
+                            job_config
                         )
                     )
                     workers.append(worker)
@@ -321,7 +322,8 @@ class PageCrawler:
         semaphore: asyncio.Semaphore,
         job_id: str,
         depth: int,
-        progress_tracker: Any | None = None
+        progress_tracker: Any | None = None,
+        job_config: dict[str, Any] | None = None
     ) -> None:
         """Worker that extracts code from markdown content."""
         if logger.isEnabledFor(logging.DEBUG):
@@ -334,7 +336,7 @@ class PageCrawler:
 
                 # Process the crawl result (semaphore used internally for LLM calls)
                 processed_result = await self._process_crawl_result_with_html_extraction(
-                    result, job_id, depth, llm_semaphore=semaphore
+                    result, job_id, depth, llm_semaphore=semaphore, job_config=job_config
                 )
 
                 if processed_result:
@@ -426,13 +428,15 @@ class PageCrawler:
 
         # Check if we should ignore hash (for regeneration)
         ignore_hash = False
+        logger.debug(f"DEBUG: job_config = {job_config}")
         if job_config and isinstance(job_config, dict):
             job_metadata = job_config.get('metadata', {})
             ignore_hash = job_metadata.get('ignore_hash', False)
+            logger.info(f"DEBUG: job_metadata = {job_metadata}, ignore_hash = {ignore_hash}")
             if ignore_hash:
                 logger.info(f"Ignoring content hash for {result.url} - forcing regeneration")
-
-        # Check if content has changed (skip if ignore_hash is True)
+        
+        # Check if content has changed (skip ONLY if ignore_hash is False)
         if not ignore_hash:
             with self.db_manager.session_scope() as session:
                 from ..database import check_content_hash
@@ -458,7 +462,10 @@ class PageCrawler:
                             **page_metadata  # Include all extracted metadata
                         }
                     )
-
+        else:
+            # When ignore_hash is True, we force extraction even if content hasn't changed
+            logger.info(f"Force regeneration enabled for {result.url}, proceeding with extraction despite content hash")
+        
         # Content changed or new - extract code blocks from HTML
         if logger.isEnabledFor(logging.DEBUG):
             logger.debug(f"Content changed/new for {result.url}, performing HTML extraction")

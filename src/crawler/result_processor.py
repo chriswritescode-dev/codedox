@@ -90,9 +90,29 @@ class ResultProcessor:
 
             # Process code blocks directly
             if result.code_blocks:
-                snippet_count = await self._process_code_blocks(
-                    session, doc, result.code_blocks, result.url
-                )
+                try:
+                    # Delete old snippets only if we're about to create new ones
+                    # This happens AFTER document update but BEFORE creating new snippets
+                    if existing_doc:
+                        session.query(CodeSnippet).filter_by(document_id=existing_doc.id).delete()
+                        logger.info(f"Deleted old snippets for document {existing_doc.id}")
+                    
+                    snippet_count = await self._process_code_blocks(
+                        session, doc, result.code_blocks, result.url
+                    )
+                except Exception as e:
+                    # Roll back snippet deletion if processing fails
+                    logger.error(f"Failed to process code blocks for {result.url}: {e}")
+                    session.rollback()
+                    # Re-count existing snippets
+                    if existing_doc:
+                        snippet_count = session.query(CodeSnippet).filter_by(document_id=existing_doc.id).count()
+                        logger.info(f"Preserved {snippet_count} existing snippets after processing error")
+                    else:
+                        snippet_count = 0
+                    # Still update the document metadata even if snippet processing failed
+                    session.add(doc)
+                    session.commit()
 
             session.commit()
 
@@ -144,9 +164,29 @@ class ResultProcessor:
 
             # Process code blocks
             if result.code_blocks:
-                snippet_count = await self._process_code_blocks(
-                    session, doc, result.code_blocks, result.url
-                )
+                try:
+                    # Delete old snippets only if we're about to create new ones
+                    # This happens AFTER document update but BEFORE creating new snippets
+                    if existing_doc:
+                        session.query(CodeSnippet).filter_by(document_id=existing_doc.id).delete()
+                        logger.info(f"Deleted old snippets for document {existing_doc.id}")
+                    
+                    snippet_count = await self._process_code_blocks(
+                        session, doc, result.code_blocks, result.url
+                    )
+                except Exception as e:
+                    # Roll back snippet deletion if processing fails
+                    logger.error(f"Failed to process code blocks for {result.url}: {e}")
+                    session.rollback()
+                    # Re-count existing snippets
+                    if existing_doc:
+                        snippet_count = session.query(CodeSnippet).filter_by(document_id=existing_doc.id).count()
+                        logger.info(f"Preserved {snippet_count} existing snippets after processing error")
+                    else:
+                        snippet_count = 0
+                    # Still update the document metadata even if snippet processing failed
+                    session.add(doc)
+                    session.commit()
 
             session.commit()
             return int(doc.id), snippet_count
@@ -216,8 +256,8 @@ class ResultProcessor:
             Document instance
         """
         if existing_doc:
-            # Delete old snippets
-            session.query(CodeSnippet).filter_by(document_id=existing_doc.id).delete()
+            # NOTE: Old snippets will be deleted later, after successful extraction
+            # This prevents data loss if extraction fails
 
             # Update existing
             doc = existing_doc
