@@ -206,7 +206,7 @@ export default function Sources() {
   }
 
   return (
-    <div className="flex flex-col h-full">
+    <div className="flex flex-col h-full w-full">
       <div className="flex-1 space-y-6 pb-6">
         <div>
           <h1 className="text-3xl font-bold">Documentation Sources</h1>
