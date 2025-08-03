@@ -24,12 +24,19 @@ class ResultProcessor:
         self.db_manager = get_db_manager()
         self.settings = get_settings()
         self.code_formatter = CodeFormatter()
-        # Thread pool for concurrent formatting
-        # Use CPU count * 2 threads (good for I/O bound operations like calling prettier)
+        # Thread pool for concurrent formatting with bounded queue
+        max_workers = min(
+            self.settings.crawling.format_thread_pool_size,
+            (os.cpu_count() or 1) * 2
+        )
         self.format_thread_pool = ThreadPoolExecutor(
-            max_workers=min(32, (os.cpu_count() or 1) * 2),
+            max_workers=max_workers,
             thread_name_prefix="code-formatter"
         )
+        self.format_semaphore = asyncio.Semaphore(
+            self.settings.crawling.format_thread_pool_queue_size
+        )
+        logger.info(f"ResultProcessor thread pool initialized with {max_workers} workers")
     
     def cleanup(self):
         """Cleanup resources including thread pool."""
@@ -442,15 +449,22 @@ If you cannot determine the name, respond with "UNKNOWN"."""
         """
         loop = asyncio.get_event_loop()
         
-        # Submit all formatting tasks to thread pool
+        # Submit all formatting tasks to thread pool with semaphore control
         future_to_block = {}
         for block_data in blocks_to_format:
-            future = loop.run_in_executor(
-                self.format_thread_pool,
-                self._format_single_block,
-                block_data
-            )
-            future_to_block[future] = block_data
+            # Acquire semaphore to limit queue size
+            await self.format_semaphore.acquire()
+            try:
+                future = loop.run_in_executor(
+                    self.format_thread_pool,
+                    self._format_single_block,
+                    block_data
+                )
+                future_to_block[future] = block_data
+            except Exception:
+                # Release semaphore if submission fails
+                self.format_semaphore.release()
+                raise
         
         # Collect results as they complete with timeout
         formatted_blocks = []
@@ -472,6 +486,9 @@ If you cannot determine the name, respond with "UNKNOWN"."""
                 logger.warning(f"Concurrent formatting failed for '{original_block['title']}': {e}")
                 original_block['formatted_content'] = original_block['content']
                 formatted_blocks.append(original_block)
+            finally:
+                # Always release semaphore when a future completes
+                self.format_semaphore.release()
         
         return formatted_blocks
     
