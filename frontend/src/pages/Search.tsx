@@ -33,9 +33,10 @@ export default function Search() {
   };
 
   return (
-    <div className="space-y-6 max-w-4xl mx-auto">
-      <div>
-        <h1 className="text-3xl font-bold">Search Code Snippets</h1>
+    <div className="w-full">
+      <div className="space-y-6 max-w-4xl mx-auto w-full">
+        <div>
+          <h1 className="text-3xl font-bold">Search Code Snippets</h1>
         <p className="text-muted-foreground mt-2">
           Search through extracted code snippets by source, content, or language
         </p>
@@ -145,6 +146,7 @@ export default function Search() {
           ))}
         </div>
       )}
+      </div>
     </div>
   );
 }

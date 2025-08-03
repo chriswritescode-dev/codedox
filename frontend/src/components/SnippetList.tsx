@@ -10,7 +10,7 @@ interface SnippetListProps {
 export function SnippetList({ snippets, showSource = true }: SnippetListProps) {
   if (snippets.length === 0) {
     return (
-      <div className="text-center py-12 text-muted-foreground">
+      <div className="text-center py-12 text-muted-foreground ">
         No code snippets found.
       </div>
     )

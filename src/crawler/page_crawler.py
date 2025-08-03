@@ -122,6 +122,7 @@ class PageCrawler:
                 if logger.isEnabledFor(logging.DEBUG):
                     logger.debug("AsyncWebCrawler created successfully")
                 results = []
+                max_results_in_memory = 100  # Process in batches to avoid memory issues
 
                 # Configure rate limiter and dispatcher
                 max_concurrent = job_config.get("max_concurrent_crawls", get_settings().crawling.max_concurrent_crawls) if job_config else get_settings().crawling.max_concurrent_crawls
@@ -376,6 +377,12 @@ class PageCrawler:
             # Track skipped pages for logging
             if result.metadata.get('content_unchanged'):
                 crawl_progress['skipped_count'] = crawl_progress.get('skipped_count', 0) + 1
+            
+            # Periodically clear results to avoid memory accumulation
+            if len(results) >= 100:
+                logger.info(f"Clearing {len(results)} processed results from memory to prevent accumulation")
+                # Keep only the last 10 results for debugging if needed
+                results[:] = results[-10:]
 
             # Send progress update with snippet count
             if progress_tracker:
