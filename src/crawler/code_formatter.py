@@ -104,6 +104,7 @@ class CodeFormatter:
                         text=True,
                         check=False,
                         env={**os.environ, "NODE_ENV": "production"},  # Ensure safe environment
+                        timeout=10  # 10 second timeout for version check
                     )
                     if result.returncode == 0:
                         logger.info(f"Prettier found at {abs_path}: {result.stdout.strip()}")
@@ -172,6 +173,11 @@ class CodeFormatter:
         if not self.prettier_available:
             return code
 
+        # Check for problematic XML-like content (pytest output)
+        if language in ["xml", "html"] and self._is_pytest_xml_output(code):
+            logger.warning(f"Skipping Prettier formatting for pytest XML-like output")
+            return code
+
         # Map language to Prettier parser
         parser_map = {
             "javascript": "babel",
@@ -225,7 +231,7 @@ class CodeFormatter:
                     logger.error("Prettier executable not found")
                     return code
 
-                # Run Prettier with validated arguments
+                # Run Prettier with validated arguments and timeout
                 result = subprocess.run(
                     [
                         self.prettier_path,
@@ -241,6 +247,7 @@ class CodeFormatter:
                     text=True,
                     check=False,
                     env={**os.environ, "NODE_ENV": "production"},  # Safe environment
+                    timeout=30  # 30 second timeout to prevent hanging
                 )
 
                 if result.returncode == 0:
@@ -269,6 +276,9 @@ class CodeFormatter:
                         return auto_formatted
                     return code
 
+        except subprocess.TimeoutExpired:
+            logger.error(f"Prettier formatting timed out after 30 seconds for {language} code")
+            return code
         except Exception as e:
             logger.error(f"Error running Prettier: {e}")
             return code
@@ -457,11 +467,15 @@ class CodeFormatter:
                     text=True,
                     check=False,
                     env={**os.environ, "NODE_ENV": "production"},
+                    timeout=30  # Add timeout
                 )
 
                 if result.returncode == 0:
                     return result.stdout
 
+        except subprocess.TimeoutExpired:
+            logger.warning(f"Prettier timed out with extension {extension}")
+            return None
         except Exception as e:
             logger.debug(f"Failed to format with extension {extension}: {e}")
 
@@ -485,11 +499,15 @@ class CodeFormatter:
                     text=True,
                     check=False,
                     env={**os.environ, "NODE_ENV": "production"},
+                    timeout=30  # Add timeout
                 )
 
                 if result.returncode == 0:
                     return result.stdout
 
+        except subprocess.TimeoutExpired:
+            logger.warning("Prettier timed out during auto-detection")
+            return None
         except Exception as e:
             logger.debug(f"Failed to auto-detect format: {e}")
 
@@ -528,11 +546,15 @@ class CodeFormatter:
                 text=True,
                 check=False,
                 env={**os.environ, "NODE_ENV": "production"},
+                timeout=30  # Add timeout
             )
 
             if result.returncode == 0:
                 return result.stdout
 
+        except subprocess.TimeoutExpired:
+            logger.warning(f"Prettier timed out with parser {parser}")
+            return None
         except Exception as e:
             logger.debug(f"Failed with parser {parser}: {e}")
 
@@ -616,6 +638,31 @@ class CodeFormatter:
             return "sql"
 
         return None
+
+    def _is_pytest_xml_output(self, code: str) -> bool:
+        """Check if the code looks like pytest XML output with unclosed tags."""
+        # Common pytest XML-like patterns that aren't valid XML/HTML
+        pytest_patterns = [
+            r'<Module\s+[^>]*(?<!/)>',  # <Module path> without closing
+            r'<Function\s+[^>]*(?<!/)>',  # <Function name> without closing
+            r'<Session>',  # Session tags
+            r'<Class\s+[^>]*(?<!/)>',  # <Class name> without closing
+            r'<Item\s+[^>]*(?<!/)>',  # <Item name> without closing
+        ]
+        
+        for pattern in pytest_patterns:
+            if re.search(pattern, code):
+                return True
+        
+        # Also check for multiple unclosed tags
+        open_tags = re.findall(r'<(\w+)[^>]*(?<!/)>', code)
+        close_tags = re.findall(r'</(\w+)>', code)
+        
+        # If there are significantly more open tags than close tags, it's likely pytest output
+        if len(open_tags) > 2 and len(open_tags) > len(close_tags) * 2:
+            return True
+            
+        return False
 
     def format_with_info(self, code: str, language: str | None = None) -> dict[str, Any]:
         """

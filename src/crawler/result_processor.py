@@ -4,7 +4,7 @@ import logging
 import asyncio
 from typing import List, Tuple, Optional, Dict, Any
 from datetime import datetime
-from concurrent.futures import ThreadPoolExecutor, as_completed
+from concurrent.futures import ThreadPoolExecutor, as_completed, TimeoutError as FutureTimeoutError
 import os
 
 from sqlalchemy.orm import Session
@@ -39,10 +39,14 @@ class ResultProcessor:
         except Exception as e:
             logger.error(f"Error shutting down thread pool: {e}")
     
-    def __del__(self):
-        """Ensure thread pool is cleaned up."""
-        if hasattr(self, 'format_thread_pool'):
-            self.cleanup()
+    def __enter__(self):
+        """Context manager entry."""
+        return self
+    
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        """Context manager exit - ensure cleanup."""
+        self.cleanup()
+        return False
 
     async def process_result_pipeline(
         self, result: Any, job_id: str, depth: int  # CrawlResult
@@ -448,12 +452,20 @@ If you cannot determine the name, respond with "UNKNOWN"."""
             )
             future_to_block[future] = block_data
         
-        # Collect results as they complete
+        # Collect results as they complete with timeout
         formatted_blocks = []
-        for future in asyncio.as_completed(future_to_block):
+        for future in asyncio.as_completed(future_to_block, timeout=120):  # 2 minute overall timeout
             try:
-                formatted_block = await future
+                # Individual timeout for each formatting task
+                formatted_block = await asyncio.wait_for(future, timeout=45)  # 45 second timeout per block
                 formatted_blocks.append(formatted_block)
+                    
+            except asyncio.TimeoutError:
+                # On timeout, keep original block data
+                original_block = future_to_block[future]
+                logger.warning(f"Formatting timed out for '{original_block['title']}' (language: {original_block['language']})")
+                original_block['formatted_content'] = original_block['content']
+                formatted_blocks.append(original_block)
             except Exception as e:
                 # On error, keep original block data
                 original_block = future_to_block[future]
