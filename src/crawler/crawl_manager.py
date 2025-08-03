@@ -255,6 +255,11 @@ class CrawlManager:
         base_snippet_count, total_snippets = self._initialize_crawl_tracking(job_id)
         logger.info(f"[SNIPPET_COUNT] Starting single crawl for job {job_id} with base count: {base_snippet_count}")
 
+        # Get job config for metadata (including ignore_hash)
+        job_data = self.job_manager.get_job_status(job_id)
+        logger.info(f"DEBUG: job_data config = {job_data.get('config') if job_data else 'No job data'}")
+        job_config = job_data.get("config", {}) if job_data else {}
+
         # Process each URL
         for url in config.start_urls:
             if processed_count >= config.max_pages:
@@ -270,8 +275,9 @@ class CrawlManager:
 
             # Crawl single page
             logger.info(f"DEBUG: About to call crawl_page for single page {url}")
+            logger.info(f"DEBUG: job_config before crawl_page = {job_config}")
             results = await self.page_crawler.crawl_page(
-                url, job_id, 0, 0, None, self.progress_tracker
+                url, job_id, 0, 0, job_config, self.progress_tracker
             )
 
             if results:
