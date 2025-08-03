@@ -27,8 +27,10 @@ export const NewCrawlDialog: React.FC<NewCrawlDialogProps> = ({
     max_depth: 1,
     domain_filter: '',
     url_patterns: '',
-    max_concurrent_crawls: 20,
+    max_concurrent_crawls: 5,
   });
+  
+  const [maxConcurrentInput, setMaxConcurrentInput] = useState('5');
 
   if (!isOpen) return null;
 
@@ -38,6 +40,9 @@ export const NewCrawlDialog: React.FC<NewCrawlDialogProps> = ({
       alert('Please enter a base URL');
       return;
     }
+    // Use the current max_concurrent_crawls value, falling back to form data
+    const finalMaxConcurrent = maxConcurrentInput ? parseInt(maxConcurrentInput) || formData.max_concurrent_crawls : formData.max_concurrent_crawls;
+    
     onSubmit({
       ...formData,
       name: formData.name || undefined, // Allow empty name for auto-detection
@@ -45,11 +50,13 @@ export const NewCrawlDialog: React.FC<NewCrawlDialogProps> = ({
       url_patterns: formData.max_depth > 0 && formData.url_patterns 
         ? formData.url_patterns.split(',').map(p => p.trim()).filter(p => p)
         : undefined,
+      max_concurrent_crawls: Math.max(0, Math.min(100, finalMaxConcurrent)), // Clamp between 0-100
     });
   };
 
   const handleClose = () => {
-    setFormData({ name: '', base_url: '', max_depth: 1, domain_filter: '', url_patterns: '', max_concurrent_crawls: 20 });
+    setFormData({ name: '', base_url: '', max_depth: 1, domain_filter: '', url_patterns: '', max_concurrent_crawls: 5 });
+    setMaxConcurrentInput('5');
     onClose();
   };
 
@@ -189,18 +196,44 @@ export const NewCrawlDialog: React.FC<NewCrawlDialogProps> = ({
             </label>
             <input
               id="max_concurrent_crawls"
-              type="number"
-              min="1"
-              max="100"
-              value={formData.max_concurrent_crawls}
-              onChange={(e) =>
-                setFormData({
-                  ...formData,
-                  max_concurrent_crawls: parseInt(e.target.value) || 20,
-                })
-              }
-              className="w-full px-3 py-2 border border-input rounded-md bg-background focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent transition-all"
-              placeholder="20"
+              type="text"
+              inputMode="numeric"
+              value={maxConcurrentInput}
+              onChange={(e) => {
+                const rawValue = e.target.value;
+                setMaxConcurrentInput(rawValue);
+                
+                // Allow empty string for deletion
+                if (rawValue === '') {
+                  setFormData({
+                    ...formData,
+                    max_concurrent_crawls: 20,
+                  });
+                  return;
+                }
+                
+                // Parse and validate the number
+                const value = parseInt(rawValue);
+                if (!isNaN(value) && value >= 0 && value <= 100) {
+                  setFormData({
+                    ...formData,
+                    max_concurrent_crawls: value,
+                  });
+                } else if (rawValue === '0') {
+                  // Explicitly handle 0
+                  setFormData({
+                    ...formData,
+                    max_concurrent_crawls: 0,
+                  });
+                }
+              }}
+              onBlur={() => {
+                // Reset to the actual value if input is invalid
+                const currentValue = formData.max_concurrent_crawls;
+                setMaxConcurrentInput(currentValue.toString());
+              }}
+              className="w-full px-3 py-2 border border-input rounded-md bg-background focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent transition-all font-mono"
+              placeholder="5"
             />
             <p className="text-xs text-muted-foreground mt-1">
               Maximum number of concurrent page crawls (1-100). Higher values are faster but use more resources.

@@ -39,7 +39,7 @@ export default function Layout() {
 
       {/* Sidebar */}
       <div
-        className={`fixed inset-y-0 left-0 z-40 w-48 bg-secondary transform transition-transform lg:translate-x-0 border-r border-border ${
+        className={`fixed inset-y-0 left-0 z-40 w-48 bg-secondary transform transition-transform lg:translate-x-0 lg:w-64 border-r border-border ${
           mobileMenuOpen ? "translate-x-0" : "-translate-x-full"
         }`}
       >
@@ -68,9 +68,11 @@ export default function Layout() {
       </div>
 
       {/* Main content */}
-      <div className="lg:pl-64">
-        <main className="py-8 px-4 sm:px-6 lg:px-8">
-          <Outlet />
+      <div className="lg:pl-64 flex-1 flex flex-col">
+        <main className="flex-1 py-8 px-4 sm:px-6 lg:px-8 flex">
+          <div className="w-full flex flex-col min-h-full">
+            <Outlet />
+          </div>
         </main>
       </div>
 

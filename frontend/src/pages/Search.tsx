@@ -24,7 +24,7 @@ export default function Search() {
   const { data: results, isLoading } = useQuery({
     queryKey: ["search", sourceName, query, language],
     queryFn: () =>
-      api.search({ source_name: sourceName, query, language, limit: 20 }),
+      api.search({ source_name: sourceName, query, language, limit: 10 }),
     enabled: !!(sourceName || query || language),
   });
 
