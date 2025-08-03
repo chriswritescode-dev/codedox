@@ -176,7 +176,9 @@ class PageCrawler:
                 crawl_progress = {
                     'crawled_count': 0,
                     'processed_count': 0,
-                    'last_ws_count': 0
+                    'last_ws_count': 0,
+                    'snippets_extracted': 0,
+                    'base_snippet_count': job_config.get('base_snippet_count', 0) if job_config else 0
                 }
 
                 # Result collector task
@@ -222,6 +224,7 @@ class PageCrawler:
                                     processed_pages=crawl_progress['processed_count'],
                                     total_pages=crawled_count,
                                     documents_crawled=crawl_progress['processed_count'],
+                                    snippets_extracted=crawl_progress['base_snippet_count'] + crawl_progress['snippets_extracted'],
                                     send_notification=True
                                 )
                     else:
@@ -255,6 +258,7 @@ class PageCrawler:
                                     processed_pages=crawl_progress['processed_count'],
                                     total_pages=crawled_count,
                                     documents_crawled=crawl_progress['processed_count'],
+                                    snippets_extracted=crawl_progress['base_snippet_count'] + crawl_progress['snippets_extracted'],
                                     send_notification=True
                                 )
 
@@ -362,11 +366,18 @@ class PageCrawler:
             results.append(result)
             crawl_progress['processed_count'] += 1
 
+            # Track snippet counts
+            if result.code_blocks:
+                crawl_progress['snippets_extracted'] += len(result.code_blocks)
+            elif result.metadata.get('existing_snippet_count'):
+                # For pages with unchanged content, add existing snippet count
+                crawl_progress['snippets_extracted'] += result.metadata.get('existing_snippet_count', 0)
+
             # Track skipped pages for logging
             if result.metadata.get('content_unchanged'):
                 crawl_progress['skipped_count'] = crawl_progress.get('skipped_count', 0) + 1
 
-            # Send progress update without snippet count (handled by crawl_manager)
+            # Send progress update with snippet count
             if progress_tracker:
                 should_update = crawl_progress['processed_count'] - crawl_progress['last_ws_count'] >= 3
                 if should_update:
@@ -376,6 +387,7 @@ class PageCrawler:
                         processed_pages=crawl_progress['processed_count'],
                         total_pages=crawl_progress['crawled_count'],
                         documents_crawled=crawl_progress['processed_count'],
+                        snippets_extracted=crawl_progress['base_snippet_count'] + crawl_progress['snippets_extracted'],
                         send_notification=True
                     )
 
@@ -435,7 +447,7 @@ class PageCrawler:
             logger.info(f"DEBUG: job_metadata = {job_metadata}, ignore_hash = {ignore_hash}")
             if ignore_hash:
                 logger.info(f"Ignoring content hash for {result.url} - forcing regeneration")
-        
+
         # Check if content has changed (skip ONLY if ignore_hash is False)
         if not ignore_hash:
             with self.db_manager.session_scope() as session:
@@ -465,7 +477,7 @@ class PageCrawler:
         else:
             # When ignore_hash is True, we force extraction even if content hasn't changed
             logger.info(f"Force regeneration enabled for {result.url}, proceeding with extraction despite content hash")
-        
+
         # Content changed or new - extract code blocks from HTML
         if logger.isEnabledFor(logging.DEBUG):
             logger.debug(f"Content changed/new for {result.url}, performing HTML extraction")
