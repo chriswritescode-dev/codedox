@@ -130,6 +130,67 @@ async def health_check_db(db: Session = Depends(get_db)):
         logger.error(f"Database health check failed: {e}")
         raise HTTPException(status_code=503, detail="Database connection failed")
 
+@app.get("/api/health/crawler")
+async def health_check_crawler():
+    """Crawler health check endpoint with resource monitoring."""
+    from ..crawler import CrawlManager
+    from ..database import get_db_manager
+    import psutil
+    import threading
+    
+    crawl_manager = CrawlManager()
+    db_manager = get_db_manager()
+    
+    # Get active crawl tasks
+    active_tasks = len([
+        task for task in crawl_manager._active_crawl_tasks.values()
+        if not task.done()
+    ])
+    
+    # Get thread pool status
+    thread_count = threading.active_count()
+    
+    # Get database pool status
+    pool = db_manager.engine.pool
+    pool_size = pool.size()
+    pool_checked_out = pool.checked_out_connections()
+    pool_overflow = pool.overflow()
+    
+    # Get system memory usage
+    process = psutil.Process()
+    memory_info = process.memory_info()
+    memory_percent = process.memory_percent()
+    
+    # Get ResultProcessor thread pool status
+    from ..crawler.result_processor import ResultProcessor
+    result_processor = crawl_manager.result_processor
+    format_pool_active = result_processor.format_thread_pool._threads
+    format_pool_queue_size = result_processor.format_thread_pool._work_queue.qsize()
+    
+    return {
+        "status": "healthy",
+        "crawler": {
+            "active_crawl_tasks": active_tasks,
+            "total_crawl_tasks": len(crawl_manager._active_crawl_tasks)
+        },
+        "threads": {
+            "active_threads": thread_count,
+            "format_pool_threads": len(format_pool_active),
+            "format_pool_queue": format_pool_queue_size
+        },
+        "database_pool": {
+            "size": pool_size,
+            "checked_out": pool_checked_out,
+            "overflow": pool_overflow,
+            "total": pool_size + pool_overflow
+        },
+        "memory": {
+            "rss_mb": memory_info.rss / 1024 / 1024,
+            "vms_mb": memory_info.vms / 1024 / 1024,
+            "percent": memory_percent
+        }
+    }
+
 # Statistics endpoint
 @app.get("/api/statistics")
 async def get_statistics(db: Session = Depends(get_db)):

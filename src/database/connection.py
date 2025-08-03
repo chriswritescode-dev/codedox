@@ -32,8 +32,10 @@ class DatabaseManager:
         self.engine = create_engine(
             self.database_url,
             pool_pre_ping=True,  # Verify connections before using
-            pool_size=10,
-            max_overflow=20,
+            pool_size=20,  # Increased from 10
+            max_overflow=30,  # Increased from 20
+            pool_timeout=30,  # Wait max 30 seconds for connection
+            pool_recycle=3600,  # Recycle connections after 1 hour
             echo=False  # Set to True for SQL debugging
         )
 

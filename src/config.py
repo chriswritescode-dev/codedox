@@ -80,6 +80,18 @@ class CrawlingConfig(BaseSettings):
         default=60,
         description="Seconds without heartbeat before considering job stalled"
     )
+    global_crawl_timeout: int = Field(
+        default=3600,  # 1 hour
+        description="Maximum time in seconds for entire crawl job"
+    )
+    format_thread_pool_size: int = Field(
+        default=16,  # Reduced from 32 to be more conservative
+        description="Size of thread pool for code formatting"
+    )
+    format_thread_pool_queue_size: int = Field(
+        default=100,
+        description="Maximum queue size for format thread pool"
+    )
 
 
 class CodeExtractionConfig(BaseSettings):

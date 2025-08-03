@@ -42,6 +42,7 @@ class CrawlManager:
         """Initialize the crawl manager."""
         self.settings = settings
         self._active_crawl_tasks: Dict[str, asyncio.Task] = {}  # Track active crawl tasks
+        self._task_cleanup_lock = asyncio.Lock()  # Lock for task cleanup
 
         # Initialize components
         self.job_manager = JobManager()
@@ -61,6 +62,30 @@ class CrawlManager:
         # Initialize crawler and processor
         self.page_crawler = PageCrawler(self.browser_config)
         self.result_processor = ResultProcessor()
+        
+        # Cleanup task will be started when first crawl starts
+        self._cleanup_task: Optional[asyncio.Task] = None
+    
+    async def _periodic_cleanup(self) -> None:
+        """Periodically clean up completed tasks from active tasks dict."""
+        while True:
+            try:
+                await asyncio.sleep(60)  # Run every minute
+                async with self._task_cleanup_lock:
+                    # Find and remove completed tasks
+                    completed_tasks = [
+                        job_id for job_id, task in self._active_crawl_tasks.items()
+                        if task.done()
+                    ]
+                    for job_id in completed_tasks:
+                        self._active_crawl_tasks.pop(job_id, None)
+                        logger.debug(f"Cleaned up completed task for job {job_id}")
+                    
+                    if completed_tasks:
+                        logger.info(f"Cleaned up {len(completed_tasks)} completed crawl tasks")
+            except Exception as e:
+                logger.error(f"Error in periodic cleanup: {e}")
+                await asyncio.sleep(60)  # Continue after error
 
     async def start_crawl(self, config: CrawlConfig, user_id: Optional[str] = None) -> str:
         """Start a new crawl job.
@@ -90,6 +115,11 @@ class CrawlManager:
             user_id,
         )
 
+        # Start cleanup task if not already running
+        if self._cleanup_task is None or self._cleanup_task.done():
+            self._cleanup_task = asyncio.create_task(self._periodic_cleanup())
+            logger.debug("Started periodic cleanup task")
+        
         # Cancel any existing active task for this job
         existing_task = self._active_crawl_tasks.get(job_id)
         logger.info(f"Checking for existing task for job {job_id}: {existing_task is not None}")
@@ -148,7 +178,7 @@ class CrawlManager:
         return processed_count if send_notification else last_ws_count
 
     async def _execute_crawl(self, job_id: str, config: CrawlConfig) -> None:
-        """Execute the crawl job."""
+        """Execute the crawl job with global timeout."""
         try:
             # Check if job is already cancelled
             job_status = self.job_manager.get_job_status(job_id)
@@ -158,11 +188,15 @@ class CrawlManager:
             # Start tracking
             await self.progress_tracker.start_tracking(job_id)
 
-            # Execute crawl based on depth - single page or deep crawl
-            if config.max_depth > 0:
-                await self._execute_deep_crawl(job_id, config)
-            else:
-                await self._execute_single_crawl(job_id, config)
+            # Wrap crawl execution with global timeout
+            try:
+                await asyncio.wait_for(
+                    self._execute_crawl_internal(job_id, config),
+                    timeout=self.settings.crawling.global_crawl_timeout
+                )
+            except asyncio.TimeoutError:
+                logger.error(f"Crawl job {job_id} exceeded global timeout of {self.settings.crawling.global_crawl_timeout}s")
+                raise TimeoutError(f"Crawl exceeded maximum allowed time of {self.settings.crawling.global_crawl_timeout}s")
 
             # Get final job status to preserve snippet count
             final_status = self.job_manager.get_job_status(job_id)
@@ -183,6 +217,10 @@ class CrawlManager:
                 job_id, success=False, error="Cancelled by user"
             )
             raise  # Re-raise to properly handle task cancellation
+        except TimeoutError as e:
+            logger.error(f"Crawl job {job_id} timed out: {e}")
+            self.job_manager.complete_job(job_id, success=False, error_message=str(e))
+            await self.progress_tracker.send_completion(job_id, success=False, error=str(e))
         except Exception as e:
             logger.error(f"Crawl job {job_id} failed: {e}")
             self.job_manager.complete_job(job_id, success=False, error_message=str(e))
@@ -192,6 +230,14 @@ class CrawlManager:
             await self.progress_tracker.stop_tracking(job_id)
             # Remove from active tasks
             self._active_crawl_tasks.pop(job_id, None)
+
+    async def _execute_crawl_internal(self, job_id: str, config: CrawlConfig) -> None:
+        """Internal crawl execution without timeout wrapper."""
+        # Execute crawl based on depth - single page or deep crawl
+        if config.max_depth > 0:
+            await self._execute_deep_crawl(job_id, config)
+        else:
+            await self._execute_single_crawl(job_id, config)
 
     async def _execute_deep_crawl(self, job_id: str, config: CrawlConfig) -> None:
         """Execute deep crawl."""
@@ -458,3 +504,35 @@ class CrawlManager:
             max_concurrent_crawls=config_data.get("max_concurrent_crawls", self.settings.crawling.max_concurrent_crawls),
             metadata=config_data.get("metadata", {}),
         )
+    
+    async def shutdown(self) -> None:
+        """Shutdown the crawl manager and cleanup resources."""
+        logger.info("Shutting down CrawlManager...")
+        
+        # Cancel cleanup task
+        if hasattr(self, '_cleanup_task') and not self._cleanup_task.done():
+            self._cleanup_task.cancel()
+            try:
+                await self._cleanup_task
+            except asyncio.CancelledError:
+                pass
+        
+        # Cancel all active crawl tasks
+        async with self._task_cleanup_lock:
+            for job_id, task in self._active_crawl_tasks.items():
+                if not task.done():
+                    logger.info(f"Cancelling active crawl task for job {job_id}")
+                    task.cancel()
+            
+            # Wait for all tasks to complete
+            tasks = list(self._active_crawl_tasks.values())
+            if tasks:
+                await asyncio.gather(*tasks, return_exceptions=True)
+            
+            self._active_crawl_tasks.clear()
+        
+        # Cleanup result processor
+        if hasattr(self, 'result_processor'):
+            self.result_processor.cleanup()
+        
+        logger.info("CrawlManager shutdown complete")

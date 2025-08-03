@@ -23,6 +23,7 @@ PyYAML==6.0.2
 click==8.1.8
 rich==13.9.4
 python-multipart==0.0.19
+psutil==6.0.0  # For system monitoring
 
 # Code Formatting
 

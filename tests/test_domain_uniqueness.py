@@ -179,8 +179,8 @@ class TestCrawlManagerDomainReuse:
             assert job.name == "Test Crawl"
             assert job.status == "running"
         
-        # Verify async task was started
-        mock_create_task.assert_called_once()
+        # Verify async tasks were started (one for periodic cleanup, one for crawl)
+        assert mock_create_task.call_count == 2
     
     @pytest.mark.asyncio
     @patch('src.crawler.crawl_manager.asyncio.create_task')
@@ -223,8 +223,8 @@ class TestCrawlManagerDomainReuse:
             jobs_count = session.query(CrawlJob).filter_by(domain="nextjs.org").count()
             assert jobs_count == 1
         
-        # Verify async task was started
-        mock_create_task.assert_called_once()
+        # Verify async tasks were started (one for periodic cleanup, one for crawl)
+        assert mock_create_task.call_count == 2
     
     @pytest.mark.asyncio
     async def test_start_crawl_invalid_domain(self, crawl_manager):
