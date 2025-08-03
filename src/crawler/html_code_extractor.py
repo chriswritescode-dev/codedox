@@ -31,25 +31,6 @@ class HTMLCodeExtractor:
         'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'p', 'li', 'dt', 'dd', 'span', 'div'
     }
     
-    # Elements to always skip (never contain displayable code)
-    ALWAYS_SKIP_ELEMENTS = {
-        'script', 'style', 'noscript', 'iframe', 'svg', 'img'
-    }
-    
-    # Elements to skip only if they don't contain code blocks
-    CONDITIONAL_SKIP_ELEMENTS = {
-        'nav', 'aside', 'footer', 'header', 'button', 'input', 'select'
-    }
-    
-    # Elements that might wrap code but need context checking
-    CHECK_CONTEXT_ELEMENTS = {'a'}  # Links might wrap inline code examples examples
-    
-    # Classes/IDs that indicate navigation or UI elements (to skip)
-    SKIP_PATTERNS: set[str] = {
-        'navigation', 'nav', 'menu', 'sidebar', 'footer', 'header', 'breadcrumb',
-        'social', 'share', 'ad', 'advertisement', 'banner', 'popup', 'modal',
-        'toolbar', 'pagination', 'pager', 'widget'
-    }
     
     # Code block selectors to find
     CODE_SELECTORS = [
@@ -146,12 +127,6 @@ class HTMLCodeExtractor:
         # Classify container type
         container_type = self._classify_container(context['hierarchy'])
         
-        # Check if code block is in a typically-skipped element
-        parent_preserved = block.find_parent(attrs={'data-preserved-for-code': 'true'})
-        if parent_preserved:
-            parent_tag = parent_preserved.name
-            container_type = f"{container_type or 'code'}-in-{parent_tag}"
-        
         # Create extracted block
         extracted = ExtractedCodeBlock(
             code=code_text,
@@ -183,14 +158,13 @@ class HTMLCodeExtractor:
         """
         soup = BeautifulSoup(html, 'html.parser')
         
-        # First, process and mark elements for preservation
-        self._remove_skip_elements(soup)
         
         extracted_blocks = []
         
         # Find all code blocks
         for selector, selector_type in self.CODE_SELECTORS:
             blocks = soup.select(selector)
+            
             
             for block in blocks:
                 extracted = self._process_code_block(block, selector_type)
@@ -242,12 +216,6 @@ class HTMLCodeExtractor:
         # Classify container type
         container_type = self._classify_container(context['hierarchy'])
         
-        # Check if code block is in a typically-skipped element
-        parent_preserved = block.find_parent(attrs={'data-preserved-for-code': 'true'})
-        if parent_preserved:
-            parent_tag = parent_preserved.name
-            container_type = f"{container_type or 'code'}-in-{parent_tag}"
-        
         # Create extracted block
         extracted = ExtractedCodeBlock(
             code=code_text,
@@ -279,8 +247,6 @@ class HTMLCodeExtractor:
         """
         soup = BeautifulSoup(html, 'html.parser')
         
-        # First, process and mark elements for preservation
-        self._remove_skip_elements(soup)
         
         extracted_blocks = []
         
@@ -297,65 +263,6 @@ class HTMLCodeExtractor:
         logger.debug(f"Stats: {self.stats}")
         
         return extracted_blocks
-    
-    def _remove_skip_elements(self, soup: BeautifulSoup) -> None:
-        """Remove elements we want to skip, but preserve those containing code blocks."""
-        # Always remove these elements
-        for tag in self.ALWAYS_SKIP_ELEMENTS:
-            for element in soup.find_all(tag):
-                element.decompose()
-        
-        # For conditional elements, check if they contain code blocks
-        for tag in self.CONDITIONAL_SKIP_ELEMENTS:
-            for element in soup.find_all(tag):
-                # Check if this element contains any code blocks
-                code_blocks = element.find_all(['pre', 'code'])
-                if not code_blocks:
-                    element.decompose()
-                else:
-                    # Keep the element but mark it for special handling
-                    element['data-preserved-for-code'] = 'true'
-        
-        # Handle 'a' tags specially - unwrap them but keep their content
-        for link in soup.find_all('a'):
-            # If the link contains code, unwrap it to preserve the code
-            if link.find(['code', 'pre']):
-                link.unwrap()
-            else:
-                # Remove links without code
-                link.decompose()
-        
-        # Remove by class/id patterns
-        from bs4.element import Tag
-        # Collect elements to check first to avoid modifying during iteration
-        elements_to_check = []
-        
-        for element in soup.find_all(True):  # All elements
-            if not isinstance(element, Tag):  # Skip non-tag elements
-                continue
-            
-            classes = element.get('class', []) or []
-            element_id = element.get('id', '') or ''
-            
-            # Check if any class or id matches skip patterns
-            should_check = False
-            for pattern in self.SKIP_PATTERNS:
-                classes_lower = [cls.lower() for cls in classes]
-                if any(pattern in cls.lower() for cls in classes_lower):
-                    should_check = True
-                    break
-                if pattern in element_id.lower():
-                    should_check = True
-                    break
-            
-            if should_check:
-                elements_to_check.append(element)
-        
-        # Now check each element before removing
-        for element in elements_to_check:
-            # Don't remove if it contains code blocks
-            if not element.find_all(['pre', 'code']):
-                element.decompose()
     
     def _extract_code_text(self, element: Tag) -> str:
         """Extract clean code text from an element."""

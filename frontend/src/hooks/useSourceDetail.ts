@@ -91,8 +91,8 @@ export function useSourceDetail(id: string): SourceDetailState {
   );
 
   // Pagination settings
-  const snippetsPerPage = 20;
-  const docsPerPage = 20;
+  const snippetsPerPage = 10;
+  const docsPerPage = 10;
 
   // Debounce search query
   const debouncedSnippetsSearch = useDebounce(snippetsSearch, 300);

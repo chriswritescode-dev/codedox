@@ -26,7 +26,7 @@ export default function Sources() {
     base_url: string;
   } | null>(null);
   const [currentPage, setCurrentPage] = useState(1);
-  const [itemsPerPage, setItemsPerPage] = useState(20);
+  const [itemsPerPage, setItemsPerPage] = useState(10);
   const queryClient = useQueryClient();
   const navigate = useNavigate();
 
@@ -206,13 +206,14 @@ export default function Sources() {
   }
 
   return (
-    <div className="space-y-6">
-      <div>
-        <h1 className="text-3xl font-bold">Documentation Sources</h1>
-        <p className="text-muted-foreground mt-2">
-          Browse all crawled documentation sources
-        </p>
-      </div>
+    <div className="flex flex-col h-full">
+      <div className="flex-1 space-y-6 pb-6">
+        <div>
+          <h1 className="text-3xl font-bold">Documentation Sources</h1>
+          <p className="text-muted-foreground mt-2">
+            Browse all crawled documentation sources
+          </p>
+        </div>
 
       <div className="space-y-4">
         <div className="relative">
@@ -444,6 +445,8 @@ export default function Sources() {
           isRecrawling={recrawlMutation.isPending}
         />
       )}
+
+      </div>
 
       {/* Pagination Controls */}
       {sources && (
