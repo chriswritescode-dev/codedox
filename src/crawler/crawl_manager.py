@@ -470,6 +470,18 @@ class CrawlManager:
         original_config = job_dict.get("config", {})
         max_concurrent = original_config.get("max_concurrent_crawls", self.settings.crawling.max_concurrent_crawls)
         
+        # Preserve metadata from original job, including ignore_hash setting
+        original_metadata = original_config.get("metadata", {})
+        retry_metadata = {
+            "retry_of_job": job_id, 
+            "original_job_name": job_dict["name"]
+        }
+        
+        # Preserve ignore_hash setting if it exists in original job
+        if "ignore_hash" in original_metadata:
+            retry_metadata["ignore_hash"] = original_metadata["ignore_hash"]
+            logger.info(f"Preserving ignore_hash={original_metadata['ignore_hash']} from original job")
+        
         retry_config = CrawlConfig(
             name=f"{job_dict['name']} - Retry Failed Pages",
             start_urls=failed_urls,
@@ -477,7 +489,7 @@ class CrawlManager:
             domain_restrictions=job_dict.get("domain_restrictions", []),
             max_pages=failed_count,
             max_concurrent_crawls=max_concurrent,
-            metadata={"retry_of_job": job_id, "original_job_name": job_dict["name"]},
+            metadata=retry_metadata,
         )
 
         # Start new job
