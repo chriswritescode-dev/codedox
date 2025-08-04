@@ -57,16 +57,13 @@ class TestJobCancellation:
     @pytest.mark.asyncio
     async def test_failed_page_with_missing_job(self, async_db):
         """Test that failed pages aren't recorded for missing jobs."""
-        from src.crawler.page_crawler import PageCrawler
-        from src.crawler.config import BrowserConfig
-        browser_config = BrowserConfig()
-        page_crawler = PageCrawler(browser_config)
+        from src.crawler.failed_page_utils import record_failed_page
         
         # Try to record failed page for non-existent job
         fake_job_id = str(uuid4())
         
         # This should not raise an exception
-        await page_crawler._record_failed_page(
+        await record_failed_page(
             fake_job_id,
             "https://example.com/test",
             "Test error"
@@ -193,15 +190,14 @@ class TestJobCancellation:
         
         mock_db_manager.session_scope = mock_session_scope
         
-        browser_config = BrowserConfig()
-        page_crawler = PageCrawler(browser_config)
-        
-        # Patch the page crawler's db_manager
-        monkeypatch.setattr(page_crawler, "db_manager", mock_db_manager)
+        # Patch the get_db_manager function used by record_failed_page
+        from src.crawler import failed_page_utils
+        monkeypatch.setattr(failed_page_utils, "get_db_manager", lambda: mock_db_manager)
         
         # Recording failed page for cancelled job should raise CancelledError
+        from src.crawler.failed_page_utils import record_failed_page
         with pytest.raises(asyncio.CancelledError):
-            await page_crawler._record_failed_page(
+            await record_failed_page(
                 job_id,
                 "https://example.com/test",
                 "Test error"

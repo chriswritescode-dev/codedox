@@ -5,7 +5,6 @@ import hashlib
 import logging
 import os
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
 from typing import Any
 
 from crawl4ai import (
@@ -15,9 +14,10 @@ from crawl4ai import (
 )
 
 from ..config import get_settings
-from ..database import FailedPage, get_db_manager
+from ..database import get_db_manager
 from .config import BrowserConfig, create_crawler_config
 from .extraction_models import SimpleCodeBlock
+from .failed_page_utils import record_failed_page
 from .html_code_extractor import HTMLCodeExtractor
 from .llm_retry import LLMDescriptionGenerator
 
@@ -122,7 +122,6 @@ class PageCrawler:
                 if logger.isEnabledFor(logging.DEBUG):
                     logger.debug("AsyncWebCrawler created successfully")
                 results = []
-                max_results_in_memory = 100  # Process in batches to avoid memory issues
 
                 # Configure rate limiter and dispatcher
                 max_concurrent = job_config.get("max_concurrent_crawls", get_settings().crawling.max_concurrent_crawls) if job_config else get_settings().crawling.max_concurrent_crawls
@@ -198,13 +197,16 @@ class PageCrawler:
                     )
 
                     # Check if streaming is supported
+                    logger.info(f"Starting crawler.arun for URL: {url}")
                     result_container = await crawler.arun(
                         url, config=crawler_run_config, dispatcher=dispatcher
                     )
+                    logger.info(f"Crawler.arun completed for URL: {url}")
 
                     # Handle streaming if the result supports it
                     if hasattr(result_container, '__aiter__'):
                         # Streaming mode
+                        logger.info("Streaming mode detected, starting to process pages")
                         async for result in result_container:
                             crawled_count += 1
                             crawl_progress['crawled_count'] = crawled_count
@@ -216,7 +218,9 @@ class PageCrawler:
                                     raise asyncio.CancelledError("Job cancelled by user")
 
                             # Queue result for parallel LLM code extraction
+                            logger.debug(f"Queueing page {crawled_count} for extraction: {result.url if hasattr(result, 'url') else 'unknown'}")
                             await extraction_queue.put(result)
+                            logger.debug(f"Successfully queued page {crawled_count} for extraction")
 
                             # Send progress update for crawling
                             if progress_tracker and crawled_count % 3 == 0:  # Update every 3 pages
@@ -250,7 +254,9 @@ class PageCrawler:
                                     raise asyncio.CancelledError("Job cancelled by user")
 
                             # Queue result for parallel LLM code extraction
+                            logger.debug(f"Queueing page {crawled_count} for extraction: {result.url if hasattr(result, 'url') else 'unknown'}")
                             await extraction_queue.put(result)
+                            logger.debug(f"Successfully queued page {crawled_count} for extraction")
 
                             # Send progress update for crawling
                             if progress_tracker and crawled_count % 3 == 0:  # Update every 3 pages
@@ -303,7 +309,7 @@ class PageCrawler:
         except Exception as e:
             logger.error(f"Error crawling {url}: {e}", exc_info=True)
             if "cancelled" not in str(e).lower():
-                await self._record_failed_page(job_id, url, str(e))
+                await record_failed_page(job_id, url, str(e))
             return None
 
     async def _is_job_cancelled(self, job_id: str) -> bool:
@@ -333,16 +339,21 @@ class PageCrawler:
         """Worker that extracts code from markdown content."""
         if logger.isEnabledFor(logging.DEBUG):
             logger.debug(f"Extraction worker started for job {job_id}")
+        worker_id = id(asyncio.current_task())
+        logger.info(f"Extraction worker {worker_id} started")
         while True:
             try:
                 result = await extraction_queue.get()
+
                 if result is None:  # Shutdown signal
                     break
 
                 # Process the crawl result (semaphore used internally for LLM calls)
+                logger.info(f"Worker {worker_id} processing: {result.url if hasattr(result, 'url') else 'unknown'}")
                 processed_result = await self._process_crawl_result_with_html_extraction(
-                    result, job_id, depth, llm_semaphore=semaphore, job_config=job_config
+                    result, job_id, depth, llm_semaphore=semaphore, job_config=job_config, progress_tracker=progress_tracker
                 )
+                logger.info(f"Worker {worker_id} completed processing: {result.url if hasattr(result, 'url') else 'unknown'}")
 
                 if processed_result:
                     await processed_results.put(processed_result)
@@ -361,6 +372,7 @@ class PageCrawler:
         """Collect processed results from workers and update progress."""
         while True:
             result = await processed_results.get()
+
             if result is None:  # Shutdown signal
                 break
 
@@ -377,7 +389,7 @@ class PageCrawler:
             # Track skipped pages for logging
             if result.metadata.get('content_unchanged'):
                 crawl_progress['skipped_count'] = crawl_progress.get('skipped_count', 0) + 1
-            
+
             # Periodically clear results to avoid memory accumulation
             if len(results) >= 100:
                 logger.info(f"Clearing {len(results)} processed results from memory to prevent accumulation")
@@ -404,13 +416,14 @@ class PageCrawler:
         job_id: str,
         depth: int,
         llm_semaphore: asyncio.Semaphore | None = None,
-        job_config: dict[str, Any] | None = None
+        job_config: dict[str, Any] | None = None,
+        progress_tracker: Any | None = None
     ) -> CrawlResult | None:
         """Process a single crawl result with HTML extraction + LLM descriptions."""
         try:
             if not result.success:
                 logger.error(f"Failed to crawl {result.url}: {result.error_message}")
-                await self._record_failed_page(job_id, result.url, result.error_message)
+                await record_failed_page(job_id, result.url, result.error_message)
                 return None
         except AttributeError as e:
             logger.error(f"Result object missing expected attributes: {e}")
@@ -428,11 +441,16 @@ class PageCrawler:
             logger.warning(f"No HTML content found in result for {result.url}")
             return None
 
-        # Also get markdown for content hash comparison (for change detection)
+        # Get raw markdown for content hash comparison (for change detection)
+        markdown_for_hash = self._extract_markdown_content(result, for_hash=True)
+        if not markdown_for_hash:
+            logger.warning(f"No raw markdown content for content hash from {result.url}")
+            return None
+        
+        # Also get markdown for actual content (may be fit_markdown)
         markdown_content = self._extract_markdown_content(result)
         if not markdown_content:
-            logger.warning(f"No markdown content for content hash from {result.url}")
-            return None
+            markdown_content = markdown_for_hash  # Fall back to raw if no fit_markdown
 
         # Extract title and metadata
         title = ""
@@ -442,8 +460,11 @@ class PageCrawler:
             # Extract all metadata including Open Graph tags
             page_metadata = result.metadata.copy()
 
-        # Calculate content hash
-        content_hash = hashlib.md5(markdown_content.encode("utf-8")).hexdigest()
+        # Calculate content hash from raw markdown for consistency
+        content_hash = hashlib.md5(markdown_for_hash.encode("utf-8")).hexdigest()
+        
+        if logger.isEnabledFor(logging.DEBUG):
+            logger.debug(f"Content hash for {result.url}: {content_hash[:8]}... (using raw_markdown)")
 
         # Check if we should ignore hash (for regeneration)
         ignore_hash = False
@@ -464,7 +485,11 @@ class PageCrawler:
                 )
 
                 if content_unchanged:
-                    if logger.isEnabledFor(logging.DEBUG):
+                    # Log at INFO level for retry jobs to track efficiency
+                    is_retry_job = job_config and job_config.get('metadata', {}).get('retry_of_job')
+                    if is_retry_job:
+                        logger.info(f"[RETRY EFFICIENCY] Content unchanged for {result.url} (hash: {content_hash[:8]}...), skipping extraction. Using {existing_snippet_count} existing snippets.")
+                    elif logger.isEnabledFor(logging.DEBUG):
                         logger.debug(f"Content unchanged for {result.url}, skipping extraction. Using {existing_snippet_count} existing snippets.")
 
                     return CrawlResult(
@@ -478,6 +503,7 @@ class PageCrawler:
                             "content_unchanged": True,
                             "existing_snippet_count": existing_snippet_count,
                             "skipped_extraction": True,
+                            "is_retry": bool(is_retry_job),
                             **page_metadata  # Include all extracted metadata
                         }
                     )
@@ -536,6 +562,10 @@ class PageCrawler:
         # Generate LLM descriptions for code blocks
         if logger.isEnabledFor(logging.DEBUG):
             logger.debug(f"Generating descriptions for {len(html_blocks)} code blocks from {result.url}")
+
+        # Keep phase as crawling during LLM work (it's part of the crawl process)
+        # No phase update needed here - we stay in 'crawling' phase
+
         try:
             # Use the provided semaphore or create one if not provided
             if llm_semaphore is None:
@@ -666,14 +696,14 @@ class PageCrawler:
                 if crawl_result.metadata.get("llm_extraction_failed"):
                     error_msg = crawl_result.metadata.get("llm_extraction_error", "LLM extraction failed")
                     logger.warning(f"LLM extraction failed for {result.url}: {error_msg}")
-                    await self._record_failed_page(job_id, result.url, error_msg)
+                    await record_failed_page(job_id, result.url, error_msg)
                 else:
                     results.append(crawl_result)
                     if logger.isEnabledFor(logging.DEBUG):
                         logger.debug(f"Successfully crawled: {result.url} (depth: {page_depth})")
         else:
             logger.error(f"Failed to crawl {result.url}: {result.error_message}")
-            await self._record_failed_page(job_id, result.url, result.error_message)
+            await record_failed_page(job_id, result.url, result.error_message)
 
     def _convert_library_result(self, result: Any, depth: int) -> CrawlResult | None:
         """Convert Crawl4AI result to our format.
@@ -715,14 +745,18 @@ class PageCrawler:
                     metadata["llm_extraction_failed"] = True
                     metadata["llm_extraction_error"] = result.error_message
 
-            # Extract markdown content
+            # Extract markdown content (prefer fit_markdown for display)
             markdown_content = self._extract_markdown_content(result)
+            
+            # Get raw markdown for hash calculation
+            markdown_for_hash = self._extract_markdown_content(result, for_hash=True)
+            
             if not markdown_content and not code_blocks and not metadata.get("llm_extraction_failed"):
                 logger.warning(f"No content extracted from {result.url}")
                 return None
 
-            # Calculate content hash
-            content_hash = hashlib.md5((markdown_content or "").encode("utf-8")).hexdigest()
+            # Calculate content hash from raw markdown for consistency
+            content_hash = hashlib.md5((markdown_for_hash or "").encode("utf-8")).hexdigest()
 
             # Add all metadata from result
             if hasattr(result, "metadata") and result.metadata:
@@ -746,14 +780,26 @@ class PageCrawler:
             return None
 
 
-    def _extract_markdown_content(self, result: Any) -> str | None:
-        """Extract markdown content from result."""
+    def _extract_markdown_content(self, result: Any, for_hash: bool = False) -> str | None:
+        """Extract markdown content from result.
+        
+        Args:
+            result: Crawl result object
+            for_hash: If True, always return raw_markdown for consistent hashing
+        
+        Returns:
+            Markdown content string or None
+        """
         if hasattr(result, "markdown") and result.markdown:
             if isinstance(result.markdown, dict):
-                # Prefer fit_markdown, fall back to raw_markdown
-                fit_markdown = result.markdown.get("fit_markdown")
                 raw_markdown = result.markdown.get("raw_markdown", "")
-
+                
+                # For hash calculation, always use raw_markdown
+                if for_hash:
+                    return raw_markdown
+                
+                # For other uses, prefer fit_markdown
+                fit_markdown = result.markdown.get("fit_markdown")
                 if fit_markdown:
                     return fit_markdown
                 else:
@@ -763,48 +809,3 @@ class PageCrawler:
         return None
 
 
-    async def _record_failed_page(self, job_id: str, url: str, error_message: str) -> None:
-        """Record a failed page.
-
-        Args:
-            job_id: Job ID
-            url: Failed URL
-            error_message: Error message
-        """
-        try:
-            from uuid import UUID
-
-            from ..database.models import CrawlJob
-
-            # Handle job_id format
-            try:
-                job_uuid = UUID(job_id) if isinstance(job_id, str) else job_id
-            except ValueError:
-                logger.error(f"Invalid job ID format: {job_id}")
-                return
-
-            with self.db_manager.session_scope() as session:
-                # Check if crawl job exists
-                crawl_job = session.query(CrawlJob).filter_by(id=job_uuid).first()
-                if not crawl_job:
-                    logger.warning(f"Crawl job {job_uuid} not found - skipping failed page recording")
-                    return
-
-                # Check if job is cancelled
-                if crawl_job.status == "cancelled":
-                    logger.info(f"Crawl job {job_uuid} is cancelled - stopping crawler")
-                    raise asyncio.CancelledError("Job cancelled by user")
-
-                # Check if already exists
-                existing = session.query(FailedPage).filter_by(crawl_job_id=job_uuid, url=url).first()
-                if not existing:
-                    failed_page = FailedPage(
-                        crawl_job_id=job_uuid,
-                        url=url,
-                        error_message=error_message,
-                        failed_at=datetime.now(timezone.utc),
-                    )
-                    session.add(failed_page)
-                    session.commit()
-        except Exception as e:
-            logger.error(f"Failed to record failed page {url}: {e}")

@@ -78,11 +78,8 @@ class TestFailedPagesTracking:
         error_message = "Timeout 30000ms exceeded"
         
         # Record the failed page
-        from src.crawler.page_crawler import PageCrawler
-        from src.crawler.config import create_browser_config
-        browser_config = create_browser_config()
-        page_crawler = PageCrawler(browser_config)
-        await page_crawler._record_failed_page(job_id, url, error_message)
+        from src.crawler.failed_page_utils import record_failed_page
+        await record_failed_page(job_id, url, error_message)
         
         # Verify it was saved
         failed_page = db.query(FailedPage).filter_by(
@@ -103,12 +100,9 @@ class TestFailedPagesTracking:
         error_message = "Timeout 30000ms exceeded"
         
         # Record the same page twice
-        from src.crawler.page_crawler import PageCrawler
-        from src.crawler.config import create_browser_config
-        browser_config = create_browser_config()
-        page_crawler = PageCrawler(browser_config)
-        await page_crawler._record_failed_page(job_id, url, error_message)
-        await page_crawler._record_failed_page(job_id, url, "Different error")
+        from src.crawler.failed_page_utils import record_failed_page
+        await record_failed_page(job_id, url, error_message)
+        await record_failed_page(job_id, url, "Different error")
         
         # Should only have one record
         count = db.query(FailedPage).filter_by(
