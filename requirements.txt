@@ -11,7 +11,7 @@ alembic==1.14.0
 
 
 # Web Crawling
-crawl4ai==0.7.2
+crawl4ai>=0.7.2
 httpx==0.28.1  # Still needed for LLM client
 
 # MCP Server
@@ -23,7 +23,7 @@ PyYAML==6.0.2
 click==8.1.8
 rich==13.9.4
 python-multipart==0.0.19
-psutil==6.0.0  # For system monitoring
+psutil>=6.0.0  # For system monitoring
 
 # Code Formatting
 
