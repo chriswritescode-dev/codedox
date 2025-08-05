@@ -107,7 +107,7 @@ export default function CrawlDetail() {
 
   const handleRecrawl = () => {
     if (confirm("Are you sure you want to recrawl this job? This will create a new crawl job with the same configuration.")) {
-      recrawlMutation.mutate();
+      recrawlMutation.mutate(undefined);
     }
   };
 
