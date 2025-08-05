@@ -38,7 +38,6 @@ class TestCrawlerConfig:
         """Test configuration does not include LLM extraction (handled separately)."""
         config = create_crawler_config(
             max_depth=1,
-            api_key="test-key",  # No longer used in crawler
         )
         
         assert config is not None
