@@ -78,11 +78,8 @@ class TestFailedPagesTracking:
         error_message = "Timeout 30000ms exceeded"
         
         # Record the failed page
-        from src.crawler.page_crawler import PageCrawler
-        from src.crawler.config import create_browser_config
-        browser_config = create_browser_config()
-        page_crawler = PageCrawler(browser_config)
-        await page_crawler._record_failed_page(job_id, url, error_message)
+        from src.crawler.failed_page_utils import record_failed_page
+        await record_failed_page(job_id, url, error_message)
         
         # Verify it was saved
         failed_page = db.query(FailedPage).filter_by(
@@ -103,12 +100,9 @@ class TestFailedPagesTracking:
         error_message = "Timeout 30000ms exceeded"
         
         # Record the same page twice
-        from src.crawler.page_crawler import PageCrawler
-        from src.crawler.config import create_browser_config
-        browser_config = create_browser_config()
-        page_crawler = PageCrawler(browser_config)
-        await page_crawler._record_failed_page(job_id, url, error_message)
-        await page_crawler._record_failed_page(job_id, url, "Different error")
+        from src.crawler.failed_page_utils import record_failed_page
+        await record_failed_page(job_id, url, error_message)
+        await record_failed_page(job_id, url, "Different error")
         
         # Should only have one record
         count = db.query(FailedPage).filter_by(
@@ -125,7 +119,7 @@ class TestFailedPagesTracking:
         
         result = await crawl_manager.retry_failed_pages(job_id)
         
-        assert result is None
+        assert result is not None  # Now returns a job ID for full recrawl
 
     @pytest.mark.asyncio
     async def test_retry_failed_pages_creates_new_job(self, crawl_manager, mock_crawl_job, db):
@@ -163,10 +157,10 @@ class TestFailedPagesTracking:
             config = mock_start.call_args[0][0]
             
             assert isinstance(config, CrawlConfig)
-            assert config.name == "Test Crawl - Retry Failed Pages"
-            assert set(config.start_urls) == set(failed_urls)
-            assert config.max_depth == 0  # Don't crawl deeper
-            assert config.max_pages == len(failed_urls)
+            assert config.name == "Test Crawl - Retry"
+            assert set(config.start_urls) == set(["https://example.com"])  # Original start_urls
+            assert config.max_depth == 2  # Uses original depth when no specific_urls
+            assert config.max_pages is None  # No page limit for full recrawl
             assert config.metadata["retry_of_job"] == job_id
 
     @pytest.mark.asyncio
@@ -247,28 +241,28 @@ class TestAPIEndpoint:
             new_job_id = str(uuid4())
             mock_manager.retry_failed_pages = AsyncMock(return_value=new_job_id)
             
-            response = client.post(f"/api/crawl-jobs/{job_id}/retry-failed")
+            response = client.post(f"/api/crawl-jobs/{job_id}/recrawl")
             
             assert response.status_code == 200
             data = response.json()
-            assert data["message"] == "Retry job created successfully"
-            assert data["job_id"] == job_id
+            assert data["message"] == "Recrawl job created successfully"
+            assert data["original_job_id"] == job_id
             assert data["new_job_id"] == new_job_id
 
     @pytest.mark.asyncio
     async def test_retry_failed_pages_endpoint_no_failures(self, client, mock_crawl_job):
-        """Test the API endpoint when there are no failed pages."""
+        """Test the API endpoint when retry_failed_pages returns None (job not found)."""
         job_id = str(mock_crawl_job.id)
         
         with patch('src.api.routes.crawl_jobs.CrawlManager') as MockCrawlManager:
             mock_manager = MockCrawlManager.return_value
             mock_manager.retry_failed_pages = AsyncMock(return_value=None)
             
-            response = client.post(f"/api/crawl-jobs/{job_id}/retry-failed")
+            response = client.post(f"/api/crawl-jobs/{job_id}/recrawl")
             
             assert response.status_code == 400
             data = response.json()
-            assert "No failed pages found" in data["detail"]
+            assert "Job not found" in data["detail"]
 
 
 class TestJobWithFailedPagesCount:

@@ -220,24 +220,24 @@ export default function CrawlJobs() {
     }
   };
 
-  const resumeMutation = useMutation({
-    mutationFn: (jobId: string) => api.resumeCrawlJob(jobId),
+  const recrawlMutation = useMutation({
+    mutationFn: (jobId: string) => api.recrawlJob(jobId),
     onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ["crawl-jobs"] });
-      // Navigate to the job detail page
-      navigate(`/crawl/${(data as { id: string }).id}`);
+      // Navigate to the new job detail page
+      navigate(`/crawl/${(data as { new_job_id: string }).new_job_id}`);
     },
     onError: (error) => {
-      console.error("Failed to resume job:", error);
+      console.error("Failed to recrawl job:", error);
       alert(
-        "Failed to resume job: " +
+        "Failed to recrawl job: " +
           (error instanceof Error ? error.message : "Unknown error")
       );
     },
   });
 
-  const handleResumeClick = (job: { id: string; name: string }) => {
-    resumeMutation.mutate(job.id);
+  const handleRecrawlClick = (job: { id: string; name: string }) => {
+    recrawlMutation.mutate(job.id);
   };
 
   const toggleSelectJob = (jobId: string) => {
@@ -622,16 +622,16 @@ export default function CrawlJobs() {
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm">
                       <div className="flex items-center gap-2">
-                        {/* Show resume button for failed/stalled jobs */}
+                        {/* Show recrawl button for failed/stalled jobs */}
                         {(job.status === "failed" || 
                           (job.status === "running" && isJobStalled(job))) && (
                           <button
-                            onClick={() => handleResumeClick(job)}
+                            onClick={() => handleRecrawlClick(job)}
                             className="text-primary hover:text-primary/80 flex items-center gap-1"
-                            title="Resume job"
+                            title="Recrawl job"
                           >
                             <PlayCircle className="h-4 w-4" />
-                            Resume
+                            Recrawl
                           </button>
                         )}
                         {(job.status === "running" && !isJobStalled(job)) && (
