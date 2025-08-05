@@ -24,7 +24,11 @@ class CreateCrawlJobRequest(BaseModel):
     max_depth: int = 2
     domain_filter: str | None = None
     url_patterns: list[str] | None = None
-    max_concurrent_crawls: int = None
+    max_concurrent_crawls: int | None = None
+
+
+class RecrawlJobRequest(BaseModel):
+    urls: list[str] | None = None
 
 
 @router.get("/crawl-jobs")
@@ -302,46 +306,58 @@ async def cancel_crawl_job(job_id: str) -> dict[str, str]:
     return {"message": "Crawl job cancelled successfully"}
 
 
-@router.post("/crawl-jobs/{job_id}/resume")
-async def resume_crawl_job(job_id: str) -> dict[str, str]:
-    """Resume a failed or stalled crawl job."""
+
+
+@router.get("/crawl-jobs/{job_id}/failed-pages")
+async def get_failed_pages(job_id: str, db: Session = Depends(get_db)) -> list[dict[str, Any]]:
+    """Get failed pages for a crawl job."""
+    # Validate job exists
+    job = db.query(CrawlJob).filter_by(id=job_id).first()
+    if not job:
+        raise HTTPException(status_code=404, detail="Crawl job not found")
+    
+    # Get failed pages
+    failed_pages = db.query(FailedPage).filter_by(crawl_job_id=job_id).all()
+    
+    return [
+        {
+            "id": page.id,
+            "url": page.url,
+            "error_message": page.error_message,
+            "failed_at": page.failed_at.isoformat() if page.failed_at else None
+        }
+        for page in failed_pages
+    ]
+
+
+@router.post("/crawl-jobs/{job_id}/recrawl")
+async def recrawl_job(job_id: str, request: RecrawlJobRequest | None = None) -> dict[str, str]:
+    """Create a new crawl job with the same configuration as the original.
+    
+    This recrawls the source with the original configuration. The content hash
+    checking will automatically skip pages that haven't changed, making this
+    efficient for both retry and periodic updates.
+    
+    Args:
+        job_id: The ID of the job to recrawl
+        request: Optional request body with specific URLs to recrawl
+    """
     crawl_manager = CrawlManager()
-
-    # Check if there are failed pages
-    from ...database import FailedPage, get_db_manager
-    db_manager = get_db_manager()
-    with db_manager.session_scope() as session:
-        failed_count = session.query(FailedPage).filter_by(crawl_job_id=job_id).count()
-
-    if failed_count > 0:
-        # Use retry_failed_pages which returns the new job ID
-        new_job_id = await crawl_manager.retry_failed_pages(job_id)
-        if new_job_id:
-            return {"message": f"Created new job to retry {failed_count} failed pages", "id": new_job_id}
-        else:
-            raise HTTPException(status_code=400, detail="Failed to create retry job")
-    else:
-        # Resume the existing job
-        success = await crawl_manager.resume_job(job_id)
-        if not success:
-            raise HTTPException(status_code=400, detail="Job not found or cannot be resumed")
-
-        return {"message": "Crawl job resumed successfully", "id": job_id}
-
-
-
-@router.post("/crawl-jobs/{job_id}/retry-failed")
-async def retry_failed_pages(job_id: str) -> dict[str, str]:
-    """Create a new crawl job to retry failed pages from a previous job."""
-    crawl_manager = CrawlManager()
-    new_job_id = await crawl_manager.retry_failed_pages(job_id)
+    
+    # Extract specific URLs if provided
+    specific_urls = None
+    if request and request.urls:
+        specific_urls = request.urls
+        logger.info(f"Recrawling job {job_id} with {len(specific_urls)} specific URLs")
+    
+    new_job_id = await crawl_manager.retry_failed_pages(job_id, specific_urls=specific_urls)
 
     if not new_job_id:
-        raise HTTPException(status_code=400, detail="No failed pages found or job not found")
+        raise HTTPException(status_code=400, detail="Job not found")
 
     return {
-        "message": "Retry job created successfully",
-        "job_id": job_id,
+        "message": "Recrawl job created successfully",
+        "original_job_id": job_id,
         "new_job_id": new_job_id
     }
 

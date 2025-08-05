@@ -26,7 +26,6 @@ class JobManager:
         max_depth: int,
         domain_restrictions: List[str],
         config: Dict[str, Any],
-        user_id: Optional[str] = None,
     ) -> str:
         """Create a new crawl job.
 
@@ -36,7 +35,6 @@ class JobManager:
             max_depth: Maximum crawl depth
             domain_restrictions: Domain restrictions
             config: Additional configuration
-            user_id: User identifier
 
         Returns:
             Job ID
@@ -54,7 +52,6 @@ class JobManager:
                 domain_restrictions=domain_restrictions,
                 status="running",
                 started_at=datetime.utcnow(),
-                created_by=user_id,
                 last_heartbeat=datetime.utcnow(),
                 crawl_phase="crawling",
                 config=config,
@@ -70,7 +67,6 @@ class JobManager:
         max_depth: int,
         domain_restrictions: List[str],
         config: Dict[str, Any],
-        user_id: Optional[str] = None,
     ) -> str:
         """Get existing job for domain or create new one.
 
@@ -80,7 +76,6 @@ class JobManager:
             max_depth: Maximum crawl depth
             domain_restrictions: Domain restrictions
             config: Additional configuration
-            user_id: User identifier
 
         Returns:
             Job ID
@@ -112,7 +107,6 @@ class JobManager:
                 existing_job.domain_restrictions = domain_restrictions
                 existing_job.status = "running"
                 existing_job.started_at = datetime.utcnow()
-                existing_job.created_by = user_id
                 existing_job.last_heartbeat = datetime.utcnow()
                 existing_job.crawl_phase = "crawling"
                 existing_job.error_message = None
@@ -147,7 +141,7 @@ class JobManager:
             else:
                 # Create new job
                 return self.create_job(
-                    name, start_urls, max_depth, domain_restrictions, config, user_id
+                    name, start_urls, max_depth, domain_restrictions, config
                 )
 
     def update_job_status(
@@ -320,7 +314,7 @@ class JobManager:
         """
         with self.db_manager.session_scope() as session:
             job = self.get_job(job_id, session)
-            return job is not None and job.status == "running"
+            return bool(job is not None and job.status == "running")
 
     def update_heartbeat(self, job_id: str) -> bool:
         """Update job heartbeat timestamp.

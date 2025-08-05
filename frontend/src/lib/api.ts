@@ -247,16 +247,25 @@ class APIClient {
     })
   }
 
-  async resumeCrawlJob(id: string): Promise<{ id: string; message: string }> {
-    return this.fetch<{ id: string; message: string }>(`/crawl-jobs/${id}/resume`, {
+  async recrawlJob(id: string, urls?: string[]): Promise<{ message: string; original_job_id: string; new_job_id: string }> {
+    return this.fetch<{ message: string; original_job_id: string; new_job_id: string }>(`/crawl-jobs/${id}/recrawl`, {
       method: 'POST',
+      body: urls ? JSON.stringify({ urls }) : undefined,
     })
   }
 
-  async retryFailedPages(id: string): Promise<{ message: string; job_id: string; new_job_id: string }> {
-    return this.fetch<{ message: string; job_id: string; new_job_id: string }>(`/crawl-jobs/${id}/retry-failed`, {
-      method: 'POST',
-    })
+  async getFailedPages(id: string): Promise<Array<{
+    id: number
+    url: string
+    error_message: string | null
+    failed_at: string | null
+  }>> {
+    return this.fetch<Array<{
+      id: number
+      url: string
+      error_message: string | null
+      failed_at: string | null
+    }>>(`/crawl-jobs/${id}/failed-pages`)
   }
 
   async deleteCrawlJob(id: string): Promise<{ message: string }> {
