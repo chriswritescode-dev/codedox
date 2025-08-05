@@ -1,16 +1,16 @@
 """Process crawl results and store in database."""
 
-import logging
 import asyncio
-from typing import List, Tuple, Optional, Dict, Any
-from datetime import datetime
-from concurrent.futures import ThreadPoolExecutor, as_completed, TimeoutError as FutureTimeoutError
+import logging
 import os
+from concurrent.futures import ThreadPoolExecutor
+from datetime import datetime
+from typing import Any
 
 from sqlalchemy.orm import Session
 
-from ..database import Document, CodeSnippet, get_db_manager
 from ..config import get_settings
+from ..database import CodeSnippet, Document, get_db_manager
 from .code_formatter import CodeFormatter
 
 logger = logging.getLogger(__name__)
@@ -33,11 +33,10 @@ class ResultProcessor:
             max_workers=max_workers,
             thread_name_prefix="code-formatter"
         )
-        self.format_semaphore = asyncio.Semaphore(
-            self.settings.crawling.format_thread_pool_queue_size
-        )
+        # Note: Semaphore is now created locally in _format_blocks_concurrently
+        # to avoid deadlock issues with the previous global semaphore pattern
         logger.info(f"ResultProcessor thread pool initialized with {max_workers} workers")
-    
+
     def cleanup(self):
         """Cleanup resources including thread pool."""
         try:
@@ -45,11 +44,11 @@ class ResultProcessor:
             logger.info("Thread pool shut down successfully")
         except Exception as e:
             logger.error(f"Error shutting down thread pool: {e}")
-    
+
     def __enter__(self):
         """Context manager entry."""
         return self
-    
+
     def __exit__(self, exc_type, exc_val, exc_tb):
         """Context manager exit - ensure cleanup."""
         self.cleanup()
@@ -57,7 +56,7 @@ class ResultProcessor:
 
     async def process_result_pipeline(
         self, result: Any, job_id: str, depth: int  # CrawlResult
-    ) -> Tuple[int, int]:
+    ) -> tuple[int, int]:
         """Process result and store directly in database.
 
         Args:
@@ -87,7 +86,16 @@ class ResultProcessor:
             if existing_doc and existing_doc.content_hash == result.content_hash and not ignore_hash:
                 # Content unchanged and not ignoring hash - count existing snippets
                 existing_snippet_count = session.query(CodeSnippet).filter_by(document_id=existing_doc.id).count()
-                logger.info(f"[SNIPPET_COUNT] Content unchanged for {result.url}, returning {existing_snippet_count} existing snippets")
+                
+                # Check if this is a retry job for better logging
+                is_retry_job = False
+                if hasattr(result, 'metadata') and result.metadata:
+                    is_retry_job = result.metadata.get('is_retry', False)
+                
+                if is_retry_job:
+                    logger.info(f"[RETRY EFFICIENCY] Content unchanged for {result.url}, returning {existing_snippet_count} existing snippets (avoiding redundant LLM calls)")
+                else:
+                    logger.info(f"[SNIPPET_COUNT] Content unchanged for {result.url}, returning {existing_snippet_count} existing snippets")
                 return int(existing_doc.id), existing_snippet_count
 
             # Create or update document
@@ -107,7 +115,7 @@ class ResultProcessor:
                     if existing_doc:
                         session.query(CodeSnippet).filter_by(document_id=existing_doc.id).delete()
                         logger.info(f"Deleted old snippets for document {existing_doc.id}")
-                    
+
                     snippet_count = await self._process_code_blocks(
                         session, doc, result.code_blocks, result.url
                     )
@@ -131,7 +139,7 @@ class ResultProcessor:
 
     async def process_result(
         self, result: Any, job_id: str, depth: int  # CrawlResult
-    ) -> Tuple[int, int]:
+    ) -> tuple[int, int]:
         """Process result with immediate extraction.
 
         Args:
@@ -159,7 +167,16 @@ class ResultProcessor:
             if existing_doc and existing_doc.content_hash == result.content_hash and not ignore_hash:
                 # Content unchanged - always return existing snippet count
                 existing_snippet_count = session.query(CodeSnippet).filter_by(document_id=existing_doc.id).count()
-                logger.info(f"[SNIPPET_COUNT] Content unchanged for {result.url}, returning {existing_snippet_count} existing snippets")
+                
+                # Check if this is a retry job for better logging
+                is_retry_job = False
+                if hasattr(result, 'metadata') and result.metadata:
+                    is_retry_job = result.metadata.get('is_retry', False)
+                
+                if is_retry_job:
+                    logger.info(f"[RETRY EFFICIENCY] Content unchanged for {result.url}, returning {existing_snippet_count} existing snippets (avoiding redundant LLM calls)")
+                else:
+                    logger.info(f"[SNIPPET_COUNT] Content unchanged for {result.url}, returning {existing_snippet_count} existing snippets")
                 return int(existing_doc.id), existing_snippet_count
 
             # Log when ignoring hash
@@ -181,7 +198,7 @@ class ResultProcessor:
                     if existing_doc:
                         session.query(CodeSnippet).filter_by(document_id=existing_doc.id).delete()
                         logger.info(f"Deleted old snippets for document {existing_doc.id}")
-                    
+
                     snippet_count = await self._process_code_blocks(
                         session, doc, result.code_blocks, result.url
                     )
@@ -203,8 +220,8 @@ class ResultProcessor:
             return int(doc.id), snippet_count
 
     async def process_batch(
-        self, results: List[Any], job_id: str, use_pipeline: bool = True  # List[CrawlResult]
-    ) -> Tuple[int, int]:
+        self, results: list[Any], job_id: str, use_pipeline: bool = True  # List[CrawlResult]
+    ) -> tuple[int, int]:
         """Process a batch of results.
 
         Args:
@@ -226,17 +243,30 @@ class ResultProcessor:
 
             for result in batch:
                 if use_pipeline:
-                    task = self.process_result_pipeline(
+                    coro = self.process_result_pipeline(
                         result, job_id, result.metadata.get("depth", 0)
                     )
                 else:
-                    task = self.process_result(result, job_id, result.metadata.get("depth", 0))
+                    coro = self.process_result(result, job_id, result.metadata.get("depth", 0))
+                task = asyncio.create_task(coro)
                 tasks.append(task)
 
-            # Wait for batch completion
-            batch_results = await asyncio.gather(*tasks, return_exceptions=True)
+            # Wait for batch completion with timeout
+            logger.debug(f"Waiting for {len(tasks)} tasks to complete in batch {i // batch_size + 1}")
+            try:
+                batch_results = await asyncio.wait_for(
+                    asyncio.gather(*tasks, return_exceptions=True),
+                    timeout=120  # 2 minutes for the entire batch
+                )
+            except asyncio.TimeoutError:
+                logger.error(f"Batch {i // batch_size + 1} timed out after 120s with {len(tasks)} tasks")
+                # Cancel remaining tasks
+                for task in tasks:
+                    if not task.done():
+                        task.cancel()
+                continue  # Skip this batch
 
-            for j, br in enumerate(batch_results):
+            for br in batch_results:
                 if isinstance(br, Exception):
                     logger.error(f"Error processing result: {br}")
                 else:
@@ -252,7 +282,7 @@ class ResultProcessor:
         result: Any,  # CrawlResult
         job_id: str,
         depth: int,
-        existing_doc: Optional[Document] = None,
+        existing_doc: Document | None = None,
     ) -> Document:
         """Create or update document in database.
 
@@ -310,7 +340,7 @@ class ResultProcessor:
             if job.config.get('name_detected'):
                 logger.debug(f"Name already detected for job {job_id}, skipping")
                 return
-                
+
             # Extract name from first page
             detected_name = await self._extract_site_name(result.title, result.url, result.metadata, result.content)
             if detected_name:
@@ -321,9 +351,9 @@ class ResultProcessor:
                 session.commit()
 
     async def _extract_site_name(
-        self, title: str, url: str, metadata: Optional[Dict[str, Any]] = None, 
-        content: Optional[str] = None
-    ) -> Optional[str]:
+        self, title: str, url: str, metadata: dict[str, Any] | None = None,
+        content: str | None = None
+    ) -> str | None:
         """Extract site name using LLM or fallback logic.
 
         Args:
@@ -345,13 +375,13 @@ class ResultProcessor:
             if og_site_name and len(og_site_name) <= 50:
                 logger.info(f"Using og:site_name: {og_site_name}")
                 return og_site_name.strip()
-            
+
             # Check for application-name meta tag
             app_name = metadata.get('application-name')
             if app_name and len(app_name) <= 50:
                 logger.info(f"Using application-name: {app_name}")
                 return app_name.strip()
-            
+
             # Check for twitter:site
             twitter_site = metadata.get('twitter:site')
             if twitter_site and len(twitter_site) <= 50:
@@ -366,7 +396,7 @@ class ResultProcessor:
             try:
                 from .llm_retry import LLMDescriptionGenerator
                 llm_generator = LLMDescriptionGenerator()
-                
+
                 if llm_generator.client:
                     # Create a focused prompt for name extraction
                     prompt = f"""Extract the library/framework name from this documentation page.
@@ -378,14 +408,14 @@ Metadata: {str(metadata)[:500] if metadata else 'N/A'}
 Respond with ONLY the library/framework name (e.g., "React", "Next.js", "Django", ".NET").
 Do not include words like "Documentation", "Docs", "Guide", etc.
 If you cannot determine the name, respond with "UNKNOWN"."""
-                    
+
                     response = await llm_generator.client.chat.completions.create(
                         model=self.settings.code_extraction.llm_extraction_model,
                         messages=[{"role": "user", "content": prompt}],
                         temperature=0.1,
                         max_tokens=50
                     )
-                    
+
                     extracted_name = response.choices[0].message.content.strip()
                     if extracted_name and extracted_name != "UNKNOWN" and len(extracted_name) <= 50:
                         logger.info(f"LLM extracted name: {extracted_name}")
@@ -396,7 +426,7 @@ If you cannot determine the name, respond with "UNKNOWN"."""
         # Fallback to simple extraction logic
         if title:
             clean_title = title
-            
+
             # Clean common suffixes
             suffixes_to_remove = [
                 " Documentation", " Docs", " | Home", " - Official Site",
@@ -407,7 +437,7 @@ If you cannot determine the name, respond with "UNKNOWN"."""
                 if clean_title.endswith(suffix):
                     clean_title = clean_title[:-len(suffix)]
                     break
-            
+
             # Handle pipe-separated titles
             if " | " in clean_title:
                 parts = clean_title.split(" | ")
@@ -418,27 +448,27 @@ If you cannot determine the name, respond with "UNKNOWN"."""
                 # 2. Otherwise use the last part
                 else:
                     clean_title = parts[-1].strip()
-            
+
             # Handle dash-separated titles
             elif " - " in clean_title:
                 parts = clean_title.split(" - ")
                 # Similar logic
                 if len(parts[0]) <= 30 and not any(word in parts[0].lower() for word in ['documentation', 'docs', 'guide']):
                     clean_title = parts[0].strip()
-            
+
             # Remove version numbers at the end
             import re
             clean_title = re.sub(r'\s+v?\d+(\.\d+)*$', '', clean_title)
-            
+
             # Truncate long titles
             if len(clean_title) > 50:
                 return clean_title[:50].rsplit(" ", 1)[0] + "..."
-            
+
             return clean_title.strip()
-        
+
         return None
 
-    async def _format_blocks_concurrently(self, blocks_to_format: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    async def _format_blocks_concurrently(self, blocks_to_format: list[dict[str, Any]]) -> list[dict[str, Any]]:
         """Format multiple code blocks concurrently using thread pool.
         
         Args:
@@ -449,50 +479,74 @@ If you cannot determine the name, respond with "UNKNOWN"."""
         """
         loop = asyncio.get_event_loop()
         
-        # Submit all formatting tasks to thread pool with semaphore control
-        future_to_block = {}
-        for block_data in blocks_to_format:
-            # Acquire semaphore to limit queue size
-            await self.format_semaphore.acquire()
-            try:
-                future = loop.run_in_executor(
+        # Log the formatting task
+        logger.info(f"Starting concurrent formatting of {len(blocks_to_format)} code blocks")
+
+        # Submit all formatting tasks to thread pool
+        # Use a more reasonable semaphore limit based on thread pool size
+        max_concurrent = min(self.settings.crawling.format_thread_pool_size * 2, len(blocks_to_format))
+        submission_semaphore = asyncio.Semaphore(max_concurrent)
+        
+        async def submit_with_semaphore(block_data):
+            async with submission_semaphore:
+                return await loop.run_in_executor(
                     self.format_thread_pool,
                     self._format_single_block,
                     block_data
                 )
-                future_to_block[future] = block_data
-            except Exception:
-                # Release semaphore if submission fails
-                self.format_semaphore.release()
-                raise
         
-        # Collect results as they complete with timeout
+        # Create tasks for all blocks
+        tasks = [asyncio.create_task(submit_with_semaphore(block)) for block in blocks_to_format]
+        
+        # Wait for all tasks with a more reasonable timeout
+        # 36 blocks * 5 seconds per block = 180 seconds, so use 300 for safety
+        timeout = max(300, len(blocks_to_format) * 10)  # 10 seconds per block or 5 minutes min
+        
         formatted_blocks = []
-        for future in asyncio.as_completed(future_to_block, timeout=120):  # 2 minute overall timeout
-            try:
-                # Individual timeout for each formatting task
-                formatted_block = await asyncio.wait_for(future, timeout=45)  # 45 second timeout per block
-                formatted_blocks.append(formatted_block)
+        try:
+            # Use asyncio.gather with return_exceptions to handle individual failures
+            results = await asyncio.wait_for(
+                asyncio.gather(*tasks, return_exceptions=True),
+                timeout=timeout
+            )
+            
+            # Process results
+            for i, result in enumerate(results):
+                if isinstance(result, Exception):
+                    # On error, keep original block data
+                    original_block = blocks_to_format[i]
+                    logger.warning(f"Formatting failed for '{original_block.get('title', 'unknown')}': {result}")
+                    original_block['formatted_content'] = original_block['content']
+                    formatted_blocks.append(original_block)
+                else:
+                    formatted_blocks.append(result)
                     
-            except asyncio.TimeoutError:
-                # On timeout, keep original block data
-                original_block = future_to_block[future]
-                logger.warning(f"Formatting timed out for '{original_block['title']}' (language: {original_block['language']})")
-                original_block['formatted_content'] = original_block['content']
-                formatted_blocks.append(original_block)
-            except Exception as e:
-                # On error, keep original block data
-                original_block = future_to_block[future]
-                logger.warning(f"Concurrent formatting failed for '{original_block['title']}': {e}")
-                original_block['formatted_content'] = original_block['content']
-                formatted_blocks.append(original_block)
-            finally:
-                # Always release semaphore when a future completes
-                self.format_semaphore.release()
-        
+            logger.info(f"Completed formatting {len(formatted_blocks)} code blocks")
+                    
+        except asyncio.TimeoutError:
+            logger.error(f"Overall formatting timeout reached after {timeout}s for {len(blocks_to_format)} blocks")
+            # Cancel remaining tasks
+            for i, task in enumerate(tasks):
+                if not task.done():
+                    task.cancel()
+                    # Use original content for timed out blocks
+                    original_block = blocks_to_format[i]
+                    original_block['formatted_content'] = original_block['content']
+                    formatted_blocks.append(original_block)
+                elif i < len(blocks_to_format):
+                    # Task completed, get its result
+                    try:
+                        result = await task
+                        formatted_blocks.append(result)
+                    except Exception:
+                        # Fallback to original
+                        original_block = blocks_to_format[i]
+                        original_block['formatted_content'] = original_block['content']
+                        formatted_blocks.append(original_block)
+
         return formatted_blocks
-    
-    def _format_single_block(self, block_data: Dict[str, Any]) -> Dict[str, Any]:
+
+    def _format_single_block(self, block_data: dict[str, Any]) -> dict[str, Any]:
         """Format a single code block (runs in thread pool).
         
         Args:
@@ -504,7 +558,7 @@ If you cannot determine the name, respond with "UNKNOWN"."""
         content = block_data['content']
         language = block_data['language']
         title = block_data['title']
-        
+
         try:
             formatted_code = self.code_formatter.format(content, language)
             if formatted_code and formatted_code != content:
@@ -516,11 +570,11 @@ If you cannot determine the name, respond with "UNKNOWN"."""
         except Exception as e:
             logger.warning(f"Failed to format code for snippet '{title}': {e}")
             block_data['formatted_content'] = content
-        
+
         return block_data
 
     async def _process_code_blocks(
-        self, session: Session, doc: Document, code_blocks: List[Any], source_url: str
+        self, session: Session, doc: Document, code_blocks: list[Any], source_url: str
     ) -> int:
         """Process code blocks and store directly.
 
@@ -534,16 +588,16 @@ If you cannot determine the name, respond with "UNKNOWN"."""
             Number of snippets created
         """
         snippet_count = 0
-        
+
         logger.info(f"Processing {len(code_blocks)} code blocks for document {doc.url}")
-        
+
         # First, extract all block data and prepare for concurrent formatting
         blocks_to_format = []
-        
+
         for i, block in enumerate(code_blocks):
             # Debug log the block structure
             logger.debug(f"Processing block {i}: type={type(block)}, has_dict_methods={hasattr(block, 'get')}")
-            
+
             # Handle both dict (from LLM) and object (from default) formats
             if isinstance(block, dict):
                 content = block.get('code', '')
@@ -561,12 +615,12 @@ If you cannot determine the name, respond with "UNKNOWN"."""
                 description = getattr(block, 'description', '')
                 metadata = getattr(block, 'metadata', {})
                 filename = getattr(block, 'filename', None)
-            
+
             # Skip empty code blocks
             if not content:
                 logger.warning(f"Skipping empty code block {i} with title: {title}")
                 continue
-            
+
             # Add to blocks to format
             blocks_to_format.append({
                 'index': i,
@@ -577,17 +631,24 @@ If you cannot determine the name, respond with "UNKNOWN"."""
                 'metadata': metadata,
                 'filename': filename
             })
-        
+
         # Format all blocks concurrently
         if blocks_to_format:
-            logger.info(f"Starting concurrent formatting of {len(blocks_to_format)} code blocks")
-            formatted_blocks = await self._format_blocks_concurrently(blocks_to_format)
+            # Add safety check for excessive blocks
+            if len(blocks_to_format) > 100:
+                logger.warning(f"Skipping formatting for {len(blocks_to_format)} blocks (exceeds safety limit of 100)")
+                # Skip formatting, just copy content as-is
+                for block in blocks_to_format:
+                    block['formatted_content'] = block['content']
+                formatted_blocks = blocks_to_format
+            else:
+                formatted_blocks = await self._format_blocks_concurrently(blocks_to_format)
         else:
             formatted_blocks = []
-        
+
         # Now process all formatted blocks
         import hashlib
-        
+
         for block_data in formatted_blocks:
             content = block_data['formatted_content']
             title = block_data['title']
@@ -595,10 +656,10 @@ If you cannot determine the name, respond with "UNKNOWN"."""
             language = block_data['language']
             metadata = block_data['metadata']
             filename = block_data['filename']
-                
+
             # Calculate hash for deduplication
             code_hash = hashlib.md5(content.encode()).hexdigest()
-            
+
             # Map purpose to snippet_type
             purpose = metadata.get('purpose', 'code')
             snippet_type_map = {
@@ -610,14 +671,14 @@ If you cannot determine the name, respond with "UNKNOWN"."""
                 'test': 'code'
             }
             snippet_type = snippet_type_map.get(purpose, 'code')
-            
+
             # Build simplified metadata
             full_metadata = {
                 'filename': filename,
                 'container_type': metadata.get('container_type'),
                 'extraction_method': metadata.get('extraction_method'),
             }
-            
+
             # Create snippet with all LLM data
             snippet = CodeSnippet(
                 document_id=doc.id,
@@ -652,10 +713,10 @@ If you cannot determine the name, respond with "UNKNOWN"."""
                 # Update existing with new data
                 self._update_snippet(existing, snippet)
                 logger.info(f"Updated existing snippet: {title}")
-        
+
         # Commit snippets
         session.commit()
-        
+
         logger.info(f"[SNIPPET_COUNT] Processed {snippet_count} new snippets for document {doc.id}")
 
         return snippet_count
