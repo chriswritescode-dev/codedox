@@ -12,16 +12,18 @@ import {
   Clock,
   StopCircle,
   PlayCircle,
-  AlertTriangle,
+  AlertCircle,
 } from "lucide-react";
 import CrawlProgress from "../components/CrawlProgress";
 import { ConfirmationDialog } from "../components/ConfirmationDialog";
+import { FailedPagesList } from "../components/FailedPagesList";
 
 export default function CrawlDetail() {
   const { id } = useParams<{ id: string }>();
   const queryClient = useQueryClient();
   const [cancelModalOpen, setCancelModalOpen] = useState(false);
   const [currentUrl, setCurrentUrl] = useState<string>();
+  const [showFailedPages, setShowFailedPages] = useState(false);
 
   // WebSocket for real-time updates
   const { subscribe, unsubscribe } = useWebSocket({
@@ -73,24 +75,8 @@ export default function CrawlDetail() {
     },
   });
 
-  const resumeMutation = useMutation({
-    mutationFn: () => api.resumeCrawlJob(id!),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["crawl-job", id] });
-      queryClient.invalidateQueries({ queryKey: ["crawl-jobs"] });
-    },
-    onError: (error) => {
-      console.error("Failed to resume job:", error);
-      alert(
-        "Failed to resume job: " +
-          (error instanceof Error ? error.message : "Unknown error")
-      );
-    },
-  });
-
-
-  const retryFailedPagesMutation = useMutation({
-    mutationFn: () => api.retryFailedPages(id!),
+  const recrawlMutation = useMutation({
+    mutationFn: (urls?: string[]) => api.recrawlJob(id!, urls),
     onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ["crawl-job", id] });
       queryClient.invalidateQueries({ queryKey: ["crawl-jobs"] });
@@ -98,28 +84,30 @@ export default function CrawlDetail() {
       window.location.href = `/crawl/${data.new_job_id}`;
     },
     onError: (error) => {
-      console.error("Failed to retry failed pages:", error);
+      console.error("Failed to recrawl job:", error);
       alert(
-        "Failed to retry failed pages: " +
+        "Failed to recrawl job: " +
           (error instanceof Error ? error.message : "Unknown error")
       );
     },
+  });
+
+  const {
+    data: failedPages,
+    isLoading: isLoadingFailedPages,
+  } = useQuery({
+    queryKey: ["crawl-job-failed-pages", id],
+    queryFn: () => api.getFailedPages(id!),
+    enabled: !!id && showFailedPages && job?.failed_pages_count !== undefined && job.failed_pages_count > 0,
   });
 
   const confirmCancel = () => {
     cancelMutation.mutate();
   };
 
-  const handleResume = () => {
-    if (confirm("Are you sure you want to resume this crawl job?")) {
-      resumeMutation.mutate();
-    }
-  };
-
-
-  const handleRetryFailedPages = () => {
-    if (confirm(`Are you sure you want to retry ${job?.failed_pages_count || 0} failed pages? This will create a new crawl job.`)) {
-      retryFailedPagesMutation.mutate();
+  const handleRecrawl = () => {
+    if (confirm("Are you sure you want to recrawl this job? This will create a new crawl job with the same configuration.")) {
+      recrawlMutation.mutate();
     }
   };
 
@@ -190,36 +178,20 @@ export default function CrawlDetail() {
                   Cancel
                 </button>
               )}
-              {job.status === "failed" && (
+              {(job.status === "failed" || job.status === "completed") && (
                 <button
-                  onClick={() => handleResume()}
-                  disabled={resumeMutation.isPending}
+                  onClick={() => handleRecrawl()}
+                  disabled={recrawlMutation.isPending}
                   className="cursor-pointer flex items-center gap-2 px-3 py-1.5 text-primary border border-primary rounded-md hover:bg-primary/10 disabled:opacity-50 disabled:cursor-not-allowed"
                 >
-                  {resumeMutation.isPending ? (
+                  {recrawlMutation.isPending ? (
                     <Loader2 className="h-4 w-4 animate-spin" />
                   ) : (
                     <PlayCircle className="h-4 w-4" />
                   )}
-                  Resume
+                  Recrawl
                 </button>
               )}
-              {(job.status === "completed" || job.status === "failed") && 
-                !!job.failed_pages_count && job.failed_pages_count > 0 && (
-                  <button
-                    onClick={() => handleRetryFailedPages()}
-                    disabled={retryFailedPagesMutation.isPending}
-                    className="cursor-pointer flex items-center gap-2 px-3 py-1.5 text-orange-600 border border-orange-600 rounded-md hover:bg-orange-600/10 disabled:opacity-50 disabled:cursor-not-allowed"
-                  >
-                    {retryFailedPagesMutation.isPending ? (
-                      <Loader2 className="h-4 w-4 animate-spin" />
-                    ) : (
-                      <AlertTriangle className="h-4 w-4" />
-                    )}
-                    Retry {job.failed_pages_count} Failed Pages
-                  </button>
-                )
-              }
             </div>
           </div>
         </div>
@@ -243,9 +215,16 @@ export default function CrawlDetail() {
           </div>
 
           {job.failed_pages_count !== undefined && job.failed_pages_count > 0 && (
-            <div className="bg-orange-50 dark:bg-orange-900/20 rounded-md p-4 border border-orange-200 dark:border-orange-800">
+            <div 
+              className="bg-orange-50 dark:bg-orange-900/20 rounded-md p-4 border border-orange-200 dark:border-orange-800 cursor-pointer hover:bg-orange-100 dark:hover:bg-orange-900/30 transition-colors"
+              onClick={() => setShowFailedPages(!showFailedPages)}
+            >
               <p className="text-sm text-orange-700 dark:text-orange-300 mb-1">Failed Pages</p>
-              <p className="text-xl font-semibold text-orange-900 dark:text-orange-100">{job.failed_pages_count}</p>
+              <div className="flex items-center justify-between">
+                <p className="text-xl font-semibold text-orange-900 dark:text-orange-100">{job.failed_pages_count}</p>
+                <AlertCircle className="h-5 w-5 text-orange-600 dark:text-orange-400" />
+              </div>
+              <p className="text-xs text-orange-600 dark:text-orange-400 mt-1">Click to view</p>
             </div>
           )}
 
@@ -276,6 +255,30 @@ export default function CrawlDetail() {
       {/* Progress Section */}
       {job.status === "running" && (
         <CrawlProgress job={job} currentUrl={currentUrl} />
+      )}
+
+      {/* Failed Pages Section */}
+      {showFailedPages && job.failed_pages_count !== undefined && job.failed_pages_count > 0 && (
+        <div className="bg-secondary/50 rounded-lg p-6">
+          {isLoadingFailedPages ? (
+            <div className="flex items-center justify-center py-8">
+              <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+              <span className="ml-2 text-muted-foreground">Loading failed pages...</span>
+            </div>
+          ) : failedPages && failedPages.length > 0 ? (
+            <FailedPagesList
+              pages={failedPages}
+              onRetrySelected={(urls) => {
+                if (confirm(`Are you sure you want to retry ${urls.length} failed page(s)?`)) {
+                  recrawlMutation.mutate(urls);
+                }
+              }}
+              isRetrying={recrawlMutation.isPending}
+            />
+          ) : (
+            <p className="text-center text-muted-foreground py-8">No failed pages data available</p>
+          )}
+        </div>
       )}
 
       {/* Cancel Confirmation Dialog */}

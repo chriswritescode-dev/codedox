@@ -32,7 +32,6 @@ def create_browser_config(
 
 def create_crawler_config(
     max_depth: int = 0,
-    api_key: Optional[str] = None,
     domain_restrictions: Optional[List[str]] = None,
     include_patterns: Optional[List[str]] = None,
     exclude_patterns: Optional[List[str]] = None,
@@ -42,10 +41,7 @@ def create_crawler_config(
     """Create unified crawler configuration for both single page and deep crawl.
     
     Args:
-        urls: URLs to crawl
         max_depth: Maximum crawl depth (0 for single page)
-        api_key: API key for LLM extraction (no longer used in crawler)
-        model: LLM model to use
         domain_restrictions: List of allowed domains
         include_patterns: URL patterns to include
         exclude_patterns: URL patterns to exclude
@@ -102,10 +98,11 @@ def create_crawler_config(
         }
         if max_pages is not None:
             strategy_kwargs["max_pages"] = max_pages
-            
-        config_dict["deep_crawl_strategy"] = BFSDeepCrawlStrategy(
-            filter_chain=FilterChain(filters) if filters else None,
-            **strategy_kwargs
-        )
+        
+        # Only add filter_chain if we have filters
+        if filters:
+            strategy_kwargs["filter_chain"] = FilterChain(filters)
+        
+        config_dict["deep_crawl_strategy"] = BFSDeepCrawlStrategy(**strategy_kwargs)
 
     return CrawlerRunConfig(**config_dict)
