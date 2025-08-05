@@ -171,7 +171,6 @@ class PageCrawler:
                     # Create crawler run config
                     crawler_run_config = create_crawler_config(
                         max_depth=max_depth,
-                        api_key=api_key,
                         domain_restrictions=job_config.get("domain_restrictions") if job_config else None,
                         include_patterns=job_config.get("include_patterns") if job_config else None,
                         exclude_patterns=job_config.get("exclude_patterns") if job_config else None,
@@ -294,6 +293,183 @@ class PageCrawler:
             if "cancelled" not in str(e).lower():
                 await record_failed_page(job_id, url, str(e))
             return None
+
+    async def crawl_multiple_urls(
+        self,
+        urls: list[str],
+        job_id: str,
+        job_config: dict[str, Any] | None = None,
+        progress_tracker: Any | None = None,
+    ) -> list[CrawlResult]:
+        """Crawl multiple URLs efficiently using arun_many.
+        
+        Args:
+            urls: List of URLs to crawl
+            job_id: Job ID for tracking
+            job_config: Job configuration
+            progress_tracker: Progress tracker instance
+            
+        Returns:
+            List of CrawlResult objects
+        """
+        logger.info(f"Starting multi-URL crawl for {len(urls)} URLs with job_id: {job_id}")
+        
+        # Get API key for LLM extraction
+        api_key = None
+        if self.settings.code_extraction.llm_api_key:
+            api_key = self.settings.code_extraction.llm_api_key.get_secret_value()
+
+        if not api_key:
+            logger.error("LLM extraction API key not found. Please set CODE_LLM_API_KEY in your .env file")
+            raise ValueError("LLM extraction API key is required")
+
+        # Get user agent from settings
+        user_agent = self.settings.crawling.user_agent
+        
+        all_results = []
+        
+        try:
+            async with AsyncWebCrawler(config=self.browser_config) as crawler:
+                # Configure rate limiter and dispatcher for multi-URL crawling
+                max_concurrent = job_config.get("max_concurrent_crawls", get_settings().crawling.max_concurrent_crawls) if job_config else get_settings().crawling.max_concurrent_crawls
+                
+                rate_limiter = RateLimiter(base_delay=(1.0, 2.0), max_delay=30.0, max_retries=4)
+                dispatcher = SemaphoreDispatcher(
+                    semaphore_count=5,
+                    max_session_permit=max_concurrent,
+                    rate_limiter=rate_limiter,
+                )
+                
+                # Create crawler config for single page crawls (max_depth=0)
+                crawler_run_config = create_crawler_config(
+                    max_depth=0,
+                    domain_restrictions=job_config.get("domain_restrictions") if job_config else None,
+                    include_patterns=job_config.get("include_patterns") if job_config else None,
+                    exclude_patterns=job_config.get("exclude_patterns") if job_config else None,
+                    user_agent=user_agent,
+                    max_pages=job_config.get("max_pages") if job_config else None,
+                )
+                
+                # Create queues for parallel processing
+                extraction_queue = asyncio.Queue()
+                processed_results = asyncio.Queue()
+                
+                # Start extraction workers
+                llm_parallel_limit = int(os.getenv('CODE_LLM_NUM_PARALLEL', '5'))
+                extraction_semaphore = asyncio.Semaphore(llm_parallel_limit)
+                
+                workers = []
+                for i in range(llm_parallel_limit):
+                    worker = asyncio.create_task(
+                        self._extraction_worker(
+                            extraction_queue,
+                            processed_results,
+                            extraction_semaphore,
+                            job_id,
+                            0,  # depth is 0 for single page crawls
+                            progress_tracker,
+                            job_config
+                        )
+                    )
+                    workers.append(worker)
+                
+                # Track progress
+                crawl_progress = {
+                    'crawled_count': 0,
+                    'processed_count': 0,
+                    'last_ws_count': 0,
+                    'snippets_extracted': 0,
+                    'base_snippet_count': job_config.get('base_snippet_count', 0) if job_config else 0
+                }
+                
+                # Result collector task
+                collector_task = asyncio.create_task(
+                    self._collect_results(processed_results, all_results, crawl_progress, progress_tracker, job_id)
+                )
+                
+                try:
+                    # Use arun_many for efficient multi-URL crawling
+                    logger.info(f"Starting crawler.arun_many for {len(urls)} URLs")
+                    
+                   
+                    
+                    # Enable streaming in the config
+                    crawler_run_config.stream = True
+                    
+                    # arun_many returns either an async generator (when streaming) or a container
+                    logger.info("Calling arun_many with dispatcher...")
+                    results = await crawler.arun_many(urls, config=crawler_run_config)
+                    logger.info("arun_many completed successfully")
+                    
+                    # Check if results is iterable
+                    logger.info(f"Results type: {type(results)}")
+                    logger.info(f"Results has __aiter__: {hasattr(results, '__aiter__')}")
+                    
+                    # Since we enabled streaming, we can iterate directly
+                    logger.info("Starting to iterate over results...")
+                    async for result in results:
+                        crawl_progress['crawled_count'] += 1
+                        
+                        # Check if job is cancelled periodically
+                        if crawl_progress['crawled_count'] % 5 == 0:
+                            if await self._is_job_cancelled(job_id):
+                                logger.info(f"Crawl job {job_id} is cancelled - stopping crawl")
+                                raise asyncio.CancelledError("Job cancelled by user")
+                        
+                        # Queue result for extraction
+                        await extraction_queue.put(result)
+                        
+                        # Send progress update
+                        if progress_tracker and crawl_progress['crawled_count'] % 3 == 0:
+                            await progress_tracker.update_progress(
+                                job_id,
+                                processed_pages=crawl_progress['processed_count'],
+                                total_pages=crawl_progress['crawled_count'],
+                                documents_crawled=crawl_progress['processed_count'],
+                                snippets_extracted=crawl_progress['base_snippet_count'] + crawl_progress['snippets_extracted'],
+                                send_notification=True
+                            )
+                    
+                    # Signal workers to stop
+                    for _ in workers:
+                        await extraction_queue.put(None)
+                    
+                    # Wait for all workers to complete
+                    await asyncio.gather(*workers)
+                    
+                    # Signal collector to stop
+                    await processed_results.put(None)
+                    await collector_task
+                    
+                finally:
+                    # Cancel any remaining tasks
+                    for worker in workers:
+                        if not worker.done():
+                            worker.cancel()
+                    if not collector_task.done():
+                        collector_task.cancel()
+                
+                logger.info(f"Multi-URL crawl completed. Processed {crawl_progress['processed_count']} pages, extracted {crawl_progress['snippets_extracted']} snippets")
+                
+                return all_results if all_results else []
+                
+        except asyncio.CancelledError as e:
+            logger.info(f"Multi-URL crawl cancelled: {e}")
+            raise
+        except AttributeError as e:
+            logger.error(f"AttributeError in multi-URL crawl: {e}", exc_info=True)
+            logger.error(f"Error details - Dispatcher type: {type(dispatcher) if 'dispatcher' in locals() else 'Not available'}")
+            logger.error(f"Available dispatcher methods: {[method for method in dir(dispatcher) if not method.startswith('_')]} if 'dispatcher' in locals() else 'Not available'")
+            # Record failed URLs
+            for url in urls:
+                await record_failed_page(job_id, url, str(e))
+            return []
+        except Exception as e:
+            logger.error(f"Error in multi-URL crawl: {e}", exc_info=True)
+            # Record failed URLs
+            for url in urls:
+                await record_failed_page(job_id, url, str(e))
+            return []
 
     async def _is_job_cancelled(self, job_id: str) -> bool:
         """Check if job is cancelled."""

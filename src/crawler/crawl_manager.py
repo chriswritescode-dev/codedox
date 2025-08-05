@@ -87,12 +87,11 @@ class CrawlManager:
                 logger.error(f"Error in periodic cleanup: {e}")
                 await asyncio.sleep(60)  # Continue after error
 
-    async def start_crawl(self, config: CrawlConfig, user_id: Optional[str] = None) -> str:
+    async def start_crawl(self, config: CrawlConfig) -> str:
         """Start a new crawl job.
 
         Args:
             config: Crawl configuration
-            user_id: User identifier
 
         Returns:
             Job ID
@@ -112,7 +111,6 @@ class CrawlManager:
             config.max_depth,
             config.domain_restrictions,
             job_config,
-            user_id,
         )
 
         # Start cleanup task if not already running
@@ -233,10 +231,11 @@ class CrawlManager:
 
     async def _execute_crawl_internal(self, job_id: str, config: CrawlConfig) -> None:
         """Internal crawl execution without timeout wrapper."""
-        # Execute crawl based on depth - single page or deep crawl
+        # Execute crawl based on depth
         if config.max_depth > 0:
             await self._execute_deep_crawl(job_id, config)
         else:
+            # Single page crawl handles both single and multiple URLs
             await self._execute_single_crawl(job_id, config)
 
     async def _execute_deep_crawl(self, job_id: str, config: CrawlConfig) -> None:
@@ -303,43 +302,69 @@ class CrawlManager:
         logger.info(f"DEBUG: job_data config = {job_data.get('config') if job_data else 'No job data'}")
         job_config = job_data.get("config", {}) if job_data else {}
 
-        # Process each URL
-        for url in config.start_urls:
-
-            # Check if job is cancelled
+        # If we have multiple URLs, use the efficient arun_many approach
+        if len(config.start_urls) > 1:
+            logger.info(f"Using multi-URL crawling for {len(config.start_urls)} URLs")
+            
+            # Check if job is cancelled before starting
             await self._check_job_cancelled(job_id)
-
-            visited_urls.add(url)
-
-            # Crawl single page
-            logger.debug(f"DEBUG: About to call crawl_page for single page {url}")
-            logger.debug(f"DEBUG: job_config before crawl_page = {job_config}")
-            results = await self.page_crawler.crawl_page(
-                url, job_id, 0, 0, job_config, self.progress_tracker
+            
+            # Use the new crawl_multiple_urls method
+            results = await self.page_crawler.crawl_multiple_urls(
+                config.start_urls, job_id, job_config, self.progress_tracker
             )
-
+            
             if results:
-                logger.debug(f"Processing {len(results)} results")
-
-                # Process results
+                # Process all results
                 for result in results:
-                    logger.debug(
-                        f"Processing result for {result.url} with {len(result.code_blocks) if result.code_blocks else 0} code blocks"
-                    )
-
                     doc_id, snippet_count = await self.result_processor.process_result_pipeline(
                         result, job_id, 0
                     )
-
-                    logger.debug(f"Result: doc_id={doc_id}, snippet_count={snippet_count}")
-
                     processed_count += 1
                     total_snippets += snippet_count
-                    
-                # Update progress
-                last_ws_count = await self._update_crawl_progress(
-                    job_id, processed_count, visited_urls, total_snippets, processed_count, last_ws_count, base_snippet_count
+                    visited_urls.add(result.url)
+                
+                # Final progress update
+                await self._update_crawl_progress(
+                    job_id, processed_count, visited_urls, total_snippets, processed_count, 0, base_snippet_count
                 )
+        else:
+            # Single URL - use the original approach
+            for url in config.start_urls:
+                # Check if job is cancelled
+                await self._check_job_cancelled(job_id)
+
+                visited_urls.add(url)
+
+                # Crawl single page
+                logger.debug(f"DEBUG: About to call crawl_page for single page {url}")
+                logger.debug(f"DEBUG: job_config before crawl_page = {job_config}")
+                results = await self.page_crawler.crawl_page(
+                    url, job_id, 0, 0, job_config, self.progress_tracker
+                )
+
+                if results:
+                    logger.debug(f"Processing {len(results)} results")
+
+                    # Process results
+                    for result in results:
+                        logger.debug(
+                            f"Processing result for {result.url} with {len(result.code_blocks) if result.code_blocks else 0} code blocks"
+                        )
+
+                        doc_id, snippet_count = await self.result_processor.process_result_pipeline(
+                            result, job_id, 0
+                        )
+
+                        logger.debug(f"Result: doc_id={doc_id}, snippet_count={snippet_count}")
+
+                        processed_count += 1
+                        total_snippets += snippet_count
+                        
+                    # Update progress
+                    last_ws_count = await self._update_crawl_progress(
+                        job_id, processed_count, visited_urls, total_snippets, processed_count, last_ws_count, base_snippet_count
+                    )
 
     async def cancel_job(self, job_id: str) -> bool:
         """Cancel a crawl job."""
@@ -428,22 +453,20 @@ class CrawlManager:
             self._active_crawl_tasks[job_id] = task
             return True
 
-    async def retry_failed_pages(self, job_id: str, user_id: Optional[str] = None) -> Optional[str]:
-        """Create a new job to retry failed pages."""
+    async def retry_failed_pages(self, job_id: str, specific_urls: Optional[List[str]] = None) -> Optional[str]:
+        """Create a new job to retry by re-running the original configuration.
+        
+        Args:
+            job_id: The ID of the original job
+            specific_urls: Optional list of specific URLs to recrawl (if None, recrawls all)
+        """
         from ..database import FailedPage, CrawlJob
         from ..database import get_db_manager
 
         db_manager = get_db_manager()
 
         with db_manager.session_scope() as session:
-            # Get failed pages
-            failed_pages = session.query(FailedPage).filter_by(crawl_job_id=job_id).all()
-
-            if not failed_pages:
-                logger.info(f"No failed pages for job {job_id}")
-                return None
-
-            # Get original job in the same session
+            # Get original job
             job = session.query(CrawlJob).filter_by(id=job_id).first()
             if not job:
                 logger.error(f"Job {job_id} not found")
@@ -452,39 +475,56 @@ class CrawlManager:
             # Convert to dict while still in session
             job_dict = job.to_dict()
 
-            # Extract URLs before session closes
-            failed_urls = [str(fp.url) for fp in failed_pages]
-            failed_count = len(failed_pages)
+            # Count failed pages for logging
+            failed_count = session.query(FailedPage).filter_by(crawl_job_id=job_id).count()
+            logger.info(f"Original job had {failed_count} failed pages, creating retry job with full configuration")
 
-        # Create retry config outside session, preserving max_concurrent_crawls
+        # Reconstruct the original configuration completely
         original_config = job_dict.get("config", {})
-        max_concurrent = original_config.get("max_concurrent_crawls", self.settings.crawling.max_concurrent_crawls)
         
-        # Preserve metadata from original job, including ignore_hash setting
+        # Preserve all metadata from original job and add retry markers
         original_metadata = original_config.get("metadata", {})
         retry_metadata = {
-            "retry_of_job": job_id, 
-            "original_job_name": job_dict["name"]
+            **original_metadata,  # Keep all original metadata
+            "retry_of_job": job_id,
+            "original_job_name": job_dict["name"],
+            "failed_pages_count": failed_count
         }
         
-        # Preserve ignore_hash setting if it exists in original job
-        if "ignore_hash" in original_metadata:
-            retry_metadata["ignore_hash"] = original_metadata["ignore_hash"]
-            logger.info(f"Preserving ignore_hash={original_metadata['ignore_hash']} from original job")
+        # Determine which URLs to use and appropriate depth
+        if specific_urls:
+            # Use only the specific URLs provided
+            start_urls = specific_urls
+            # For specific failed pages, only crawl those exact pages (depth=0)
+            crawl_depth = 0
+            logger.info(f"Using {len(specific_urls)} specific URLs for retry with depth=0 (single page only)")
+        else:
+            # Use all original start URLs
+            start_urls = job_dict["start_urls"]
+            # For full recrawl, use original depth
+            crawl_depth = job_dict["max_depth"]
+            logger.info(f"Using all {len(start_urls)} original start URLs for retry with depth={crawl_depth}")
+        
+        # Create retry config with appropriate settings
+        original_name = job_dict['name']
+        retry_name = f"{original_name} - Retry"
+        logger.info(f"[RETRY DEBUG] Creating retry job - Original name: '{original_name}', Retry name: '{retry_name}'")
         
         retry_config = CrawlConfig(
-            name=f"{job_dict['name']} - Retry Failed Pages",
-            start_urls=failed_urls,
-            max_depth=0,
+            name=retry_name,
+            start_urls=start_urls,  # Use filtered or original URLs
+            max_depth=crawl_depth,  # Use 0 for specific URLs, original depth for full recrawl
             domain_restrictions=job_dict.get("domain_restrictions", []),
-            max_pages=failed_count,
-            max_concurrent_crawls=max_concurrent,
+            include_patterns=original_config.get("include_patterns", []),
+            exclude_patterns=original_config.get("exclude_patterns", []),
+            max_pages=original_config.get("max_pages", None) if not specific_urls else len(specific_urls),  # Limit max_pages for specific URLs
+            max_concurrent_crawls=original_config.get("max_concurrent_crawls", self.settings.crawling.max_concurrent_crawls),
             metadata=retry_metadata,
         )
 
-        # Start new job
-        new_job_id = await self.start_crawl(retry_config, user_id)
-        logger.info(f"Created retry job {new_job_id} for {failed_count} failed pages with max_concurrent_crawls={max_concurrent}")
+        # Start new job with appropriate configuration
+        new_job_id = await self.start_crawl(retry_config)
+        logger.info(f"Created retry job {new_job_id} with configuration (depth={crawl_depth}, urls={len(start_urls)})")
 
         return new_job_id
 

@@ -28,7 +28,7 @@ class MCPTools:
         domain_filter: Optional[str] = None,
         url_patterns: Optional[List[str]] = None,
         metadata: Optional[Dict[str, Any]] = None,
-        max_concurrent_crawls: int = None
+        max_concurrent_crawls: int | None = None
     ) -> Dict[str, Any]:
         """Initialize a new crawl job.
         

@@ -59,26 +59,25 @@ class UploadProcessor:
         if self.settings.code_extraction.llm_api_key:
             self.description_generator = LLMDescriptionGenerator()
     
-    async def process_upload(self, config: UploadConfig, user_id: Optional[str] = None) -> str:
+    async def process_upload(self, config: UploadConfig) -> str:
         """
         Process an upload job.
         
         Args:
             config: Upload configuration
-            user_id: User identifier
             
         Returns:
             Job ID
         """
         # Create upload job
-        job_id = self._create_upload_job(config, user_id)
+        job_id = self._create_upload_job(config)
         
         # Start async processing
         asyncio.create_task(self._execute_upload(job_id, config))
         
         return job_id
     
-    def _create_upload_job(self, config: UploadConfig, user_id: Optional[str] = None) -> str:
+    def _create_upload_job(self, config: UploadConfig) -> str:
         """Create a new upload job in the database."""
         from ..database import UploadJob
         import uuid
@@ -90,12 +89,11 @@ class UploadProcessor:
                 file_count=len(config.files),
                 status='running',
                 config=config.metadata,
-                created_by=user_id
             )
             session.add(job)
             session.commit()
             
-            return job.id
+            return str(job.id)
     
     async def _execute_upload(self, job_id: str, config: UploadConfig) -> None:
         """Execute the upload job."""
