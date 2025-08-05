@@ -2,9 +2,8 @@
 
 import asyncio
 import logging
-import time
-from typing import Optional, Dict, Any
 from datetime import datetime
+from typing import Any
 
 from .job_manager import JobManager
 
@@ -21,7 +20,7 @@ def _get_notify_function():
         except ImportError as e:
             logger.warning(f"Failed to import WebSocket notify function: {e}")
             # Fallback function
-            async def dummy_notify(job_id: str, status: str, data: Dict[str, Any]) -> None:
+            async def dummy_notify(job_id: str, status: str, data: dict[str, Any]) -> None:
                 logger.debug(f"WebSocket notification skipped for job {job_id}: {status}")
             _notify_crawl_update = dummy_notify
     return _notify_crawl_update
@@ -44,7 +43,8 @@ class ProgressTracker:
             job_manager: Job manager instance
         """
         self.job_manager = job_manager
-        self._heartbeat_tasks: Dict[str, asyncio.Task] = {}
+        self._heartbeat_tasks: dict[str, asyncio.Task] = {}
+        self._tracking_info: dict[str, dict[str, Any]] = {}
 
     async def start_tracking(self, job_id: str) -> None:
         """Start tracking progress for a job.
@@ -54,6 +54,9 @@ class ProgressTracker:
         """
         # Cancel any existing task
         await self.stop_tracking(job_id)
+
+        # Initialize tracking info for this job
+        self._tracking_info[job_id] = {'phase': 'crawling'}
 
         # Start new heartbeat task
         self._heartbeat_tasks[job_id] = asyncio.create_task(self._heartbeat_loop(job_id))
@@ -86,6 +89,10 @@ class ProgressTracker:
                 except asyncio.CancelledError:
                     pass
             del self._heartbeat_tasks[job_id]
+        
+        # Clean up tracking info
+        if job_id in self._tracking_info:
+            del self._tracking_info[job_id]
 
     async def stop_all(self) -> None:
         """Stop all tracking tasks."""
@@ -119,12 +126,12 @@ class ProgressTracker:
     async def update_progress(
         self,
         job_id: str,
-        phase: Optional[str] = None,
-        processed_pages: Optional[int] = None,
-        total_pages: Optional[int] = None,
-        snippets_extracted: Optional[int] = None,
-        documents_crawled: Optional[int] = None,
-        current_url: Optional[str] = None,
+        phase: str | None = None,
+        processed_pages: int | None = None,
+        total_pages: int | None = None,
+        snippets_extracted: int | None = None,
+        documents_crawled: int | None = None,
+        current_url: str | None = None,
         send_notification: bool = True,
     ) -> None:
         """Update job progress and optionally send notification.
@@ -150,6 +157,9 @@ class ProgressTracker:
 
         if phase:
             self.job_manager.update_job_status(job_id, phase=phase)
+            # Store phase in tracking info for heartbeat
+            if job_id in self._tracking_info:
+                self._tracking_info[job_id]['phase'] = phase
 
         # Send WebSocket notification if requested
         if send_notification:
@@ -173,13 +183,13 @@ class ProgressTracker:
                 processed_pages = job_status.get("processed_pages", 0)
                 if total_pages > 0:
                     data["crawl_progress"] = min(
-                        100, round((processed_pages / total_pages * 100))
+                        100, round(processed_pages / total_pages * 100)
                     )
 
 
                 await self.send_update(job_id, "running", data)
 
-    async def send_update(self, job_id: str, status: str, data: Dict[str, Any]) -> None:
+    async def send_update(self, job_id: str, status: str, data: dict[str, Any]) -> None:
         """Send WebSocket update notification.
 
         Args:
@@ -198,7 +208,7 @@ class ProgressTracker:
                 logger.error(f"[WEBSOCKET] 403 Forbidden error - possible authentication issue for job {job_id}")
 
     async def send_completion(
-        self, job_id: str, success: bool = True, error: Optional[str] = None
+        self, job_id: str, success: bool = True, error: str | None = None
     ) -> None:
         """Send completion notification.
 
