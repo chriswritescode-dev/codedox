@@ -90,22 +90,6 @@ class PageCrawler:
         # Get user agent from settings
         user_agent = self.settings.crawling.user_agent
 
-        # Create unified configuration
-        crawler_run_config = create_crawler_config(
-            max_depth=max_depth,
-            api_key=api_key,
-            domain_restrictions=job_config.get("domain_restrictions") if job_config else None,
-            include_patterns=job_config.get("include_patterns") if job_config else None,
-            exclude_patterns=job_config.get("exclude_patterns") if job_config else None,
-            user_agent=user_agent,
-        )
-
-        if logger.isEnabledFor(logging.DEBUG):
-            logger.debug(f"Config: {crawler_run_config}")
-            logger.debug(f"Config deep_crawl_strategy: {getattr(crawler_run_config, 'deep_crawl_strategy', 'Not set')}")
-            logger.debug(f"Config extraction_strategy: {getattr(crawler_run_config, 'extraction_strategy', 'Not set')}")
-
-
         try:
             # Check job status before starting
             if await self._is_job_cancelled(job_id):
@@ -145,7 +129,6 @@ class PageCrawler:
                 # Start worker tasks for parallel LLM code extraction
                 # Get the number of parallel LLM workers from config
                 llm_parallel_limit = int(os.getenv('CODE_LLM_NUM_PARALLEL', '5'))
-                # Use LLM parallel limit directly for extraction workers
                 worker_count = llm_parallel_limit
                 extraction_semaphore = asyncio.Semaphore(llm_parallel_limit)
                 if logger.isEnabledFor(logging.DEBUG):
@@ -169,10 +152,8 @@ class PageCrawler:
                         )
                     )
                     workers.append(worker)
-                if logger.isEnabledFor(logging.DEBUG):
-                    logger.debug(f"All {worker_count} workers created")
 
-                # Track progress for UI updates only
+                # Track progress for WEB UI updates only
                 crawl_progress = {
                     'crawled_count': 0,
                     'processed_count': 0,
@@ -190,10 +171,12 @@ class PageCrawler:
                     # Create crawler run config
                     crawler_run_config = create_crawler_config(
                         max_depth=max_depth,
+                        api_key=api_key,
                         domain_restrictions=job_config.get("domain_restrictions") if job_config else None,
                         include_patterns=job_config.get("include_patterns") if job_config else None,
                         exclude_patterns=job_config.get("exclude_patterns") if job_config else None,
                         user_agent=user_agent,
+                        max_pages=job_config.get("max_pages") if job_config else None,
                     )
 
                     # Check if streaming is supported
@@ -675,111 +658,6 @@ class PageCrawler:
                 }
             )
 
-
-    async def _process_crawl_result(
-        self,
-        result: Any,
-        results: list[CrawlResult],
-        job_id: str,
-        depth: int
-    ) -> None:
-        """Process a single crawl result (legacy method for non-streaming)."""
-        if result.success:
-            # Get depth from metadata if available
-            page_depth = depth
-            if hasattr(result, "metadata") and result.metadata and "depth" in result.metadata:
-                page_depth = result.metadata["depth"]
-
-            crawl_result = self._convert_library_result(result, page_depth)
-            if crawl_result:
-                # Check if LLM extraction failed
-                if crawl_result.metadata.get("llm_extraction_failed"):
-                    error_msg = crawl_result.metadata.get("llm_extraction_error", "LLM extraction failed")
-                    logger.warning(f"LLM extraction failed for {result.url}: {error_msg}")
-                    await record_failed_page(job_id, result.url, error_msg)
-                else:
-                    results.append(crawl_result)
-                    if logger.isEnabledFor(logging.DEBUG):
-                        logger.debug(f"Successfully crawled: {result.url} (depth: {page_depth})")
-        else:
-            logger.error(f"Failed to crawl {result.url}: {result.error_message}")
-            await record_failed_page(job_id, result.url, result.error_message)
-
-    def _convert_library_result(self, result: Any, depth: int) -> CrawlResult | None:
-        """Convert Crawl4AI result to our format.
-
-        Args:
-            result: Crawl4AI result
-            depth: Page depth
-
-        Returns:
-            CrawlResult or None
-        """
-        try:
-
-            metadata = {
-                "depth": depth,
-                "status_code": 200 if result.success else 0,
-                "success": result.success,
-            }
-
-            # Extract title
-            title = ""
-            if hasattr(result, "metadata") and result.metadata:
-                title = result.metadata.get("title", "")
-
-            # Process LLM extracted content
-            code_blocks = []
-            if hasattr(result, "extracted_content") and result.extracted_content:
-                try:
-                    # Legacy method - this path should not be used anymore
-                    logger.warning(f"Legacy extraction path used for {result.url} - this should be updated")
-                    code_blocks = []
-                except Exception as e:
-                    logger.error(f"Error processing LLM extracted content: {e}")
-                    metadata["llm_extraction_failed"] = True
-                    metadata["llm_extraction_error"] = str(e)
-            else:
-                logger.warning(f"No extracted_content for {result.url}")
-                if hasattr(result, "error_message") and result.error_message:
-                    metadata["llm_extraction_failed"] = True
-                    metadata["llm_extraction_error"] = result.error_message
-
-            # Extract markdown content (prefer fit_markdown for display)
-            markdown_content = self._extract_markdown_content(result)
-            
-            # Get raw markdown for hash calculation
-            markdown_for_hash = self._extract_markdown_content(result, for_hash=True)
-            
-            if not markdown_content and not code_blocks and not metadata.get("llm_extraction_failed"):
-                logger.warning(f"No content extracted from {result.url}")
-                return None
-
-            # Calculate content hash from raw markdown for consistency
-            content_hash = hashlib.md5((markdown_for_hash or "").encode("utf-8")).hexdigest()
-
-            # Add all metadata from result
-            if hasattr(result, "metadata") and result.metadata:
-                # Include all metadata fields directly
-                metadata.update(result.metadata)
-                # Also keep a reference to the original
-                metadata["crawl4ai_metadata"] = result.metadata
-            metadata["extraction_method"] = "llm"
-
-            return CrawlResult(
-                url=result.url,
-                title=title,
-                content=markdown_content or "",
-                content_hash=content_hash,
-                code_blocks=code_blocks,
-                metadata=metadata
-            )
-
-        except Exception as e:
-            logger.error(f"Error converting result: {e}")
-            return None
-
-
     def _extract_markdown_content(self, result: Any, for_hash: bool = False) -> str | None:
         """Extract markdown content from result.
         
@@ -807,5 +685,3 @@ class PageCrawler:
             elif isinstance(result.markdown, str):
                 return result.markdown
         return None
-
-

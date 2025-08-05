@@ -4,7 +4,7 @@ from typing import Optional, List
 
 from crawl4ai import (
     CrawlerRunConfig,
-    BrowserConfig,
+    BrowserConfig,  
     CacheMode,
 )
 from crawl4ai.deep_crawling import BFSDeepCrawlStrategy
@@ -37,6 +37,7 @@ def create_crawler_config(
     include_patterns: Optional[List[str]] = None,
     exclude_patterns: Optional[List[str]] = None,
     user_agent: Optional[str] = None,
+    max_pages: Optional[int] = None,
 ) -> CrawlerRunConfig:
     """Create unified crawler configuration for both single page and deep crawl.
     
@@ -95,10 +96,16 @@ def create_crawler_config(
             )
 
         # Create deep crawl strategy
+        strategy_kwargs = {
+            "max_depth": max_depth,
+            "include_external": False,
+        }
+        if max_pages is not None:
+            strategy_kwargs["max_pages"] = max_pages
+            
         config_dict["deep_crawl_strategy"] = BFSDeepCrawlStrategy(
-            max_depth=max_depth,
-            include_external=False,
             filter_chain=FilterChain(filters) if filters else None,
+            **strategy_kwargs
         )
 
     return CrawlerRunConfig(**config_dict)

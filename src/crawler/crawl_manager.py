@@ -26,7 +26,7 @@ class CrawlConfig:
     domain_restrictions: List[str] = field(default_factory=list)
     include_patterns: List[str] = field(default_factory=list)
     exclude_patterns: List[str] = field(default_factory=list)
-    max_pages: int = 100
+    max_pages: Optional[int] = None
     max_concurrent_crawls: int = 5
     respect_robots_txt: bool = False
     content_types: List[str] = field(default_factory=lambda: ["text/markdown", "text/plain"])
@@ -260,9 +260,6 @@ class CrawlManager:
         job_config["max_pages"] = config.max_pages
 
         for start_url in config.start_urls:
-            if processed_count >= config.max_pages:
-                break
-
             # Check if job is cancelled
             await self._check_job_cancelled(job_id)
 
@@ -308,11 +305,6 @@ class CrawlManager:
 
         # Process each URL
         for url in config.start_urls:
-            if processed_count >= config.max_pages:
-                break
-
-            if url in visited_urls:
-                continue
 
             # Check if job is cancelled
             await self._check_job_cancelled(job_id)
@@ -320,8 +312,8 @@ class CrawlManager:
             visited_urls.add(url)
 
             # Crawl single page
-            logger.info(f"DEBUG: About to call crawl_page for single page {url}")
-            logger.info(f"DEBUG: job_config before crawl_page = {job_config}")
+            logger.debug(f"DEBUG: About to call crawl_page for single page {url}")
+            logger.debug(f"DEBUG: job_config before crawl_page = {job_config}")
             results = await self.page_crawler.crawl_page(
                 url, job_id, 0, 0, job_config, self.progress_tracker
             )
@@ -344,8 +336,6 @@ class CrawlManager:
                     processed_count += 1
                     total_snippets += snippet_count
                     
-                    logger.info(f"[SNIPPET_COUNT] Single crawl page - New snippets: {snippet_count}, Total: {total_snippets} (base: {base_snippet_count})")
-
                 # Update progress
                 last_ws_count = await self._update_crawl_progress(
                     job_id, processed_count, visited_urls, total_snippets, processed_count, last_ws_count, base_snippet_count
@@ -512,7 +502,7 @@ class CrawlManager:
             domain_restrictions=job_dict.get("domain_restrictions", []),
             include_patterns=config_data.get("include_patterns", []),
             exclude_patterns=config_data.get("exclude_patterns", []),
-            max_pages=config_data.get("max_pages", 100),
+            max_pages=config_data.get("max_pages", None),
             max_concurrent_crawls=config_data.get("max_concurrent_crawls", self.settings.crawling.max_concurrent_crawls),
             metadata=config_data.get("metadata", {}),
         )
