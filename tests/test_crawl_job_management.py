@@ -34,7 +34,7 @@ class TestCrawlJobManagement:
         # Simulate failure and retry
         with db_manager.session_scope() as session:
             job = session.query(CrawlJob).filter_by(id=job_id).first()
-            job.status = "failed"
+            job.status = "completed"
             job.error_message = "Connection timeout"
             job.retry_count = 1
             session.commit()

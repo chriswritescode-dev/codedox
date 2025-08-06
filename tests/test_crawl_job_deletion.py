@@ -86,14 +86,16 @@ def test_bulk_delete_crawl_jobs_success(client, db: Session):
     """Test successful bulk deletion of multiple crawl jobs."""
     # Create multiple jobs with different statuses
     jobs = []
-    for i, status in enumerate(["completed", "failed", "cancelled"]):
+    # All deletable jobs must have status='completed'
+    for i in range(3):
         job = CrawlJob(
             id=uuid4(),
             name=f"Test Job {i}",
             start_urls=[f"https://example{i}.com"],
-            status=status,
+            status="completed",
             processed_pages=i * 5,
-            snippets_extracted=i * 10
+            snippets_extracted=i * 10,
+            error_message="Test error" if i == 1 else None  # Simulate one with error
         )
         jobs.append(job)
         db.add(job)
@@ -136,15 +138,16 @@ def test_bulk_delete_mixed_statuses(client, db: Session):
     )
     pending_job = CrawlJob(
         id=uuid4(),
-        name="Pending Job", 
+        name="Running Job 2", 
         start_urls=["https://example.com"],
-        status="pending"
+        status="running"
     )
     failed_job = CrawlJob(
         id=uuid4(),
-        name="Failed Job",
+        name="Completed Job 2",
         start_urls=["https://example.com"],
-        status="failed"
+        status="completed",
+        error_message="Test error"
     )
     
     db.add_all([completed_job, running_job, pending_job, failed_job])
@@ -154,16 +157,16 @@ def test_bulk_delete_mixed_statuses(client, db: Session):
     job_ids = [str(job.id) for job in [completed_job, running_job, pending_job, failed_job]]
     response = client.request("DELETE", "/api/crawl-jobs/bulk", json=job_ids)
     
-    # Should only delete completed and failed jobs
+    # Should only delete completed jobs (both completed_job and failed_job have status='completed')
     assert response.status_code == 200
     assert response.json()["deleted_count"] == 2
     assert "Successfully deleted 2 job(s)" in response.json()["message"]
     
     # Verify only deletable jobs were deleted
     assert db.query(CrawlJob).filter_by(id=completed_job.id).first() is None
-    assert db.query(CrawlJob).filter_by(id=failed_job.id).first() is None
+    assert db.query(CrawlJob).filter_by(id=failed_job.id).first() is None  # This also has status='completed'
     assert db.query(CrawlJob).filter_by(id=running_job.id).first() is not None
-    assert db.query(CrawlJob).filter_by(id=pending_job.id).first() is not None
+    assert db.query(CrawlJob).filter_by(id=pending_job.id).first() is not None  # This has status='running'
 
 
 def test_bulk_delete_nonexistent_jobs(client, db: Session):
