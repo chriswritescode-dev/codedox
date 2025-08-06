@@ -75,7 +75,7 @@ class TestHealthMonitor:
         # Verify stalled job was marked as failed
         with db_manager.session_scope() as session:
             stalled = session.query(CrawlJob).filter_by(id=stalled_job_id).first()
-            assert stalled.status == "failed"
+            assert stalled.status == "completed"
             assert "stalled" in stalled.error_message.lower()
             assert "crawling" in stalled.error_message
             assert stalled.completed_at is not None
@@ -171,7 +171,7 @@ class TestHealthMonitor:
         with db_manager.session_scope() as session:
             for job_id in stalled_ids:
                 job = session.query(CrawlJob).filter_by(id=job_id).first()
-                assert job.status == "failed"
+                assert job.status == "completed"
                 assert job.error_message is not None
     
     @pytest.mark.asyncio
@@ -204,7 +204,7 @@ class TestHealthMonitor:
         with db_manager.session_scope() as session:
             for job_id, expected_phase in job_ids:
                 job = session.query(CrawlJob).filter_by(id=job_id).first()
-                assert job.status == "failed"
+                assert job.status == "completed"
                 assert expected_phase in job.error_message
     
     def test_heartbeat_timing(self):
@@ -248,7 +248,7 @@ class TestHealthMonitor:
                     start_urls=["https://example.com"],
                     status=status,
                     last_heartbeat=datetime.utcnow() - timedelta(hours=1),
-                    completed_at=datetime.utcnow() if status != "cancelled" else None
+                    completed_at=datetime.utcnow() if status == "completed" else None
                 )
                 session.add(job)
                 job_ids.append(str(job.id))

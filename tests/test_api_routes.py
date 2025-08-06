@@ -143,8 +143,8 @@ class TestCrawlJobEndpoints:
         statuses = [job["status"] for job in jobs]
         assert "completed" in statuses
         assert "running" in statuses
-        assert "failed" in statuses
-        assert "pending" in statuses
+        # All jobs now only have "running" or "completed" status
+        assert all(s in ["running", "completed"] for s in statuses)
 
         # Check all jobs have progress fields
         for job in jobs:
@@ -152,9 +152,11 @@ class TestCrawlJobEndpoints:
             assert isinstance(job["crawl_progress"], int)
             assert 0 <= job["crawl_progress"] <= 100
 
-        # Check failed job has error message
-        failed_job = next(job for job in jobs if job["status"] == "failed")
-        assert failed_job["error_message"] == "Test error"
+        # Check that one job has error message (simulating failure)
+        # Find job with error_message
+        failed_job = next((job for job in jobs if job.get("error_message") == "Test error"), None)
+        assert failed_job is not None
+        assert failed_job["status"] == "completed"  # Failed jobs now have status='completed'
 
     def test_get_crawl_job_by_id(self, client, sample_crawl_job):
         """Test getting a specific crawl job."""
@@ -375,8 +377,8 @@ class TestBulkDeleteEndpoints:
         """Test successful bulk deletion of crawl jobs."""
         from src.database.models import CrawlJob
 
-        # Get deletable job IDs (completed, failed, cancelled)
-        deletable_statuses = ["completed", "failed", "cancelled"]
+        # Get deletable job IDs (only completed jobs can be deleted)
+        deletable_statuses = ["completed"]
         deletable_jobs = [job for job in multiple_crawl_jobs if job.status in deletable_statuses]
         job_ids = [str(job.id) for job in deletable_jobs]
 
@@ -410,8 +412,8 @@ class TestBulkDeleteEndpoints:
         # Try to delete all jobs regardless of status
         all_job_ids = [str(job.id) for job in multiple_crawl_jobs]
 
-        # Count deletable jobs
-        deletable_statuses = ["completed", "failed", "cancelled"]
+        # Count deletable jobs (only completed)
+        deletable_statuses = ["completed"]
         deletable_count = sum(1 for job in multiple_crawl_jobs if job.status in deletable_statuses)
 
         # Bulk delete attempt
