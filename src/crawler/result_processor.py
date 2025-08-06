@@ -86,12 +86,12 @@ class ResultProcessor:
             if existing_doc and existing_doc.content_hash == result.content_hash and not ignore_hash:
                 # Content unchanged and not ignoring hash - count existing snippets
                 existing_snippet_count = session.query(CodeSnippet).filter_by(document_id=existing_doc.id).count()
-                
+
                 # Check if this is a retry job for better logging
                 is_retry_job = False
                 if hasattr(result, 'metadata') and result.metadata:
                     is_retry_job = result.metadata.get('is_retry', False)
-                
+
                 if is_retry_job:
                     logger.info(f"[RETRY EFFICIENCY] Content unchanged for {result.url}, returning {existing_snippet_count} existing snippets (avoiding redundant LLM calls)")
                 else:
@@ -135,6 +135,14 @@ class ResultProcessor:
 
             session.commit()
 
+            # Remove from failed_pages if this URL was previously failed
+            from ..database import FailedPage
+            session.query(FailedPage).filter_by(
+                crawl_job_id=job_id,
+                url=result.url
+            ).delete()
+            session.commit()
+
             return doc_id, snippet_count
 
     async def process_result(
@@ -167,12 +175,12 @@ class ResultProcessor:
             if existing_doc and existing_doc.content_hash == result.content_hash and not ignore_hash:
                 # Content unchanged - always return existing snippet count
                 existing_snippet_count = session.query(CodeSnippet).filter_by(document_id=existing_doc.id).count()
-                
+
                 # Check if this is a retry job for better logging
                 is_retry_job = False
                 if hasattr(result, 'metadata') and result.metadata:
                     is_retry_job = result.metadata.get('is_retry', False)
-                
+
                 if is_retry_job:
                     logger.info(f"[RETRY EFFICIENCY] Content unchanged for {result.url}, returning {existing_snippet_count} existing snippets (avoiding redundant LLM calls)")
                 else:
@@ -217,6 +225,15 @@ class ResultProcessor:
                     session.commit()
 
             session.commit()
+
+            # Remove from failed_pages if this URL was previously failed
+            from ..database import FailedPage
+            session.query(FailedPage).filter_by(
+                crawl_job_id=job_id,
+                url=result.url
+            ).delete()
+            session.commit()
+
             return int(doc.id), snippet_count
 
     async def process_batch(
@@ -478,7 +495,7 @@ If you cannot determine the name, respond with "UNKNOWN"."""
             List of formatted block data dictionaries
         """
         loop = asyncio.get_event_loop()
-        
+
         # Log the formatting task
         logger.info(f"Starting concurrent formatting of {len(blocks_to_format)} code blocks")
 
@@ -486,7 +503,7 @@ If you cannot determine the name, respond with "UNKNOWN"."""
         # Use a more reasonable semaphore limit based on thread pool size
         max_concurrent = min(self.settings.crawling.format_thread_pool_size * 2, len(blocks_to_format))
         submission_semaphore = asyncio.Semaphore(max_concurrent)
-        
+
         async def submit_with_semaphore(block_data):
             async with submission_semaphore:
                 return await loop.run_in_executor(
@@ -494,14 +511,14 @@ If you cannot determine the name, respond with "UNKNOWN"."""
                     self._format_single_block,
                     block_data
                 )
-        
+
         # Create tasks for all blocks
         tasks = [asyncio.create_task(submit_with_semaphore(block)) for block in blocks_to_format]
-        
+
         # Wait for all tasks with a more reasonable timeout
         # 36 blocks * 5 seconds per block = 180 seconds, so use 300 for safety
         timeout = max(300, len(blocks_to_format) * 10)  # 10 seconds per block or 5 minutes min
-        
+
         formatted_blocks = []
         try:
             # Use asyncio.gather with return_exceptions to handle individual failures
@@ -509,7 +526,7 @@ If you cannot determine the name, respond with "UNKNOWN"."""
                 asyncio.gather(*tasks, return_exceptions=True),
                 timeout=timeout
             )
-            
+
             # Process results
             for i, result in enumerate(results):
                 if isinstance(result, Exception):
@@ -520,9 +537,9 @@ If you cannot determine the name, respond with "UNKNOWN"."""
                     formatted_blocks.append(original_block)
                 else:
                     formatted_blocks.append(result)
-                    
+
             logger.info(f"Completed formatting {len(formatted_blocks)} code blocks")
-                    
+
         except asyncio.TimeoutError:
             logger.error(f"Overall formatting timeout reached after {timeout}s for {len(blocks_to_format)} blocks")
             # Cancel remaining tasks

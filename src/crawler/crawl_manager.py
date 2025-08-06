@@ -394,8 +394,8 @@ class CrawlManager:
         if not job_status:
             return False
 
-        # Check job state
-        if job_status["status"] not in ["failed", "running", "cancelled"]:
+        # Check job state - can only resume running jobs (stalled)
+        if job_status["status"] not in ["running"]:
             logger.error(f"Job {job_id} is in {job_status['status']} state, cannot resume")
             return False
 

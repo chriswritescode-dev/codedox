@@ -1,8 +1,8 @@
 """Crawl job lifecycle management."""
 
 import logging
-from typing import Optional, Dict, Any, List
 from datetime import datetime
+from typing import Any
 
 from sqlalchemy.orm import Session
 
@@ -22,10 +22,10 @@ class JobManager:
     def create_job(
         self,
         name: str,
-        start_urls: List[str],
+        start_urls: list[str],
         max_depth: int,
-        domain_restrictions: List[str],
-        config: Dict[str, Any],
+        domain_restrictions: list[str],
+        config: dict[str, Any],
     ) -> str:
         """Create a new crawl job.
 
@@ -63,10 +63,10 @@ class JobManager:
     def get_or_create_job(
         self,
         name: str,
-        start_urls: List[str],
+        start_urls: list[str],
         max_depth: int,
-        domain_restrictions: List[str],
-        config: Dict[str, Any],
+        domain_restrictions: list[str],
+        config: dict[str, Any],
     ) -> str:
         """Get existing job for domain or create new one.
 
@@ -95,7 +95,7 @@ class JobManager:
                 # Reset job for new crawl
                 # Check if this is a retry job - if so, preserve the original name
                 is_retry = config.get('metadata', {}).get('retry_of_job') is not None
-                
+
                 # Only update name if the existing one is auto-detect or if new name is not auto-detect
                 # BUT: Never update name if this is a retry job
                 if not is_retry and (existing_job.name.startswith("[Auto-detecting") or not name.startswith("[Auto-detecting")):
@@ -103,7 +103,7 @@ class JobManager:
                     # Clear name_detected flag if setting a new auto-detect name
                     if name.startswith("[Auto-detecting") and existing_job.config.get('name_detected'):
                         existing_job.config['name_detected'] = False
-                
+
                 existing_job.start_urls = start_urls
                 existing_job.max_depth = max_depth
                 existing_job.domain_restrictions = domain_restrictions
@@ -121,13 +121,13 @@ class JobManager:
                 existing_job.total_pages = 0
                 # Don't reset snippets_extracted - preserve existing count
                 # Count existing snippets for this job
-                from ..database.models import Document, CodeSnippet
+                from ..database.models import CodeSnippet, Document
                 existing_snippets = session.query(CodeSnippet).join(Document).filter(
                     Document.crawl_job_id == existing_job.id
                 ).count()
                 logger.info(f"[SNIPPET_COUNT] Reusing job {existing_job.id} with {existing_snippets} existing snippets")
                 existing_job.snippets_extracted = existing_snippets
-                
+
                 # Store base snippet count in config for tracking
                 if not existing_job.config:
                     existing_job.config = {}
@@ -149,9 +149,9 @@ class JobManager:
     def update_job_status(
         self,
         job_id: str,
-        status: Optional[str] = None,
-        phase: Optional[str] = None,
-        error_message: Optional[str] = None,
+        status: str | None = None,
+        phase: str | None = None,
+        error_message: str | None = None,
         **kwargs,
     ) -> bool:
         """Update job status and fields.
@@ -192,10 +192,10 @@ class JobManager:
     def update_job_progress(
         self,
         job_id: str,
-        processed_pages: Optional[int] = None,
-        total_pages: Optional[int] = None,
-        snippets_extracted: Optional[int] = None,
-        documents_crawled: Optional[int] = None,
+        processed_pages: int | None = None,
+        total_pages: int | None = None,
+        snippets_extracted: int | None = None,
+        documents_crawled: int | None = None,
     ) -> bool:
         """Update job progress metrics.
 
@@ -230,7 +230,7 @@ class JobManager:
             return True
 
     def complete_job(
-        self, job_id: str, success: bool = True, error_message: Optional[str] = None
+        self, job_id: str, success: bool = True, error_message: str | None = None
     ) -> bool:
         """Mark job as completed.
 
@@ -247,7 +247,7 @@ class JobManager:
             if not job:
                 return False
 
-            job.status = "completed" if success else "failed"
+            job.status = "completed"
             job.completed_at = datetime.utcnow()
             job.crawl_phase = None
 
@@ -261,7 +261,7 @@ class JobManager:
             session.commit()
             return True
 
-    def get_job(self, job_id: str, session: Optional[Session] = None) -> Optional[CrawlJob]:
+    def get_job(self, job_id: str, session: Session | None = None) -> CrawlJob | None:
         """Get job by ID.
 
         Args:
@@ -277,7 +277,7 @@ class JobManager:
             with self.db_manager.session_scope() as session:
                 return session.query(CrawlJob).filter_by(id=job_id).first()
 
-    def get_job_status(self, job_id: str) -> Optional[Dict[str, Any]]:
+    def get_job_status(self, job_id: str) -> dict[str, Any] | None:
         """Get job status as dictionary.
 
         Args:
@@ -301,8 +301,10 @@ class JobManager:
         Returns:
             True if cancelled successfully
         """
-        return self.update_job_status(
-            job_id, status="cancelled", phase=None, completed_at=datetime.utcnow()
+        return self.complete_job(
+            job_id,
+            success=True,
+            error_message="Cancelled by user"
         )
 
     def is_job_active(self, job_id: str) -> bool:
