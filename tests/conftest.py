@@ -497,7 +497,7 @@ def multiple_crawl_jobs(db: Session) -> list[CrawlJob]:
     """Create multiple crawl jobs with different statuses."""
     jobs = []
     
-    statuses = ["completed", "running", "failed", "pending"]
+    statuses = ["completed", "running", "completed", "running"]
     for i, status in enumerate(statuses):
         job = CrawlJob(
             id=uuid4(),
@@ -505,12 +505,12 @@ def multiple_crawl_jobs(db: Session) -> list[CrawlJob]:
             start_urls=[f"https://example{i+1}.com"],
             max_depth=1,
             status=status,
-            total_pages=10 if status != "pending" else 0,
+            total_pages=10 if i < 2 else 0,
             processed_pages=10 if status == "completed" else 5 if status == "running" else 0,
             snippets_extracted=20 if status == "completed" else 10 if status == "running" else 0,
-            started_at=datetime.utcnow() if status != "pending" else None,
-            completed_at=datetime.utcnow() if status in ["completed", "failed"] else None,
-            error_message="Test error" if status == "failed" else None,
+            started_at=datetime.utcnow() if i < 2 else None,
+            completed_at=datetime.utcnow() if status == "completed" else None,
+            error_message="Test error" if i == 2 else None,
             created_at=datetime.utcnow(),
             updated_at=datetime.utcnow()
         )

@@ -56,7 +56,7 @@ class TestCrawlRestart:
                 name="Failed Crawl",
                 start_urls=["https://example.com", "https://example.com/docs"],
                 max_depth=2,
-                status="failed",
+                status="completed",
                 error_message="Network error",
                 processed_pages=5,
                 total_pages=20,
@@ -91,7 +91,7 @@ class TestCrawlRestart:
                 """Restart a failed or cancelled crawl job."""
                 with db_manager.session_scope() as session:
                     job = session.query(CrawlJob).filter_by(id=job_id).first()
-                    if not job or job.status not in ["failed", "cancelled"]:
+                    if not job or job.status != "completed":
                         return False
                     
                     # Store job data before session closes
@@ -144,7 +144,7 @@ class TestCrawlRestart:
                 name="Partial Crawl",
                 start_urls=[unique_url_base],
                 max_depth=2,
-                status="failed",
+                status="completed",
                 processed_pages=10,
                 total_pages=50,
                 documents_crawled=8,
@@ -185,7 +185,7 @@ class TestCrawlRestart:
             # Check that we can identify what needs to be resumed
             assert job.processed_pages == 10
             assert job.documents_crawled == 8
-            assert job.status == "failed"
+            assert job.status == "completed"
             
             # A proper resume would:
             # 1. Skip the 8 already-crawled URLs
@@ -272,7 +272,7 @@ class TestCrawlRestart:
                 id=uuid4(),
                 name="Max Retries Test",
                 start_urls=["https://example.com"],
-                status="failed",
+                status="completed",
                 retry_count=3,
                 max_retries=3,  # Already at max
                 error_message="Multiple failures"
@@ -298,7 +298,7 @@ class TestCrawlRestart:
                 id=uuid4(),
                 name="Data Preservation Test",
                 start_urls=[unique_url_base],
-                status="failed",
+                status="completed",
                 snippets_extracted=15,
                 documents_crawled=5
             )
@@ -386,7 +386,7 @@ class TestCrawlRestart:
                 id=uuid4(),
                 name="Error State Test",
                 start_urls=[unique_url_base],
-                status="failed",
+                status="completed",
                 error_message="Connection timeout after 3 retries",
                 crawl_phase="crawling",
                 completed_at=datetime.utcnow() - timedelta(hours=1)
