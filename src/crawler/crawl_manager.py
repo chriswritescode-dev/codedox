@@ -248,15 +248,20 @@ class CrawlManager:
         base_snippet_count, total_snippets = self._initialize_crawl_tracking(job_id)
         logger.info(f"[SNIPPET_COUNT] Starting deep crawl for job {job_id} with base count: {base_snippet_count}")
         
-        # Get job config for domain restrictions
+        # Build fresh config for this crawl - don't merge with old config
+        job_config = {
+            "domain_restrictions": config.domain_restrictions,
+            "include_patterns": config.include_patterns,
+            "exclude_patterns": config.exclude_patterns,
+            "max_pages": config.max_pages,
+            "metadata": config.metadata,
+            "max_concurrent_crawls": config.max_concurrent_crawls,
+        }
+        
+        # Preserve base_snippet_count for tracking (needed by _initialize_crawl_tracking)
         job_data = self.job_manager.get_job_status(job_id)
-        job_config = job_data.get("config", {}) if job_data else {}
-
-        # Add domain restrictions to job config
-        job_config["domain_restrictions"] = config.domain_restrictions
-        job_config["include_patterns"] = config.include_patterns
-        job_config["exclude_patterns"] = config.exclude_patterns
-        job_config["max_pages"] = config.max_pages
+        if job_data and job_data.get("config", {}).get("base_snippet_count") is not None:
+            job_config["base_snippet_count"] = job_data["config"]["base_snippet_count"]
 
         for start_url in config.start_urls:
             # Check if job is cancelled
@@ -297,10 +302,28 @@ class CrawlManager:
         base_snippet_count, total_snippets = self._initialize_crawl_tracking(job_id)
         logger.info(f"[SNIPPET_COUNT] Starting single crawl for job {job_id} with base count: {base_snippet_count}")
 
-        # Get job config for metadata (including ignore_hash)
+        # Build fresh config for this crawl - don't merge with old config
+        job_config = {
+            "domain_restrictions": config.domain_restrictions,
+            "include_patterns": config.include_patterns,
+            "exclude_patterns": config.exclude_patterns,
+            "max_pages": config.max_pages,
+            "metadata": config.metadata,
+            "max_concurrent_crawls": config.max_concurrent_crawls,
+        }
+        
+        # Get job data for base_snippet_count and any special flags
         job_data = self.job_manager.get_job_status(job_id)
         logger.info(f"DEBUG: job_data config = {job_data.get('config') if job_data else 'No job data'}")
-        job_config = job_data.get("config", {}) if job_data else {}
+        
+        # Preserve base_snippet_count and ignore_hash flag if present
+        if job_data and job_data.get("config"):
+            old_config = job_data["config"]
+            if old_config.get("base_snippet_count") is not None:
+                job_config["base_snippet_count"] = old_config["base_snippet_count"]
+            # Check for ignore_hash in metadata (for recrawl operations)
+            if config.metadata and config.metadata.get("ignore_hash"):
+                job_config["metadata"]["ignore_hash"] = True
 
         # If we have multiple URLs, use the efficient arun_many approach
         if len(config.start_urls) > 1:
