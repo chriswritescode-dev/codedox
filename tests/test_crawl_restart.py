@@ -191,27 +191,14 @@ class TestCrawlRestart:
             # 1. Skip the 8 already-crawled URLs
             # 2. Continue from where it left off
             
-        # Test resuming - it should skip already crawled URLs
-        # Mock the crawl manager to only return new URLs
-        with patch('src.crawler.page_crawler.AsyncWebCrawler') as mock_crawler_cls:
-            crawler_instance = AsyncMock()
-            # Return pages that haven't been crawled yet
-            crawler_instance.arun_many.return_value = [
-                Mock(
-                    url=f"{unique_url_base}/page{i}",
-                    markdown=f"# Page {i}\n\nContent for page {i}",
-                    success=True,
-                    links=[],
-                    error_message=None,
-                    metadata={'depth': 2}
-                )
-                for i in range(8, 12)  # New pages only
-            ]
-            mock_crawler_cls.return_value.__aenter__.return_value = crawler_instance
-            
-            # Resume should complete successfully
-            success = await crawl_manager.resume_job(job_id)
-            assert success
+        # Since job is completed, resume should return False
+        # (can't resume completed jobs in new status system)
+        success = await crawl_manager.resume_job(job_id)
+        assert not success  # Can't resume completed jobs
+        
+        # Instead, test retry_failed_pages which creates a new job
+        new_job_id = await crawl_manager.retry_failed_pages(job_id)
+        assert new_job_id is not None  # Should create a new retry job
             # 3. Maintain the crawl depth tracking
     
     @pytest.mark.asyncio
