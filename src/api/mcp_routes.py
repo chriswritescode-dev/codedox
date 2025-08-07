@@ -169,7 +169,7 @@ async def mcp_stream(request: Request) -> StreamingResponse:
                 },
                 "serverInfo": {
                     "name": "codedox-mcp",
-                    "version": "1.0.1"
+                    "version": "0.2.2"
                 }
             }
             
