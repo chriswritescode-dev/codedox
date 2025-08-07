@@ -446,7 +446,7 @@ psql -U postgres -d codedox -f src/database/migrations/003_remove_markdown_conte
 
 ## Author
 
-**Chris Scott** - Initial work and development
+**Chris Scott** - [chriswritescode.dev](https://chriswritescode.dev)
 
 ## License
 
