@@ -7,7 +7,7 @@ from pathlib import Path
 
 from fastapi import Depends, FastAPI, HTTPException, WebSocket
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse
+
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
@@ -79,7 +79,7 @@ async def lifespan(app: FastAPI):
 app = FastAPI(
     title="CodeDox API",
     description="API for code documentation extraction and search",
-    version="1.0.0",
+    version="0.2.2",
     lifespan=lifespan
 )
 
@@ -107,11 +107,16 @@ async def websocket_route(websocket: WebSocket, client_id: str):
     """WebSocket endpoint for real-time updates."""
     await websocket_endpoint(websocket, client_id)
 
-# Root redirect
+# Root endpoint - return API info
 @app.get("/")
 async def root():
-    """Redirect to the web UI."""
-    return FileResponse(Path(__file__).parent.parent.parent / "frontend" / "dist" / "index.html")
+    """API root endpoint with basic information."""
+    return {
+        "message": "CodeDox API Server",
+        "version": "0.2.2",
+        "environment": settings.environment,
+        "docs": "/docs"
+    }
 
 # Health check
 @app.get("/api/health")
@@ -288,17 +293,6 @@ async def get_recent_snippets(
     except Exception as e:
         logger.error(f"Failed to get recent snippets: {e}")
         raise HTTPException(status_code=500, detail=str(e))
-
-
-# Upload endpoints are now in routes/upload.py
-
-# Serve static files for the web UI (in production, use nginx)
-if settings.environment == "development":
-    from fastapi.staticfiles import StaticFiles
-    frontend_dir = Path(__file__).parent.parent.parent / "frontend" / "dist"
-    if frontend_dir.exists():
-        app.mount("/", StaticFiles(directory=str(frontend_dir), html=True), name="static")
-        logger.info(f"Serving frontend from {frontend_dir}")
 
 
 def get_application() -> FastAPI:
