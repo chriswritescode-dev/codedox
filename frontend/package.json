@@ -21,6 +21,7 @@
     "lucide-react": "^0.525.0",
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
+    "react-hot-toast": "^2.5.2",
     "react-router-dom": "^6.21.1",
     "react-syntax-highlighter": "^15.5.0",
     "tailwind-merge": "^3.3.1",

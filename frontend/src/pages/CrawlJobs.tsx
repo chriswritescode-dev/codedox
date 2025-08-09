@@ -38,7 +38,7 @@ export default function CrawlJobs() {
   const [isBulkCancel, setIsBulkCancel] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [currentPage, setCurrentPage] = useState(1);
-  const [itemsPerPage, setItemsPerPage] = useState(10);
+  const [itemsPerPage, setItemsPerPage] = useState(20);
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const {
