@@ -422,7 +422,7 @@ Set your API key in `.env` for description generation:
 ```bash
 CODE_LLM_API_KEY="sk-your-api-key-here"
 CODE_LLM_PROVIDER="openai"  # or anthropic, ollama, groq, etc.
-CODE_LLM_EXTRACTION_MODEL="gpt-4o-mini"
+CODE_LLM_EXTRACTION_MODEL="Qwen3-Coder-30B-A3B-Instruct"
 ```
 
 ### Usage
@@ -445,28 +445,85 @@ python cli.py search "authentication" --limit 10
 
 ### Project Structure
 
+<details>
+<summary>Click to expand project structure</summary>
+
 ```
 codedox/
 ├── src/
 │   ├── api/                    # FastAPI server & endpoints
-│   ├── crawler/                # Web crawling & extraction
+│   │   ├── routes/            # API route handlers
+│   │   │   ├── crawl_jobs.py # Crawl job management endpoints
+│   │   │   ├── health.py     # Health check endpoints
+│   │   │   ├── search.py     # Search endpoints
+│   │   │   ├── snippets.py   # Code snippet endpoints
+│   │   │   ├── sources.py    # Documentation source endpoints
+│   │   │   ├── statistics.py # Dashboard statistics
+│   │   │   └── upload.py     # File upload endpoints
+│   │   ├── auth.py           # Authentication middleware
+│   │   ├── main.py           # FastAPI app initialization
+│   │   ├── mcp_routes.py     # MCP protocol routes
+│   │   ├── mcp_server.py     # MCP server implementation
+│   │   ├── mcp_streamable.py # Streamable HTTP MCP transport
+│   │   └── websocket.py      # WebSocket for real-time updates
+│   ├── crawler/               # Web crawling & extraction
 │   │   ├── html_code_extractor.py     # HTML-based code extraction
-│   │   # VS Code language detection removed - using LLM detection
-│   │   ├── llm_description_generator.py # AI description generation
+│   │   ├── markdown_code_extractor.py # Markdown file extraction
 │   │   ├── page_crawler.py            # Page crawling orchestration
+│   │   ├── crawl_manager.py           # Crawl job management
+│   │   ├── job_manager.py             # Job queue management
+│   │   ├── result_processor.py        # Process crawl results
+│   │   ├── progress_tracker.py        # Track crawl progress
+│   │   ├── health_monitor.py          # Monitor crawl health
+│   │   ├── failed_page_utils.py       # Handle failed pages
+│   │   ├── llm_retry.py               # LLM retry logic
+│   │   ├── llm_regenerate.py          # Regenerate descriptions
+│   │   ├── upload_processor.py        # Process uploaded files
+│   │   ├── code_formatter.py          # Code formatting utilities
 │   │   ├── extraction_models.py       # Data models
-│   │   └── code_formatter.py          # Code formatting utilities
-│   # Language detection now handled by LLM
-# Language detector files removed
+│   │   ├── language_mapping.py        # Language detection mapping
+│   │   ├── domain_utils.py            # Domain filtering utilities
+│   │   ├── config.py                  # Crawler configuration
+│   │   └── utils.py                   # Utility functions
 │   ├── database/              # PostgreSQL models & search
+│   │   ├── models.py          # SQLAlchemy models
+│   │   ├── connection.py      # Database connection
+│   │   ├── search.py          # Full-text search implementation
+│   │   └── content_check.py   # Content deduplication
 │   ├── mcp_server/            # MCP tools implementation
-│   └── utils/                 # Shared utilities
+│   │   ├── server.py          # MCP server core
+│   │   └── tools.py           # MCP tool definitions
+│   └── config.py              # Application configuration
 ├── frontend/                  # React web UI
+│   ├── src/
+│   │   ├── components/        # React components
+│   │   │   ├── Layout.tsx    # App layout wrapper
+│   │   │   ├── QuickSearch.tsx        # Search component
+│   │   │   ├── SnippetList.tsx        # Code snippet list
+│   │   │   ├── CrawlProgress.tsx      # Crawl progress display
+│   │   │   ├── SourceActions.tsx      # Source action buttons
+│   │   │   └── ui/                    # UI components
+│   │   ├── pages/            # Page components
+│   │   │   ├── Dashboard.tsx # Main dashboard
+│   │   │   ├── Search.tsx    # Search page
+│   │   │   ├── Sources.tsx   # Sources list
+│   │   │   ├── SourceDetail.tsx       # Source details
+│   │   │   ├── CrawlJobs.tsx          # Crawl job management
+│   │   │   ├── CrawlDetail.tsx        # Crawl job details
+│   │   │   └── Upload.tsx             # File upload
+│   │   ├── hooks/            # Custom React hooks
+│   │   ├── lib/              # Utilities and API client
+│   │   └── App.tsx           # Main app component
+│   └── vite.config.ts        # Vite configuration
 ├── tests/                     # Test suite
+├── cli.py                     # Command-line interface
 ├── setup.sh                   # Automated setup script
 ├── docker-compose.yml         # Docker services
+├── docker-setup.sh           # Docker setup script
 └── .env.example              # Environment template
 ```
+
+</details>
 
 ### Running Tests
 ```bash
@@ -489,7 +546,7 @@ python test_hash_optimization.py
 - **LLM Description Generation**: 
   - Only used for descriptions (10-30 words each)
   - Batch processing reduces API calls
-  - Recommend using free local models if possible (Great results with Qwen3-30B-A3B-Instruct-2507 & Qwen3-4B-Instruct-2507)
+  - Recommend using free local models if possible (Great results with Qwen3-Coder-30B-A3B-Instruct & Qwen3-4B-Instruct-2507)
 - **Content Hash Optimization**: Automatically skips llm calls for unchanged content during re-crawls
   - Saves significant time and API costs when updating documentation sources
   - Only processes pages with changed content
