@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { X } from 'lucide-react';
+import { useToast } from '../hooks/useToast';
 
 interface NewCrawlDialogProps {
   isOpen: boolean;
@@ -10,7 +11,7 @@ interface NewCrawlDialogProps {
     max_depth: number;
     domain_filter?: string;
     url_patterns?: string[];
-    max_concurrent_crawls: number;
+    max_concurrent_crawls?: number;
   }) => void;
   isSubmitting?: boolean;
 }
@@ -21,6 +22,7 @@ export const NewCrawlDialog: React.FC<NewCrawlDialogProps> = ({
   onSubmit,
   isSubmitting = false,
 }) => {
+  const toast = useToast();
   const [formData, setFormData] = useState({
     name: '',
     base_url: '',
@@ -36,14 +38,15 @@ export const NewCrawlDialog: React.FC<NewCrawlDialogProps> = ({
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+    
     if (!formData.base_url) {
-      alert('Please enter a base URL');
+      toast.warning('Please enter a base URL');
       return;
     }
     // Use the current max_concurrent_crawls value, falling back to form data
     const finalMaxConcurrent = maxConcurrentInput ? parseInt(maxConcurrentInput) || formData.max_concurrent_crawls : formData.max_concurrent_crawls;
     
-    onSubmit({
+    const submitData = {
       ...formData,
       name: formData.name || undefined, // Allow empty name for auto-detection
       domain_filter: formData.domain_filter || undefined,
@@ -51,7 +54,8 @@ export const NewCrawlDialog: React.FC<NewCrawlDialogProps> = ({
         ? formData.url_patterns.split(',').map(p => p.trim()).filter(p => p)
         : undefined,
       max_concurrent_crawls: Math.max(0, Math.min(100, finalMaxConcurrent)), // Clamp between 0-100
-    });
+    };
+    onSubmit(submitData);
   };
 
   const handleClose = () => {

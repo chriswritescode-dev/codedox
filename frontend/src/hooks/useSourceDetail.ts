@@ -1,8 +1,9 @@
 import { useState, useMemo, useEffect } from "react";
 import { useSearchParams, useNavigate } from "react-router-dom";
 import { useQuery, useMutation, useQueryClient, UseMutationResult } from "@tanstack/react-query";
-import { api } from "../lib/api";
+import { api, Source, PaginatedDocuments, PaginatedSnippets, LanguageStat } from "../lib/api";
 import { useDebounce } from "./useDebounce";
+import { useToast } from "./useToast";
 
 type TabType = "overview" | "documents" | "snippets";
 
@@ -50,27 +51,28 @@ interface SourceDetailState {
   setFormatPreview: (preview: SourceDetailState["formatPreview"]) => void;
   
   // Mutations
-  deleteMutation: UseMutationResult<any, any, void, unknown>;
-  deleteMatchesMutation: UseMutationResult<any, any, void, unknown>;
-  updateSourceNameMutation: UseMutationResult<any, any, { name: string }, unknown>;
-  formatPreviewMutation: UseMutationResult<any, any, void, unknown>;
-  formatSourceMutation: UseMutationResult<any, any, void, unknown>;
+  deleteMutation: UseMutationResult<{ message: string }, Error, void, unknown>;
+  deleteMatchesMutation: UseMutationResult<{ deleted_count: number; source_id: string; source_name: string }, Error, void, unknown>;
+  updateSourceNameMutation: UseMutationResult<Source, Error, { name: string }, unknown>;
+  formatPreviewMutation: UseMutationResult<SourceDetailState["formatPreview"], Error, void, unknown>;
+  formatSourceMutation: UseMutationResult<SourceDetailState["formatPreview"], Error, void, unknown>;
   
   // Query data
-  source: any;
-  documents: any;
-  snippets: any;
-  languages: any;
+  source: Source | undefined;
+  documents: PaginatedDocuments | undefined;
+  snippets: PaginatedSnippets | undefined;
+  languages: { languages: LanguageStat[] } | undefined;
   docsLoading: boolean;
   snippetsLoading: boolean;
   sourceLoading: boolean;
-  sourceError: any;
+  sourceError: Error | null;
 }
 
 export function useSourceDetail(id: string): SourceDetailState {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const [searchParams, setSearchParams] = useSearchParams();
+  const toast = useToast();
 
   // Basic state
   const [snippetsPage, setSnippetsPage] = useState(1);
@@ -92,7 +94,7 @@ export function useSourceDetail(id: string): SourceDetailState {
 
   // Pagination settings
   const snippetsPerPage = 10;
-  const docsPerPage = 10;
+  const docsPerPage = 20;
 
   // Debounce search query
   const debouncedSnippetsSearch = useDebounce(snippetsSearch, 300);
@@ -190,9 +192,9 @@ export function useSourceDetail(id: string): SourceDetailState {
       queryClient.invalidateQueries({ queryKey: ["sources"] });
       navigate("/sources");
     },
-    onError: (error: any) => {
+    onError: (error) => {
       console.error("Failed to delete source:", error);
-      alert(
+      toast.error(
         "Failed to delete source: " +
           (error instanceof Error ? error.message : "Unknown error")
       );
@@ -212,9 +214,9 @@ export function useSourceDetail(id: string): SourceDetailState {
         setSnippetsSearch("");
       }
     },
-    onError: (error: any) => {
+    onError: (error) => {
       console.error("Failed to delete matches:", error);
-      alert(
+      toast.error(
         "Failed to delete matches: " +
           (error instanceof Error ? error.message : "Unknown error")
       );
@@ -228,7 +230,7 @@ export function useSourceDetail(id: string): SourceDetailState {
       queryClient.invalidateQueries({ queryKey: ["source", id] });
       queryClient.invalidateQueries({ queryKey: ["sources"] });
     },
-    onError: (error: any) => {
+    onError: (error) => {
       console.error("Failed to update source name:", error);
       throw error;
     },
@@ -240,9 +242,9 @@ export function useSourceDetail(id: string): SourceDetailState {
       setFormatPreview(data);
       setFormatDialogOpen(true);
     },
-    onError: (error: any) => {
+    onError: (error) => {
       console.error('Failed to get format preview:', error);
-      alert('Failed to get format preview');
+      toast.error('Failed to get format preview');
     }
   });
 
@@ -253,9 +255,9 @@ export function useSourceDetail(id: string): SourceDetailState {
       setFormatDialogOpen(false);
       setFormatPreview(null);
     },
-    onError: (error: any) => {
+    onError: (error) => {
       console.error('Failed to format source:', error);
-      alert('Failed to format source');
+      toast.error('Failed to format source');
     }
   });
 
