@@ -20,6 +20,7 @@ import ProgressBar from "../components/ProgressBar";
 import { ConfirmationDialog } from "../components/ConfirmationDialog";
 import { NewCrawlDialog } from "../components/NewCrawlDialog";
 import { PaginationControls } from "../components/PaginationControls";
+import { useToast } from "../hooks/useToast";
 
 export default function CrawlJobs() {
   const [showModal, setShowModal] = useState(false);
@@ -41,6 +42,7 @@ export default function CrawlJobs() {
   const [itemsPerPage, setItemsPerPage] = useState(20);
   const navigate = useNavigate();
   const queryClient = useQueryClient();
+  const toast = useToast();
   const {
     data: allJobs,
     isLoading,
@@ -62,7 +64,7 @@ export default function CrawlJobs() {
     },
     onError: (error) => {
       console.error("Failed to create crawl job:", error);
-      alert(
+      toast.error(
         "Failed to create crawl job: " +
           (error instanceof Error ? error.message : "Unknown error")
       );
@@ -89,7 +91,7 @@ export default function CrawlJobs() {
     },
     onError: (error) => {
       console.error("Failed to cancel job:", error);
-      alert(
+      toast.error(
         "Failed to cancel job: " +
           (error instanceof Error ? error.message : "Unknown error")
       );
@@ -123,7 +125,7 @@ export default function CrawlJobs() {
     },
     onError: (error) => {
       console.error("Failed to delete job:", error);
-      alert(
+      toast.error(
         "Failed to delete job: " +
           (error instanceof Error ? error.message : "Unknown error")
       );
@@ -140,7 +142,7 @@ export default function CrawlJobs() {
     },
     onError: (error) => {
       console.error("Failed to delete jobs:", error);
-      alert(
+      toast.error(
         "Failed to delete jobs: " +
           (error instanceof Error ? error.message : "Unknown error")
       );
@@ -157,7 +159,7 @@ export default function CrawlJobs() {
     },
     onError: (error) => {
       console.error("Failed to cancel jobs:", error);
-      alert(
+      toast.error(
         "Failed to cancel jobs: " +
           (error instanceof Error ? error.message : "Unknown error")
       );
@@ -229,7 +231,7 @@ export default function CrawlJobs() {
     },
     onError: (error) => {
       console.error("Failed to recrawl job:", error);
-      alert(
+      toast.error(
         "Failed to recrawl job: " +
           (error instanceof Error ? error.message : "Unknown error")
       );
