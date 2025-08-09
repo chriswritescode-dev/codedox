@@ -251,7 +251,7 @@ The `crawl` command has several subcommands for managing documentation crawls:
 python cli.py crawl start <name> <urls...> [options]
   --depth N           # Max crawl depth (0-3, default: 1)
   --domain PATTERN    # Domain restriction pattern
-  --url-patterns      # URL patterns to include (e.g., "*docs*")
+  --url-patterns      # URL patterns to filter (e.g., "*docs*") will keep only URLs matching these patterns
   --concurrent N      # Max concurrent crawl sessions
 
 # Check crawl status

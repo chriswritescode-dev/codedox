@@ -1,5 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { Edit3, Check, X, Loader2 } from 'lucide-react';
+import { Link } from 'react-router-dom';
 
 interface EditableSourceNameProps {
   id: string;
@@ -130,13 +131,22 @@ export const EditableSourceName: React.FC<EditableSourceNameProps> = ({
             </>
           )}
         </div>
-      </div>
+      </div> 
     );
   }
 
+
+
   return (
     <div className={`inline-flex items-center gap-2 group ${className}`}>
-      <span className="font-medium">{name}</span>
+			  <Link 
+          to={`/sources/${id}`} 
+          className="text-sm text-primary hover:text-primary/80 hover:underline"
+          onClick={(e) => e.stopPropagation()}
+        >
+           {name}
+        </Link>
+
       <button
         onClick={handleEdit}
         className="opacity-0 group-hover:opacity-100 p-1 text-muted-foreground hover:text-foreground rounded transition-opacity"
