@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback, memo, useRef } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { api } from '../lib/api'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
-import { Database, FileText, Code, Trash2, X, Search, Check, RefreshCw, Filter } from 'lucide-react'
+import { FileText, Code, Trash2, X, Search, Check, RefreshCw, Filter } from 'lucide-react'
 import { ConfirmationDialog } from '../components/ConfirmationDialog'
 import { EditableSourceName } from '../components/EditableSourceName'
 import { RecrawlDialog } from '../components/RecrawlDialog'
@@ -26,21 +26,33 @@ const SourceCard = ({
   onUpdateName: (id: string, name: string) => Promise<void>;
   isPendingRecrawl: boolean;
 }) => {
+  const navigate = useNavigate();
+  
+  const handleCardClick = (e: React.MouseEvent) => {
+    // Don't navigate if clicking on interactive elements
+    const target = e.target as HTMLElement;
+    const isInteractive = target.closest('button, input, a, [role="button"]');
+    if (!isInteractive) {
+      navigate(`/sources/${source.id}`);
+    }
+  };
+
   return (
     <div
-      className={`relative bg-secondary/50 rounded-lg p-6 hover:bg-secondary transition-colors group ${
+      className={`relative bg-secondary/50 rounded-lg p-6 hover:bg-secondary transition-colors group cursor-pointer ${
         isSelected ? "ring-2 ring-primary" : ""
       }`}
+      onClick={handleCardClick}
     >
       <div
-        className="absolute top-4 left-4 z-10 cursor-pointer"
+        className="absolute top-4 left-4 z-10"
         onClick={(e) => {
           e.stopPropagation();
           onToggleSelect(source.id);
         }}
       >
         <div
-          className={`w-5 h-5 rounded border-2 flex items-center justify-center ${
+          className={`w-5 h-5 rounded border-2 flex items-center justify-center cursor-pointer ${
             isSelected
               ? "bg-primary border-primary"
               : "border-input bg-background hover:border-primary"
@@ -52,14 +64,16 @@ const SourceCard = ({
         </div>
       </div>
 
-      <div className="flex items-start justify-between mb-4">
-        <Database className="h-8 w-8 text-muted-foreground ml-8" />
+      <div className="flex items-start justify-between mb-4 pl-8">
+        <span className="text-xs text-muted-foreground">
+          {new Date(source.created_at).toLocaleDateString()}
+        </span>
         <div className="flex items-center gap-2">
-          <span className="text-xs text-muted-foreground">
-            {new Date(source.created_at).toLocaleDateString()}
-          </span>
           <button
-            onClick={(e) => onRecrawl(e, source)}
+            onClick={(e) => {
+              e.stopPropagation();
+              onRecrawl(e, source);
+            }}
             className="p-1 text-muted-foreground hover:text-primary hover:bg-primary/10 rounded-md opacity-0 group-hover:opacity-100 transition-opacity"
             title="Recrawl source"
             disabled={isPendingRecrawl}
@@ -67,7 +81,10 @@ const SourceCard = ({
             <RefreshCw className="h-4 w-4" />
           </button>
           <button
-            onClick={(e) => onDelete(e, source)}
+            onClick={(e) => {
+              e.stopPropagation();
+              onDelete(e, source);
+            }}
             className="p-1 text-muted-foreground hover:text-destructive hover:bg-destructive/10 rounded-md opacity-0 group-hover:opacity-100 transition-opacity"
             title="Delete source"
           >
@@ -76,19 +93,24 @@ const SourceCard = ({
         </div>
       </div>
 
-      <div className="mb-4">
-        <EditableSourceName
-          id={source.id}
-          name={source.name}
-          onUpdate={onUpdateName}
-          className="text-lg font-medium"
-        />
+      <div className="mb-4 pl-8">
+        <div 
+          onClick={(e) => e.stopPropagation()}
+          className="inline-block"
+        >
+          <EditableSourceName
+            id={source.id}
+            name={source.name}
+            onUpdate={onUpdateName}
+            className="text-lg font-medium"
+          />
+        </div>
         <div className="text-xs text-muted-foreground mt-1 truncate">
           {source.base_url}
         </div>
       </div>
 
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between pl-8">
         <div className="flex items-center gap-4 text-sm">
           <div className="flex items-center text-muted-foreground">
             <FileText className="h-4 w-4 mr-1" />
@@ -99,13 +121,6 @@ const SourceCard = ({
             {source.snippets_count} snippets
           </div>
         </div>
-        <Link 
-          to={`/sources/${source.id}`} 
-          className="text-sm text-primary hover:text-primary/80 hover:underline"
-          onClick={(e) => e.stopPropagation()}
-        >
-          View Details →
-        </Link>
       </div>
     </div>
   );
