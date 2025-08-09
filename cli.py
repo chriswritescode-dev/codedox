@@ -156,7 +156,7 @@ def crawl_status(job_id: str):
         console.print(f"[bold]Job:[/bold] {result['name']}")
         console.print(f"[bold]Status:[/bold] {result['status']}")
         console.print(f"[bold]Progress:[/bold] {result['progress']}")
-        console.print(f"[bold]Pages:[/bold] {result['pages_processed']}/{result['total_pages']}")
+        console.print(f"[bold]Pages:[/bold] {result['processed_pages']}/{result['total_pages']}")
         console.print(f"[bold]Snippets:[/bold] {result['snippets_extracted']}")
     
     asyncio.run(check_status())
