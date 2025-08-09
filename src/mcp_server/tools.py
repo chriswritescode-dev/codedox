@@ -37,7 +37,7 @@ class MCPTools:
             start_urls: URLs to start crawling
             max_depth: Maximum crawl depth (0-3)
             domain_filter: Optional domain restriction
-            url_patterns: Optional list of URL patterns to include (e.g., ["*docs*", "*guide*"])
+            url_patterns: Optional list of URL patterns to filter (e.g., ["*docs*", "*guide*"]) will keep only URLs matching these patterns
             metadata: Additional metadata
             max_concurrent_crawls: Maximum concurrent crawl sessions (default: from config)
             
@@ -60,7 +60,7 @@ class MCPTools:
             metadata.update({
                 'library_name': name,
                 'initiated_via': 'mcp',
-                'initiated_at': datetime.utcnow().isoformat()
+                'initiated_at': datetime.now().isoformat()
             })
             
             # Prepare domain restrictions

@@ -151,7 +151,7 @@ class CrawlManager:
     async def _check_job_cancelled(self, job_id: str) -> None:
         """Check if job is cancelled and raise CancelledError if so."""
         job_status = self.job_manager.get_job_status(job_id)
-        if job_status and job_status.get("status") == "cancelled":
+        if job_status and job_status.get("status") == "completed":
             logger.info(f"Job {job_id} has been cancelled, stopping crawl")
             raise asyncio.CancelledError("Job cancelled by user")
 

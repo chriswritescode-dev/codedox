@@ -14,6 +14,7 @@ from ...database import get_db, CodeSearcher
 from ...database.models import CrawlJob, UploadJob, Document, CodeSnippet
 from ...mcp_server import MCPTools
 from ...config import get_settings
+from sqlalchemy.sql import text
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -90,6 +91,174 @@ async def get_sources(
         "offset": offset,
         "has_next": offset + limit < total,
         "has_previous": offset > 0,
+    }
+
+
+@router.get("/sources/search")
+async def search_sources(
+    query: Optional[str] = Query(None, description="Search query for fuzzy matching"),
+    min_snippets: Optional[int] = Query(None, ge=0, description="Minimum snippet count"),
+    max_snippets: Optional[int] = Query(None, ge=0, description="Maximum snippet count"),
+    limit: int = Query(20, le=100),
+    offset: int = Query(0, ge=0),
+    db: Session = Depends(get_db)
+) -> Dict[str, Any]:
+    """Search sources with fuzzy matching and snippet count filtering."""
+    
+    # Treat empty string as None
+    if query == '' or query is None:
+        # If no query, just use regular get_sources with filtering
+        result = []
+        
+        # Get all completed crawl jobs
+        crawl_query = db.query(CrawlJob).filter_by(status='completed')
+        crawl_sources = crawl_query.all()
+        
+        for source in crawl_sources:
+            snippet_count = db.query(CodeSnippet).join(Document).filter(
+                Document.crawl_job_id == source.id
+            ).count()
+            
+            # Apply snippet filter
+            if min_snippets is not None and snippet_count < min_snippets:
+                continue
+            if max_snippets is not None and snippet_count > max_snippets:
+                continue
+                
+            result.append({
+                "id": str(source.id),
+                "name": source.name,
+                "source_type": "crawl",
+                "domain": source.domain,
+                "base_url": source.start_urls[0] if source.start_urls else "",
+                "created_at": source.created_at.isoformat(),
+                "updated_at": source.updated_at.isoformat(),
+                "documents_count": len(source.documents),
+                "snippets_count": snippet_count,
+                "match_score": None
+            })
+        
+        # Get all completed upload jobs
+        upload_query = db.query(UploadJob).filter_by(status='completed')
+        upload_sources = upload_query.all()
+        
+        for source in upload_sources:
+            snippet_count = db.query(CodeSnippet).join(Document).filter(
+                Document.upload_job_id == source.id
+            ).count()
+            
+            # Apply snippet filter
+            if min_snippets is not None and snippet_count < min_snippets:
+                continue
+            if max_snippets is not None and snippet_count > max_snippets:
+                continue
+                
+            result.append({
+                "id": str(source.id),
+                "name": source.name,
+                "source_type": "upload",
+                "domain": "upload",
+                "base_url": f"Uploaded: {source.created_at.strftime('%Y-%m-%d')}",
+                "created_at": source.created_at.isoformat(),
+                "updated_at": source.updated_at.isoformat(),
+                "documents_count": len(source.documents),
+                "snippets_count": snippet_count,
+                "file_count": source.file_count,
+                "match_score": None
+            })
+        
+        # Sort by snippets_count descending, then updated_at
+        result.sort(key=lambda x: (-x['snippets_count'], x['updated_at']), reverse=True)
+        
+        # Apply pagination
+        total = len(result)
+        result = result[offset:offset + limit]
+        
+        return {
+            "sources": result,
+            "total": total,
+            "limit": limit,
+            "offset": offset,
+            "has_next": offset + limit < total,
+            "has_previous": offset > 0,
+            "query": None,
+            "filters": {
+                "min_snippets": min_snippets,
+                "max_snippets": max_snippets
+            }
+        }
+    
+    # We have a query - use CodeSearcher for fuzzy search
+    searcher = CodeSearcher(db)
+    
+    # Get all matching libraries
+    libraries, total_count = searcher.search_libraries(
+        query=query,
+        limit=1000,  # Get all to filter by snippets
+        offset=0
+    )
+    
+    # Convert to sources format and filter
+    sources = []
+    for lib in libraries:
+        # Apply snippet count filter
+        if min_snippets is not None and lib['snippet_count'] < min_snippets:
+            continue
+        if max_snippets is not None and lib['snippet_count'] > max_snippets:
+            continue
+        
+        # Get the actual source to get more details
+        if lib['source_type'] == 'crawl':
+            source = db.query(CrawlJob).filter_by(id=lib['library_id']).first()
+            if source:
+                sources.append({
+                    "id": lib['library_id'],
+                    "name": lib['name'],
+                    "source_type": "crawl",
+                    "domain": source.domain,
+                    "base_url": source.start_urls[0] if source.start_urls else "",
+                    "created_at": source.created_at.isoformat(),
+                    "updated_at": source.updated_at.isoformat(),
+                    "documents_count": len(source.documents),
+                    "snippets_count": lib['snippet_count'],
+                    "match_score": lib.get('similarity_score', 0.0)
+                })
+        else:
+            source = db.query(UploadJob).filter_by(id=lib['library_id']).first()
+            if source:
+                sources.append({
+                    "id": lib['library_id'],
+                    "name": lib['name'],
+                    "source_type": "upload",
+                    "domain": "upload",
+                    "base_url": f"Uploaded: {source.created_at.strftime('%Y-%m-%d')}",
+                    "created_at": source.created_at.isoformat(),
+                    "updated_at": source.updated_at.isoformat(),
+                    "documents_count": len(source.documents),
+                    "snippets_count": lib['snippet_count'],
+                    "file_count": source.file_count,
+                    "match_score": lib.get('similarity_score', 0.0)
+                })
+    
+    # Sort by match score
+    sources.sort(key=lambda x: x.get('match_score', 0), reverse=True)
+    
+    # Apply pagination
+    total = len(sources)
+    paginated_sources = sources[offset:offset + limit]
+    
+    return {
+        "sources": paginated_sources,
+        "total": total,
+        "limit": limit,
+        "offset": offset,
+        "has_next": offset + limit < total,
+        "has_previous": offset > 0,
+        "query": query,
+        "filters": {
+            "min_snippets": min_snippets,
+            "max_snippets": max_snippets
+        }
     }
 
 
