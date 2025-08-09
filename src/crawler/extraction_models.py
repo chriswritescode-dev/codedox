@@ -26,8 +26,8 @@ Analyze the code snippet below and identify its programming language, then gener
 
 FORMAT YOUR RESPONSE EXACTLY AS:
 LANGUAGE: [programming language name]
-TITLE: [5-10 words describing what this specific code does]
-DESCRIPTION: [10-30 words explaining what this specific code accomplishes]
+TITLE: [5-15 words describing what this specific code does]
+DESCRIPTION: [10-30 words explaining what this specific code accomplishes include version if exists in context]
 
 Guidelines:
 - Identify the programming language based on syntax, keywords, and context
@@ -37,7 +37,7 @@ Guidelines:
 - For Vue components, use "vue" not "javascript"
 - For markup/config files, be specific (e.g., "postcss" not just "css")
 - TITLE should describe the specific action or purpose of the code
-- DESCRIPTION should explain what this code does and how it works
+- DESCRIPTION should explain what this code does and how it works including any relevant versions if applicable
 - DO NOT start description with "The code..." or "This code..."
 - Be direct and specific to the actual code provided
 

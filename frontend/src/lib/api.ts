@@ -147,6 +147,37 @@ class APIClient {
     return this.fetch(`/sources?${queryParams}`)
   }
 
+  async searchSources(
+    params: { 
+      query?: string
+      min_snippets?: number
+      max_snippets?: number
+      limit?: number
+      offset?: number 
+    } = {}
+  ): Promise<{
+    sources: Source[]
+    total: number
+    limit: number
+    offset: number
+    has_next: boolean
+    has_previous: boolean
+    query: string | null
+    filters: {
+      min_snippets: number | null
+      max_snippets: number | null
+    }
+  }> {
+    const queryParams = new URLSearchParams()
+    Object.entries(params).forEach(([key, value]) => {
+      if (value !== undefined && value !== null && value !== '') {
+        queryParams.append(key, String(value))
+      }
+    })
+    
+    return this.fetch(`/sources/search?${queryParams}`)
+  }
+
   async getSource(id: string): Promise<Source> {
     return this.fetch<Source>(`/sources/${id}`)
   }
