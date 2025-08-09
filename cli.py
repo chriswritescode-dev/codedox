@@ -33,15 +33,21 @@ def init(drop: bool):
     console.print("[green]✓[/green] Database initialized successfully!")
 
 
-@cli.command()
+@cli.group()
+def crawl():
+    """Manage crawl jobs."""
+    pass
+
+
+@crawl.command('start')
 @click.argument('name')
 @click.argument('urls', nargs=-1, required=True)
 @click.option('--depth', default=1, help='Maximum crawl depth (0-3)')
 @click.option('--domain', help='Domain restriction pattern')
 @click.option('--url-patterns', multiple=True, help='URL patterns to include (e.g., "*docs*", "*guide*")')
 @click.option('--concurrent', default=None, help='Maximum concurrent crawl sessions (default: from config)')
-def crawl(name: str, urls: tuple, depth: int, domain: Optional[str], url_patterns: tuple, 
-          concurrent: int):
+def crawl_start(name: str, urls: tuple, depth: int, domain: Optional[str], url_patterns: tuple, 
+                concurrent: int):
     """Start a new crawl job."""
     async def run_crawl():
         tools = MCPTools()
@@ -76,9 +82,9 @@ def crawl(name: str, urls: tuple, depth: int, domain: Optional[str], url_pattern
     asyncio.run(run_crawl())
 
 
-@cli.command()
-def sources():
-    """List available documentation sources."""
+@crawl.command('list')
+def crawl_list():
+    """List all crawl jobs and their status."""
     async def list_sources():
         from src.database import get_db_manager
         from src.database.models import CrawlJob
@@ -89,14 +95,14 @@ def sources():
             jobs = session.query(CrawlJob).order_by(CrawlJob.created_at.desc()).all()
             
             if not jobs:
-                console.print("No sources found.")
+                console.print("No crawl jobs found.")
                 return
             
-            table = Table(title="Documentation Sources")
+            table = Table(title="Crawl Jobs")
             table.add_column("Name", style="cyan")
             table.add_column("Status", style="green")
             table.add_column("Snippets", justify="right")
-            table.add_column("URLs", justify="right")
+            table.add_column("Pages", justify="right")
             table.add_column("Last Update")
             
             for job in jobs:
@@ -119,7 +125,7 @@ def sources():
 @click.option('--lang', help='Filter by language')
 @click.option('--limit', default=10, help='Maximum results')
 def search(query: str, source: Optional[str], lang: Optional[str], limit: int):
-    """Search for code snippets across all sources or in a specific source."""
+    """Search for code snippets."""
     async def run_search():
         tools = MCPTools()
         
@@ -135,9 +141,9 @@ def search(query: str, source: Optional[str], lang: Optional[str], limit: int):
     asyncio.run(run_search())
 
 
-@cli.command()
+@crawl.command('status')
 @click.argument('job_id')
-def status(job_id: str):
+def crawl_status(job_id: str):
     """Check status of a crawl job."""
     async def check_status():
         tools = MCPTools()
@@ -156,9 +162,9 @@ def status(job_id: str):
     asyncio.run(check_status())
 
 
-@cli.command()
+@crawl.command('cancel')
 @click.argument('job_id')
-def cancel(job_id: str):
+def crawl_cancel(job_id: str):
     """Cancel a running crawl job."""
     async def cancel_job():
         tools = MCPTools()
@@ -245,55 +251,7 @@ def upload(file_path: str, source_url: Optional[str], name: Optional[str]):
     asyncio.run(run_upload())
 
 
-@cli.command()
-def mcp():
-    """Start the MCP server."""
-    from src.mcp_server import MCPServer
 
-    console.print("[bold green]Starting MCP server...[/bold green]")
-    server = MCPServer()
-    server.run()
-
-
-@cli.command()
-def api():
-    """Start API server only."""
-    import uvicorn
-
-    console.print("[bold green]Starting CodeDox API server...[/bold green]")
-    console.print("API: http://0.0.0.0:8000")
-    console.print("API Docs: http://0.0.0.0:8000/docs")
-    console.print("MCP Tools: http://0.0.0.0:8000/mcp")
-    console.print("\nTo start the web UI, run: python cli.py ui")
-
-    uvicorn.run(
-        "src.api.main:app",
-        host=settings.api.host,
-        port=settings.api.port,
-        reload=settings.debug
-    )
-
-
-@cli.command()
-def ui():
-    """Start the web UI development server."""
-    import subprocess
-    import os
-    
-    frontend_dir = os.path.join(os.path.dirname(__file__), 'frontend')
-    
-    # Check if node_modules exists
-    if not os.path.exists(os.path.join(frontend_dir, 'node_modules')):
-        console.print("[yellow]Installing frontend dependencies...[/yellow]")
-        subprocess.run(['npm', 'install'], cwd=frontend_dir, check=True)
-    
-    console.print("[bold green]Starting Web UI development server...[/bold green]")
-    console.print("Web UI: http://0.0.0.0:5173")
-    
-    try:
-        subprocess.run(['npm', 'run', 'dev'], cwd=frontend_dir, check=True)
-    except KeyboardInterrupt:
-        console.print("\n[yellow]Shutting down Web UI server...[/yellow]")
 
 
 @cli.command()
@@ -340,16 +298,42 @@ def test(coverage: bool, verbose: bool, unit: bool, integration: bool, pattern: 
 
 
 @cli.command()
-def all():
-    """Start API server and web UI (for MCP, use 'cli.py mcp' separately)."""
+@click.option('--api', is_flag=True, help='Start API server only (no UI)')
+@click.option('--mcp', is_flag=True, help='Start MCP stdio server only')
+def serve(api: bool, mcp: bool):
+    """Start CodeDox services (default: API + Web UI)."""
     import subprocess
     import concurrent.futures
     import time
     import signal
     import os
-
+    import uvicorn
+    
+    # Handle MCP stdio server mode
+    if mcp:
+        from src.mcp_server import MCPServer
+        console.print("[bold green]Starting MCP stdio server...[/bold green]")
+        server = MCPServer()
+        server.run()
+        return
+    
+    # Handle API-only mode
+    if api:
+        console.print("[bold green]Starting CodeDox API server...[/bold green]")
+        console.print("API: http://0.0.0.0:8000")
+        console.print("API Docs: http://0.0.0.0:8000/docs")
+        console.print("MCP Tools: http://0.0.0.0:8000/mcp")
+        
+        uvicorn.run(
+            "src.api.main:app",
+            host=settings.api.host,
+            port=settings.api.port,
+            reload=settings.debug
+        )
+        return
+    
+    # Default: Start both API and Web UI
     console.print("[bold green]Starting CodeDox (API + Web UI)...[/bold green]")
-    console.print("[dim]Note: MCP server should be run separately with 'python cli.py mcp'[/dim]")
     console.print("[dim]Press Ctrl+C to stop all services[/dim]\n")
 
     # Get API configuration to pass to frontend
@@ -358,25 +342,38 @@ def all():
     # Store process references
     processes = []
 
-    def run_service(name, cmd, env_vars=None):
-        """Run a service and return the process."""
-        try:
-            if name == "api":
-                console.print(f"[green]✓[/green] Starting API server on {api_url}")
-            else:
-                console.print("[blue]✓[/blue] Starting Web UI on http://0.0.0.0:5173")
+    def run_api_server():
+        """Run the API server directly."""
+        console.print(f"[green]✓[/green] Starting API server on {api_url}")
+        uvicorn.run(
+            "src.api.main:app",
+            host=settings.api.host,
+            port=settings.api.port,
+            reload=False  # Don't use reload in multi-process mode
+        )
 
-            # Set up environment variables for the process
-            process_env = os.environ.copy()
-            if env_vars:
-                process_env.update(env_vars)
-
-            process = subprocess.Popen(cmd, shell=True, env=process_env)
-            processes.append(process)
-            return process.wait()
-        except Exception as e:
-            console.print(f"[red]Error starting {name}: {e}[/red]")
-            return 1
+    def run_ui_server():
+        """Run the UI development server."""
+        frontend_dir = os.path.join(os.path.dirname(__file__), 'frontend')
+        
+        # Check if node_modules exists
+        if not os.path.exists(os.path.join(frontend_dir, 'node_modules')):
+            console.print("[yellow]Installing frontend dependencies...[/yellow]")
+            subprocess.run(['npm', 'install'], cwd=frontend_dir, check=True)
+        
+        console.print("[blue]✓[/blue] Starting Web UI on http://0.0.0.0:5173")
+        
+        # Set up environment variables for the UI
+        process_env = os.environ.copy()
+        process_env["VITE_API_PROXY_TARGET"] = api_url
+        
+        process = subprocess.Popen(
+            ['npm', 'run', 'dev'],
+            cwd=frontend_dir,
+            env=process_env
+        )
+        processes.append(process)
+        return process.wait()
 
     def cleanup(signum=None, frame=None):
         """Clean up all processes."""
@@ -395,32 +392,29 @@ def all():
 
     # Start services
     with concurrent.futures.ThreadPoolExecutor(max_workers=2) as executor:
-        # Start API first
-        api_future = executor.submit(run_service, "api", f"{sys.executable} cli.py api")
-
+        # Start API server
+        api_future = executor.submit(run_api_server)
+        
         # Give API a moment to start
         time.sleep(2)
-
-        # Start UI with dynamic API proxy target
-        ui_env_vars = {
-            "VITE_API_PROXY_TARGET": api_url
-        }
-        ui_future = executor.submit(run_service, "ui", f"{sys.executable} cli.py ui", ui_env_vars)
-
+        
+        # Start UI server
+        ui_future = executor.submit(run_ui_server)
+        
         try:
             # Wait for any to finish (shouldn't happen unless there's an error)
             concurrent.futures.wait(
-                [api_future, ui_future], return_when=concurrent.futures.FIRST_COMPLETED
+                [api_future, ui_future], 
+                return_when=concurrent.futures.FIRST_COMPLETED
             )
         except KeyboardInterrupt:
             cleanup()
 
 
-@cli.command("crawl-resume")
-@click.argument("job_id")
+@crawl.command('resume')
+@click.argument('job_id')
 def crawl_resume(job_id: str):
     """Resume a failed or stalled crawl job."""
-
     async def run_resume():
         manager = CrawlManager()
         success = await manager.resume_failed_job(job_id)
@@ -434,11 +428,9 @@ def crawl_resume(job_id: str):
     asyncio.run(run_resume())
 
 
-
-
-@cli.command("crawl-health")
+@crawl.command('health')
 def crawl_health():
-    """Check health status of all crawl jobs."""
+    """Check health status of all running crawl jobs."""
     from src.crawler.health_monitor import get_health_monitor
 
     health_monitor = get_health_monitor()
@@ -484,94 +476,6 @@ def crawl_health():
 
         console.print(table)
 
-
-@cli.command("server-api-mcp")
-def serve_all():
-    """Start both API/Web server and MCP server ."""
-    import subprocess
-    import concurrent.futures
-    import signal
-    import sys
-    from multiprocessing import Process
-
-    console.print("[bold green]=== CodeDox Starting ===[/bold green]")
-    console.print("This will start both the API/Web server and MCP server")
-
-    # Check database connection
-    try:
-        db_manager = get_db_manager()
-        with db_manager.session_scope() as session:
-            from sqlalchemy import text
-
-            session.execute(text("SELECT 1"))
-        console.print("[green]✅ Database connection verified[/green]")
-    except Exception as e:
-        console.print(f"[red]❌ Database connection failed: {e}[/red]")
-        console.print("[red]Please ensure PostgreSQL is running and configured correctly[/red]")
-        sys.exit(1)
-
-    # Store process references
-    processes = []
-
-    def run_api_server():
-        """Run the FastAPI server."""
-        import uvicorn
-
-        uvicorn.run("src.api.main:app", host="0.0.0.0", port=8000, reload=False, log_level="info")
-
-    def run_mcp_server():
-        """Run the MCP server."""
-        from src.mcp_server.server import main as mcp_main
-
-        asyncio.run(mcp_main())
-
-    def cleanup(signum=None, frame=None):
-        """Clean up all processes."""
-        console.print("\n[yellow]Shutting down all services...[/yellow]")
-        for p in processes:
-            try:
-                p.terminate()
-                p.join(timeout=5)
-            except:
-                try:
-                    p.kill()
-                    p.join()
-                except:
-                    pass
-        console.print("[green]Services stopped[/green]")
-        sys.exit(0)
-
-    # Set up signal handlers
-    signal.signal(signal.SIGINT, cleanup)
-    signal.signal(signal.SIGTERM, cleanup)
-
-    # Create processes
-    api_process = Process(target=run_api_server)
-    mcp_process = Process(target=run_mcp_server)
-    processes = [api_process, mcp_process]
-
-    try:
-        # Start both processes
-        api_process.start()
-        mcp_process.start()
-
-        console.print("\n" + "=" * 60)
-        console.print("[bold green]🚀 CodeDox is running![/bold green]")
-        console.print("=" * 60)
-        console.print("📡 API/Web UI: http://localhost:8000")
-        console.print("🔌 MCP Server: localhost:8899")
-        console.print("=" * 60)
-        console.print("Press Ctrl+C to stop all services\n")
-
-        # Wait for both processes
-        api_process.join()
-        mcp_process.join()
-
-    except KeyboardInterrupt:
-        cleanup()
-    except Exception as e:
-        console.print(f"[red]Error running services: {e}[/red]")
-        cleanup()
 
 
 

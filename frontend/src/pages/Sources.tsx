@@ -1,20 +1,171 @@
-import React, { useState, useMemo } from 'react'
+import React, { useState, useEffect, useCallback, memo, useRef } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { api } from '../lib/api'
-import { Link, useNavigate } from 'react-router-dom'
-import { Database, FileText, Code, Trash2, X, Search, Check, RefreshCw } from 'lucide-react'
+import { Link, useNavigate, useSearchParams } from 'react-router-dom'
+import { Database, FileText, Code, Trash2, X, Search, Check, RefreshCw, Filter } from 'lucide-react'
 import { ConfirmationDialog } from '../components/ConfirmationDialog'
 import { EditableSourceName } from '../components/EditableSourceName'
 import { RecrawlDialog } from '../components/RecrawlDialog'
 import { PaginationControls } from '../components/PaginationControls'
 
+// Memoized source card component
+const SourceCard = ({ 
+  source, 
+  isSelected, 
+  onToggleSelect, 
+  onDelete, 
+  onRecrawl,
+  onUpdateName,
+  isPendingRecrawl
+}: {
+  source: any;
+  isSelected: boolean;
+  onToggleSelect: (id: string) => void;
+  onDelete: (e: React.MouseEvent, source: { id: string; name: string }) => void;
+  onRecrawl: (e: React.MouseEvent, source: { id: string; name: string; base_url: string }) => void;
+  onUpdateName: (id: string, name: string) => Promise<void>;
+  isPendingRecrawl: boolean;
+}) => {
+  return (
+    <div
+      className={`relative bg-secondary/50 rounded-lg p-6 hover:bg-secondary transition-colors group ${
+        isSelected ? "ring-2 ring-primary" : ""
+      }`}
+    >
+      <div
+        className="absolute top-4 left-4 z-10 cursor-pointer"
+        onClick={(e) => {
+          e.stopPropagation();
+          onToggleSelect(source.id);
+        }}
+      >
+        <div
+          className={`w-5 h-5 rounded border-2 flex items-center justify-center ${
+            isSelected
+              ? "bg-primary border-primary"
+              : "border-input bg-background hover:border-primary"
+          }`}
+        >
+          {isSelected && (
+            <Check className="h-3 w-3 text-primary-foreground" />
+          )}
+        </div>
+      </div>
+
+      <div className="flex items-start justify-between mb-4">
+        <Database className="h-8 w-8 text-muted-foreground ml-8" />
+        <div className="flex items-center gap-2">
+          <span className="text-xs text-muted-foreground">
+            {new Date(source.created_at).toLocaleDateString()}
+          </span>
+          <button
+            onClick={(e) => onRecrawl(e, source)}
+            className="p-1 text-muted-foreground hover:text-primary hover:bg-primary/10 rounded-md opacity-0 group-hover:opacity-100 transition-opacity"
+            title="Recrawl source"
+            disabled={isPendingRecrawl}
+          >
+            <RefreshCw className="h-4 w-4" />
+          </button>
+          <button
+            onClick={(e) => onDelete(e, source)}
+            className="p-1 text-muted-foreground hover:text-destructive hover:bg-destructive/10 rounded-md opacity-0 group-hover:opacity-100 transition-opacity"
+            title="Delete source"
+          >
+            <Trash2 className="h-4 w-4" />
+          </button>
+        </div>
+      </div>
+
+      <div className="mb-4">
+        <EditableSourceName
+          id={source.id}
+          name={source.name}
+          onUpdate={onUpdateName}
+          className="text-lg font-medium"
+        />
+        <div className="text-xs text-muted-foreground mt-1 truncate">
+          {source.base_url}
+        </div>
+      </div>
+
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-4 text-sm">
+          <div className="flex items-center text-muted-foreground">
+            <FileText className="h-4 w-4 mr-1" />
+            {source.documents_count} docs
+          </div>
+          <div className="flex items-center text-muted-foreground">
+            <Code className="h-4 w-4 mr-1" />
+            {source.snippets_count} snippets
+          </div>
+        </div>
+        <Link 
+          to={`/sources/${source.id}`} 
+          className="text-sm text-primary hover:text-primary/80 hover:underline"
+          onClick={(e) => e.stopPropagation()}
+        >
+          View Details →
+        </Link>
+      </div>
+    </div>
+  );
+};
+
+SourceCard.displayName = 'SourceCard';
+
+const SourceGrid = memo(({ 
+  sources, 
+  selectedSources,
+  onToggleSelect,
+  onDelete,
+  onRecrawl,
+  onUpdateName,
+  isPendingRecrawl
+}: {
+  sources: any[];
+  selectedSources: Set<string>;
+  onToggleSelect: (id: string) => void;
+  onDelete: (e: React.MouseEvent, source: { id: string; name: string }) => void;
+  onRecrawl: (e: React.MouseEvent, source: { id: string; name: string; base_url: string }) => void;
+  onUpdateName: (id: string, name: string) => Promise<void>;
+  isPendingRecrawl: boolean;
+}) => {
+  return (
+    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+      {sources.map((source: any) => (
+        <SourceCard
+          key={source.id}
+          source={source}
+          isSelected={selectedSources.has(source.id)}
+          onToggleSelect={onToggleSelect}
+          onDelete={onDelete}
+          onRecrawl={onRecrawl}
+          onUpdateName={onUpdateName}
+          isPendingRecrawl={isPendingRecrawl}
+        />
+      ))}
+    </div>
+  );
+});
+
+SourceGrid.displayName = 'SourceGrid';
+
 export default function Sources() {
+  const [searchParams, setSearchParams] = useSearchParams();
+  const searchInputRef = useRef<HTMLInputElement>(null);
+  
+  // Get values from URL params
+  const searchQuery = searchParams.get('q') || '';
+  const snippetFilter = searchParams.get('filter') || 'all';
+  const currentPage = parseInt(searchParams.get('page') || '1', 10);
+  const itemsPerPage = parseInt(searchParams.get('limit') || '10', 10);
+  
   const [deleteModalOpen, setDeleteModalOpen] = useState(false);
   const [sourceToDelete, setSourceToDelete] = useState<{
     id: string;
     name: string;
   } | null>(null);
-  const [searchQuery, setSearchQuery] = useState("");
+  const [debouncedSearchQuery, setDebouncedSearchQuery] = useState(searchQuery);
   const [selectedSources, setSelectedSources] = useState<Set<string>>(
     new Set()
   );
@@ -25,20 +176,75 @@ export default function Sources() {
     name: string;
     base_url: string;
   } | null>(null);
-  const [currentPage, setCurrentPage] = useState(1);
-  const [itemsPerPage, setItemsPerPage] = useState(10);
   const queryClient = useQueryClient();
   const navigate = useNavigate();
+  
+  // Update URL params helper
+  const updateUrlParams = useCallback((updates: Record<string, string | null>) => {
+    setSearchParams(prev => {
+      const newParams = new URLSearchParams(prev);
+      Object.entries(updates).forEach(([key, value]) => {
+        if (value === null || value === '') {
+          newParams.delete(key);
+        } else {
+          newParams.set(key, value);
+        }
+      });
+      return newParams;
+    }, { replace: true });
+  }, [setSearchParams]);
+
+  // Debounce search query
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setDebouncedSearchQuery(searchQuery);
+    }, 300);
+
+    return () => clearTimeout(timer);
+  }, [searchQuery]);
+  
+  // Maintain input focus after debounce
+  useEffect(() => {
+    // Keep focus on search input if it was focused
+    if (document.activeElement === searchInputRef.current) {
+      searchInputRef.current?.focus();
+    }
+  }, [debouncedSearchQuery]);
+
+  // Calculate snippet filter bounds
+  const getSnippetBounds = useCallback(() => {
+    switch(snippetFilter) {
+      case '0': return { min: 0, max: 0 };
+      case '1-10': return { min: 1, max: 10 };
+      case '11-50': return { min: 11, max: 50 };
+      case '51-100': return { min: 51, max: 100 };
+      case '100+': return { min: 101, max: undefined };
+      default: return { min: undefined, max: undefined };
+    }
+  }, [snippetFilter]);
 
   const {
     data: sources,
     isLoading,
     error,
   } = useQuery({
-    queryKey: ["sources", currentPage, itemsPerPage],
+    queryKey: ["sources", currentPage, itemsPerPage, debouncedSearchQuery, snippetFilter],
     queryFn: () => {
-      console.log("Fetching sources...");
       const offset = (currentPage - 1) * itemsPerPage;
+      const bounds = getSnippetBounds();
+      
+      // Use search API if there's a query or filter
+      if (debouncedSearchQuery || snippetFilter !== 'all') {
+        return api.searchSources({
+          query: debouncedSearchQuery || undefined,
+          min_snippets: bounds.min,
+          max_snippets: bounds.max,
+          limit: itemsPerPage,
+          offset
+        });
+      }
+      
+      // Use regular getSources for unfiltered results
       return api.getSources({ limit: itemsPerPage, offset });
     },
   });
@@ -106,20 +312,10 @@ export default function Sources() {
     },
   });
 
-  // Filter sources based on search query
-  const filteredSources = useMemo(() => {
-    if (!sources?.sources) return [];
-    if (!searchQuery) return sources.sources;
+  // Sources are now filtered server-side
+  const filteredSources = sources?.sources || [];
 
-    const query = searchQuery.toLowerCase();
-    return sources.sources.filter(
-      (source) =>
-        source.name.toLowerCase().includes(query) ||
-        source.base_url.toLowerCase().includes(query)
-    );
-  }, [sources, searchQuery]);
-
-  const handleDeleteClick = (
+  const handleDeleteClick = useCallback((
     e: React.MouseEvent,
     source: { id: string; name: string }
   ) => {
@@ -128,55 +324,73 @@ export default function Sources() {
     setSourceToDelete(source);
     setIsBulkDelete(false);
     setDeleteModalOpen(true);
-  };
+  }, []);
 
-  const handleBulkDelete = () => {
+  const handleBulkDelete = useCallback(() => {
     setIsBulkDelete(true);
     setDeleteModalOpen(true);
-  };
+  }, []);
 
-  const confirmDelete = () => {
+  const confirmDelete = useCallback(() => {
     if (isBulkDelete) {
       bulkDeleteMutation.mutate(Array.from(selectedSources));
     } else if (sourceToDelete) {
       deleteMutation.mutate(sourceToDelete.id);
     }
-  };
+  }, [isBulkDelete, selectedSources, sourceToDelete, bulkDeleteMutation, deleteMutation]);
 
-  const toggleSelectSource = (sourceId: string) => {
-    const newSelected = new Set(selectedSources);
-    if (newSelected.has(sourceId)) {
-      newSelected.delete(sourceId);
-    } else {
-      newSelected.add(sourceId);
-    }
-    setSelectedSources(newSelected);
-  };
+  const toggleSelectSource = useCallback((sourceId: string) => {
+    setSelectedSources(prev => {
+      const newSelected = new Set(prev);
+      if (newSelected.has(sourceId)) {
+        newSelected.delete(sourceId);
+      } else {
+        newSelected.add(sourceId);
+      }
+      return newSelected;
+    });
+  }, []);
 
-  const selectAll = () => {
+  const selectAll = useCallback(() => {
     const allIds = new Set(filteredSources.map((s: any) => s.id));
     setSelectedSources(allIds as Set<string>);
-  };
+  }, [filteredSources]);
 
-  const deselectAll = () => {
+  const deselectAll = useCallback(() => {
     setSelectedSources(new Set());
-  };
+  }, []);
 
-  const handleUpdateSourceName = async (id: string, newName: string) => {
+  const handleUpdateSourceName = useCallback(async (id: string, newName: string) => {
     await updateSourceNameMutation.mutateAsync({ id, name: newName });
-  };
+  }, [updateSourceNameMutation]);
 
-  const handlePageChange = (page: number) => {
-    setCurrentPage(page);
-  };
+  const handlePageChange = useCallback((page: number) => {
+    updateUrlParams({ page: page.toString() });
+  }, [updateUrlParams]);
 
-  const handleItemsPerPageChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
+  const handleItemsPerPageChange = useCallback((e: React.ChangeEvent<HTMLSelectElement>) => {
     const newItemsPerPage = parseInt(e.target.value);
-    setItemsPerPage(newItemsPerPage);
-    setCurrentPage(1); // Reset to first page when changing items per page
-  };
+    updateUrlParams({ 
+      limit: newItemsPerPage.toString(),
+      page: '1' // Reset to first page when changing items per page
+    });
+  }, [updateUrlParams]);
+  
+  const handleSearchChange = useCallback((value: string) => {
+    updateUrlParams({ 
+      q: value || null,
+      page: '1' // Reset to first page on search
+    });
+  }, [updateUrlParams]);
+  
+  const handleFilterChange = useCallback((value: string) => {
+    updateUrlParams({ 
+      filter: value === 'all' ? null : value,
+      page: '1' // Reset to first page on filter change
+    });
+  }, [updateUrlParams]);
 
-  const handleRecrawlClick = (
+  const handleRecrawlClick = useCallback((
     e: React.MouseEvent,
     source: { id: string; name: string; base_url: string }
   ) => {
@@ -184,7 +398,7 @@ export default function Sources() {
     e.stopPropagation(); // Prevent checkbox toggle
     setSourceToRecrawl(source);
     setRecrawlDialogOpen(true);
-  };
+  }, []);
 
   if (isLoading) {
     return (
@@ -216,23 +430,42 @@ export default function Sources() {
         </div>
 
       <div className="space-y-4">
-        <div className="relative">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-          <input
-            type="text"
-            placeholder="Search sources by name or URL..."
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            className="w-full pl-10 pr-4 py-2 bg-secondary border border-input rounded-md focus:outline-none focus:ring-2 focus:ring-primary"
-          />
-          {searchQuery && (
-            <button
-              onClick={() => setSearchQuery("")}
-              className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+        <div className="flex gap-4">
+          <div className="relative flex-1">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+            <input
+              ref={searchInputRef}
+              type="text"
+              placeholder="Search sources by name or URL"
+              value={searchQuery}
+              onChange={(e) => handleSearchChange(e.target.value)}
+              className="w-full pl-10 pr-4 py-2 bg-secondary border border-input rounded-md focus:outline-none focus:ring-2 focus:ring-primary"
+            />
+            {searchQuery && (
+              <button
+                onClick={() => handleSearchChange('')}
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            )}
+          </div>
+          
+          <div className="flex items-center gap-2">
+            <Filter className="h-4 w-4 text-muted-foreground" />
+            <select
+              value={snippetFilter}
+              onChange={(e) => handleFilterChange(e.target.value)}
+              className="px-3 py-2 bg-secondary border border-input rounded-md focus:outline-none focus:ring-2 focus:ring-primary"
             >
-              <X className="h-4 w-4" />
-            </button>
-          )}
+              <option value="all">All Snippets</option>
+              <option value="0">No Snippets</option>
+              <option value="1-10">1-10 Snippets</option>
+              <option value="11-50">11-50 Snippets</option>
+              <option value="51-100">51-100 Snippets</option>
+              <option value="100+">100+ Snippets</option>
+            </select>
+          </div>
         </div>
 
         <div className="flex items-center justify-between p-4 bg-secondary/50 rounded-md">
@@ -280,7 +513,7 @@ export default function Sources() {
               onClick={selectAll}
               className="text-sm text-muted-foreground hover:text-foreground"
             >
-              Select all {searchQuery && "matching"}
+              Select all {(debouncedSearchQuery || snippetFilter !== 'all') && "filtered"}
             </button>
             {selectedSources.size > 0 && (
               <>
@@ -321,92 +554,15 @@ export default function Sources() {
       )}
 
       {filteredSources.length > 0 && (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-          {filteredSources.map((source: any) => (
-            <div
-              key={source.id}
-              className={`relative bg-secondary/50 rounded-lg p-6 hover:bg-secondary transition-colors group ${
-                selectedSources.has(source.id) ? "ring-2 ring-primary" : ""
-              }`}
-            >
-              <div
-                className="absolute top-4 left-4 z-10 cursor-pointer"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  toggleSelectSource(source.id);
-                }}
-              >
-                <div
-                  className={`w-5 h-5 rounded border-2 flex items-center justify-center ${
-                    selectedSources.has(source.id)
-                      ? "bg-primary border-primary"
-                      : "border-input bg-background hover:border-primary"
-                  }`}
-                >
-                  {selectedSources.has(source.id) && (
-                    <Check className="h-3 w-3 text-primary-foreground" />
-                  )}
-                </div>
-              </div>
-
-              <div className="flex items-start justify-between mb-4">
-                <Database className="h-8 w-8 text-muted-foreground ml-8" />
-                <div className="flex items-center gap-2">
-                  <span className="text-xs text-muted-foreground">
-                    {new Date(source.created_at).toLocaleDateString()}
-                  </span>
-                  <button
-                    onClick={(e) => handleRecrawlClick(e, source)}
-                    className="p-1 text-muted-foreground hover:text-primary hover:bg-primary/10 rounded-md opacity-0 group-hover:opacity-100 transition-opacity"
-                    title="Recrawl source"
-                    disabled={recrawlMutation.isPending}
-                  >
-                    <RefreshCw className="h-4 w-4" />
-                  </button>
-                  <button
-                    onClick={(e) => handleDeleteClick(e, source)}
-                    className="p-1 text-muted-foreground hover:text-destructive hover:bg-destructive/10 rounded-md opacity-0 group-hover:opacity-100 transition-opacity"
-                    title="Delete source"
-                  >
-                    <Trash2 className="h-4 w-4" />
-                  </button>
-                </div>
-              </div>
-
-              <div className="mb-4">
-                <EditableSourceName
-                  id={source.id}
-                  name={source.name}
-                  onUpdate={handleUpdateSourceName}
-                  className="text-lg font-medium"
-                />
-                <div className="text-xs text-muted-foreground mt-1 truncate">
-                  {source.base_url}
-                </div>
-              </div>
-
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-4 text-sm">
-                  <div className="flex items-center text-muted-foreground">
-                    <FileText className="h-4 w-4 mr-1" />
-                    {source.documents_count} docs
-                  </div>
-                  <div className="flex items-center text-muted-foreground">
-                    <Code className="h-4 w-4 mr-1" />
-                    {source.snippets_count} snippets
-                  </div>
-                </div>
-                <Link 
-                  to={`/sources/${source.id}`} 
-                  className="text-sm text-primary hover:text-primary/80 hover:underline"
-                  onClick={(e) => e.stopPropagation()}
-                >
-                  View Details →
-                </Link>
-              </div>
-            </div>
-          ))}
-        </div>
+        <SourceGrid
+          sources={filteredSources}
+          selectedSources={selectedSources}
+          onToggleSelect={toggleSelectSource}
+          onDelete={handleDeleteClick}
+          onRecrawl={handleRecrawlClick}
+          onUpdateName={handleUpdateSourceName}
+          isPendingRecrawl={recrawlMutation.isPending}
+        />
       )}
 
       <ConfirmationDialog

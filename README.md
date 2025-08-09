@@ -7,9 +7,8 @@ A powerful system for crawling documentation websites, extracting code snippets,
 - **Controlled Web Crawling**: Manual crawling with configurable depth (0-3 levels)
 - **Smart Code Extraction**: HTML-based extraction with LLM language detection
 - **LLM Descriptions**: AI-generated concise descriptions for extracted code
-- **Fast Search**: PostgreSQL full-text search with < 100ms response time
+- **Fast Search**: PostgreSQL full-text search 
 - **MCP Integration**: Expose tools to AI assistants via Model Context Protocol
-- **Source Management**: Track multiple documentation sources with statistics
 - **Modern Web UI**: React-based dashboard for managing crawls, searching code, and monitoring system activity
 - **Auto Site Content Deduplication**: Only updates or adds content that has changed
 - **Flexible Recrawl**: Choose to skip unchanged content or force regenerate all descriptions and titles
@@ -93,9 +92,9 @@ CodeDox uses a sophisticated two-step approach for code extraction:
 
 ## Quick Start
 
-### Option 1: Using Docker (Recommended)
+### 🐳 Docker Setup (Recommended - Easiest!)
 
-The easiest way to get started is with Docker. Everything is automatically set up for you.
+Docker is the **preferred and easiest** way to get CodeDox running. Everything is automatically configured and managed for you - no manual database setup, no dependency issues, just one command to get started.
 
 ```bash
 # Clone the repository
@@ -106,29 +105,38 @@ cd codedox
 cp .env.example .env
 # Edit .env to add your CODE_LLM_API_KEY
 
-# Run the automated setup
+# Run the automated setup - this does everything!
 ./docker-setup.sh
 
 # That's it! Access the web UI at:
 # http://localhost:5173
 ```
 
-The setup script will:
-- Create configuration from template
-- Build all Docker images
-- Start PostgreSQL, API, and Frontend services
-- Initialize the database automatically
-- Guide you through adding your OpenAI API key
+**Why Docker is the best choice:**
+- ✅ **Zero configuration** - Database, API, and frontend all set up automatically
+- ✅ **No dependency conflicts** - Everything runs in isolated containers
+- ✅ **One command setup** - Just run the setup script
+- ✅ **Consistent environment** - Works the same on Mac, Linux, and Windows
+- ✅ **Easy updates** - Pull latest changes and rebuild
 
-### Option 2: Manual Installation
+The setup script automatically:
+- Creates configuration from template
+- Builds all Docker images
+- Starts PostgreSQL, API, and Frontend services
+- Initializes the database with proper schema
+- Guides you through adding your OpenAI API key
+
+### Alternative: Manual Installation
+
+⚠️ **Note:** Manual installation requires more setup and configuration. We strongly recommend using Docker above for a smoother experience.
 
 #### Prerequisites
 
 - Python 3.10+
-- PostgreSQL 12+ 
+- PostgreSQL 12+ (must be installed and configured separately)
 - Playwright (installed automatically with crawl4ai)
 
-#### Installation
+#### Manual Installation Steps
 
 1. Clone the repository:
 ```bash
@@ -160,6 +168,15 @@ createdb codedox
 python cli.py init
 ```
 
+5. Start the application:
+```bash
+# Activate virtual environment
+source .venv/bin/activate
+
+# Start all services (API + Web UI)
+python cli.py serve
+```
+
 ### Configuration
 
 The system uses environment variables for configuration. Key settings in `.env`:
@@ -189,7 +206,7 @@ See `.env.example` for all available options including crawling, search, and API
 source .venv/bin/activate  # On Windows: .venv\Scripts\activate
 
 # Start everything (API + Web UI)
-python cli.py all
+python cli.py serve
 ```
 
 This starts:
@@ -197,7 +214,80 @@ This starts:
 - Web UI at http://localhost:5173
 - MCP tools at http://localhost:8000/mcp
 
-For running services separately, see `python cli.py --help`
+For API-only mode: `python cli.py serve --api`
+For MCP stdio server: `python cli.py serve --mcp`
+
+## CLI Commands
+
+CodeDox provides a streamlined CLI with 6 main commands:
+
+### Core Commands
+
+```bash
+# Initialize database
+python cli.py init [--drop]
+
+# Start services (default: API + Web UI)
+python cli.py serve              # Start both API and Web UI
+python cli.py serve --api        # API server only
+python cli.py serve --mcp        # MCP stdio server only
+
+# Search for code snippets
+python cli.py search <query> [--source NAME] [--limit 10]
+
+# Upload markdown files
+python cli.py upload <file> [--source-url URL] [--name NAME]
+
+# Run tests
+python cli.py test [--coverage] [--verbose]
+```
+
+### Crawl Management
+
+The `crawl` command has several subcommands for managing documentation crawls:
+
+```bash
+# Start a new crawl
+python cli.py crawl start <name> <urls...> [options]
+  --depth N           # Max crawl depth (0-3, default: 1)
+  --domain PATTERN    # Domain restriction pattern
+  --url-patterns      # URL patterns to include (e.g., "*docs*")
+  --concurrent N      # Max concurrent crawl sessions
+
+# Check crawl status
+python cli.py crawl status <job-id>
+
+# List all crawl jobs
+python cli.py crawl list
+
+# Cancel a running crawl
+python cli.py crawl cancel <job-id>
+
+# Resume a failed crawl
+python cli.py crawl resume <job-id>
+
+# Check health of running crawls
+python cli.py crawl health
+```
+
+### Examples
+
+```bash
+# Initialize a fresh database
+python cli.py init --drop
+
+# Start a documentation crawl
+python cli.py crawl start "React" https://react.dev/reference --depth 2
+
+# Check crawl progress
+python cli.py crawl status abc-123-def
+
+# Search for authentication code
+python cli.py search "authentication middleware" --source "Next.js"
+
+# Start the application
+python cli.py serve
+```
 
 ## MCP (Model Context Protocol) Integration
 
@@ -338,8 +428,14 @@ CODE_LLM_EXTRACTION_MODEL="gpt-4o-mini"
 ### Usage
 
 ```bash
-# Crawl documentation
-python cli.py crawl "Next.js" https://nextjs.org/docs --depth 2
+# Start a crawl
+python cli.py crawl start "Next.js" https://nextjs.org/docs --depth 2
+
+# Check crawl status
+python cli.py crawl status <job-id>
+
+# List all crawl jobs
+python cli.py crawl list
 
 # Search code
 python cli.py search "authentication" --limit 10
@@ -387,23 +483,16 @@ python test_hash_optimization.py
 ## Performance
 
 - **Search Speed**: < 100ms for full-text search
-- **Storage**: ~50KB per code snippet with context
 - **HTML Extraction**: Processes 100+ code blocks per second
   - No API calls needed for code extraction
   - Parallel processing of multiple code blocks
-  - Efficient CSS selector matching
-- **Language Detection**: 
-  - Instant detection from HTML classes and filenames
-  - LLM language detection with source URL context
-  - Smart caching of detection results
 - **LLM Description Generation**: 
   - Only used for descriptions (10-30 words each)
   - Batch processing reduces API calls
-  - ~1-2 seconds per code block with descriptions
-- **Content Hash Optimization**: Automatically skips processing for unchanged content during re-crawls
+  - Recommend using free local models if possible (Great results with Qwen3-30B-A3B-Instruct-2507 & Qwen3-4B-Instruct-2507)
+- **Content Hash Optimization**: Automatically skips llm calls for unchanged content during re-crawls
   - Saves significant time and API costs when updating documentation sources
   - Only processes pages with changed content
-  - Tracks efficiency metrics (pages skipped vs processed)
 
 ## Troubleshooting
 
