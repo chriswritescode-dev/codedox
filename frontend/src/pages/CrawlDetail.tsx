@@ -3,6 +3,7 @@ import { useParams, Link } from "react-router-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { api } from "../lib/api";
 import { useWebSocket } from "../hooks/useWebSocket";
+import { useToast } from "../hooks/useToast";
 import {
   ArrowLeft,
   Briefcase,
@@ -21,7 +22,11 @@ import { FailedPagesList } from "../components/FailedPagesList";
 export default function CrawlDetail() {
   const { id } = useParams<{ id: string }>();
   const queryClient = useQueryClient();
+  const toast = useToast();
   const [cancelModalOpen, setCancelModalOpen] = useState(false);
+  const [recrawlModalOpen, setRecrawlModalOpen] = useState(false);
+  const [retryModalOpen, setRetryModalOpen] = useState(false);
+  const [retryUrls, setRetryUrls] = useState<string[]>([]);
   const [currentUrl, setCurrentUrl] = useState<string>();
   const [showFailedPages, setShowFailedPages] = useState(false);
 
@@ -68,7 +73,7 @@ export default function CrawlDetail() {
     },
     onError: (error) => {
       console.error("Failed to cancel job:", error);
-      alert(
+      toast.error(
         "Failed to cancel job: " +
           (error instanceof Error ? error.message : "Unknown error")
       );
@@ -85,7 +90,7 @@ export default function CrawlDetail() {
     },
     onError: (error) => {
       console.error("Failed to recrawl job:", error);
-      alert(
+      toast.error(
         "Failed to recrawl job: " +
           (error instanceof Error ? error.message : "Unknown error")
       );
@@ -106,9 +111,23 @@ export default function CrawlDetail() {
   };
 
   const handleRecrawl = () => {
-    if (confirm("Are you sure you want to recrawl this job? This will create a new crawl job with the same configuration.")) {
-      recrawlMutation.mutate(undefined);
-    }
+    setRecrawlModalOpen(true);
+  };
+
+  const confirmRecrawl = () => {
+    recrawlMutation.mutate(undefined);
+    setRecrawlModalOpen(false);
+  };
+
+  const handleRetryFailedPages = (urls: string[]) => {
+    setRetryUrls(urls);
+    setRetryModalOpen(true);
+  };
+
+  const confirmRetryFailedPages = () => {
+    recrawlMutation.mutate(retryUrls);
+    setRetryModalOpen(false);
+    setRetryUrls([]);
   };
 
   const getStatusIcon = (status: string) => {
@@ -268,11 +287,7 @@ export default function CrawlDetail() {
           ) : failedPages && failedPages.length > 0 ? (
             <FailedPagesList
               pages={failedPages}
-              onRetrySelected={(urls) => {
-                if (confirm(`Are you sure you want to retry ${urls.length} failed page(s)?`)) {
-                  recrawlMutation.mutate(urls);
-                }
-              }}
+              onRetrySelected={handleRetryFailedPages}
               isRetrying={recrawlMutation.isPending}
             />
           ) : (
@@ -292,6 +307,35 @@ export default function CrawlDetail() {
         onCancel={() => setCancelModalOpen(false)}
         variant="destructive"
         isConfirming={cancelMutation.isPending}
+      />
+
+      {/* Recrawl Confirmation Dialog */}
+      <ConfirmationDialog
+        isOpen={recrawlModalOpen}
+        title="Confirm Recrawl"
+        message="Are you sure you want to recrawl this job? This will create a new crawl job with the same configuration."
+        confirmText="Recrawl"
+        cancelText="Cancel"
+        onConfirm={confirmRecrawl}
+        onCancel={() => setRecrawlModalOpen(false)}
+        variant="default"
+        isConfirming={recrawlMutation.isPending}
+      />
+
+      {/* Retry Failed Pages Confirmation Dialog */}
+      <ConfirmationDialog
+        isOpen={retryModalOpen}
+        title="Confirm Retry"
+        message={`Are you sure you want to retry ${retryUrls.length} failed page(s)?`}
+        confirmText="Retry"
+        cancelText="Cancel"
+        onConfirm={confirmRetryFailedPages}
+        onCancel={() => {
+          setRetryModalOpen(false);
+          setRetryUrls([]);
+        }}
+        variant="default"
+        isConfirming={recrawlMutation.isPending}
       />
     </div>
   );
