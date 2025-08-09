@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { useParams, Link, useLocation } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { api } from '../lib/api'
+import { useToast } from '../hooks/useToast'
 import { ArrowLeft, Code, Link as LinkIcon, Copy, Check, Wand2 } from 'lucide-react'
 import { FormatPreviewDialog } from '../components/FormatPreviewDialog'
 import { Spinner } from '../components/Spinner'
@@ -10,6 +11,7 @@ export default function SnippetDetail() {
   const { id } = useParams<{ id: string }>()
   const location = useLocation()
   const queryClient = useQueryClient()
+  const toast = useToast()
   const [copied, setCopied] = useState(false)
   const [formatDialogOpen, setFormatDialogOpen] = useState(false)
   const [formatPreview, setFormatPreview] = useState<{
@@ -54,7 +56,7 @@ export default function SnippetDetail() {
     },
     onError: (error) => {
       console.error('Failed to get format preview:', error)
-      alert('Failed to get format preview')
+      toast.error('Failed to get format preview')
     }
   })
 
@@ -67,7 +69,7 @@ export default function SnippetDetail() {
     },
     onError: (error) => {
       console.error('Failed to format snippet:', error)
-      alert('Failed to format snippet')
+      toast.error('Failed to format snippet')
     }
   })
 
