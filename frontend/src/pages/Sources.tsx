@@ -1,15 +1,16 @@
 import React, { useState, useEffect, useCallback, memo, useRef } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { api } from '../lib/api'
-import { Link, useNavigate, useSearchParams } from 'react-router-dom'
+import { api, Source } from '../lib/api'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 import { FileText, Code, Trash2, X, Search, Check, RefreshCw, Filter } from 'lucide-react'
 import { ConfirmationDialog } from '../components/ConfirmationDialog'
 import { EditableSourceName } from '../components/EditableSourceName'
 import { RecrawlDialog } from '../components/RecrawlDialog'
 import { PaginationControls } from '../components/PaginationControls'
+import { useToast } from '../hooks/useToast'
 
 // Memoized source card component
-const SourceCard = ({ 
+const SourceCard = memo(({ 
   source, 
   isSelected, 
   onToggleSelect, 
@@ -18,7 +19,7 @@ const SourceCard = ({
   onUpdateName,
   isPendingRecrawl
 }: {
-  source: any;
+  source: Source;
   isSelected: boolean;
   onToggleSelect: (id: string) => void;
   onDelete: (e: React.MouseEvent, source: { id: string; name: string }) => void;
@@ -64,10 +65,7 @@ const SourceCard = ({
         </div>
       </div>
 
-      <div className="flex items-start justify-between mb-4 pl-8">
-        <span className="text-xs text-muted-foreground">
-          {new Date(source.created_at).toLocaleDateString()}
-        </span>
+      <div className="flex items-start justify-end mb-4 pl-8">
         <div className="flex items-center gap-2">
           <button
             onClick={(e) => {
@@ -121,10 +119,13 @@ const SourceCard = ({
             {source.snippets_count} snippets
           </div>
         </div>
+        <span className="text-xs text-muted-foreground">
+          {new Date(source.created_at).toLocaleDateString()}
+        </span>
       </div>
     </div>
   );
-};
+});
 
 SourceCard.displayName = 'SourceCard';
 
@@ -137,7 +138,7 @@ const SourceGrid = memo(({
   onUpdateName,
   isPendingRecrawl
 }: {
-  sources: any[];
+  sources: Source[];
   selectedSources: Set<string>;
   onToggleSelect: (id: string) => void;
   onDelete: (e: React.MouseEvent, source: { id: string; name: string }) => void;
@@ -147,7 +148,7 @@ const SourceGrid = memo(({
 }) => {
   return (
     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-      {sources.map((source: any) => (
+      {sources.map((source) => (
         <SourceCard
           key={source.id}
           source={source}
@@ -168,12 +169,13 @@ SourceGrid.displayName = 'SourceGrid';
 export default function Sources() {
   const [searchParams, setSearchParams] = useSearchParams();
   const searchInputRef = useRef<HTMLInputElement>(null);
+  const toast = useToast();
   
   // Get values from URL params
   const searchQuery = searchParams.get('q') || '';
   const snippetFilter = searchParams.get('filter') || 'all';
   const currentPage = parseInt(searchParams.get('page') || '1', 10);
-  const itemsPerPage = parseInt(searchParams.get('limit') || '10', 10);
+  const itemsPerPage = parseInt(searchParams.get('limit') || '20', 10);
   
   const [deleteModalOpen, setDeleteModalOpen] = useState(false);
   const [sourceToDelete, setSourceToDelete] = useState<{
@@ -273,7 +275,7 @@ export default function Sources() {
     },
     onError: (error) => {
       console.error("Failed to delete source:", error);
-      alert(
+      toast.error(
         "Failed to delete source: " +
           (error instanceof Error ? error.message : "Unknown error")
       );
@@ -290,7 +292,7 @@ export default function Sources() {
     },
     onError: (error) => {
       console.error("Failed to delete sources:", error);
-      alert(
+      toast.error(
         "Failed to delete sources: " +
           (error instanceof Error ? error.message : "Unknown error")
       );
@@ -320,7 +322,7 @@ export default function Sources() {
     },
     onError: (error) => {
       console.error("Failed to recrawl source:", error);
-      alert(
+      toast.error(
         "Failed to recrawl source: " +
           (error instanceof Error ? error.message : "Unknown error")
       );
@@ -367,7 +369,7 @@ export default function Sources() {
   }, []);
 
   const selectAll = useCallback(() => {
-    const allIds = new Set(filteredSources.map((s: any) => s.id));
+    const allIds = new Set(filteredSources.map((s) => s.id));
     setSelectedSources(allIds as Set<string>);
   }, [filteredSources]);
 
@@ -556,13 +558,13 @@ export default function Sources() {
         </div>
       </div>
 
-      {sources && (sources as any).sources.length === 0 && (
+      {sources && sources.sources.length === 0 && (
         <div className="text-center py-12 text-muted-foreground">
           No sources found. Start by crawling some documentation.
         </div>
       )}
 
-      {filteredSources.length === 0 && sources && (sources as any).sources.length > 0 && (
+      {filteredSources.length === 0 && sources && sources.sources.length > 0 && (
         <div className="text-center py-12 text-muted-foreground">
           No sources match your search.
         </div>
@@ -645,9 +647,9 @@ export default function Sources() {
           
           <PaginationControls
             currentPage={currentPage}
-            totalPages={Math.ceil((sources as any).total / itemsPerPage)}
+            totalPages={Math.ceil(sources.total / itemsPerPage)}
             onPageChange={handlePageChange}
-            totalItems={(sources as any).total}
+            totalItems={sources.total}
             itemsPerPage={itemsPerPage}
             currentItemsCount={filteredSources.length}
           />

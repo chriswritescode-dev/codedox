@@ -1,4 +1,5 @@
 import { Routes, Route } from 'react-router-dom'
+import { Toaster } from 'react-hot-toast'
 import Layout from './components/Layout'
 import Dashboard from './pages/Dashboard'
 import Search from './pages/Search'
@@ -11,18 +12,21 @@ import Upload from './pages/Upload'
 
 function App() {
   return (
-    <Routes>
-      <Route path="/" element={<Layout />}>
-        <Route index element={<Dashboard />} />
-        <Route path="search" element={<Search />} />
-        <Route path="sources" element={<Sources />} />
-        <Route path="sources/:id" element={<SourceDetail />} />
-        <Route path="crawl" element={<CrawlJobs />} />
-        <Route path="crawl/:id" element={<CrawlDetail />} />
-        <Route path="snippets/:id" element={<SnippetDetail />} />
-        <Route path="upload" element={<Upload />} />
-      </Route>
-    </Routes>
+    <>
+      <Toaster />
+      <Routes>
+        <Route path="/" element={<Layout />}>
+          <Route index element={<Dashboard />} />
+          <Route path="search" element={<Search />} />
+          <Route path="sources" element={<Sources />} />
+          <Route path="sources/:id" element={<SourceDetail />} />
+          <Route path="crawl" element={<CrawlJobs />} />
+          <Route path="crawl/:id" element={<CrawlDetail />} />
+          <Route path="snippets/:id" element={<SnippetDetail />} />
+          <Route path="upload" element={<Upload />} />
+        </Route>
+      </Routes>
+    </>
   )
 }
 
