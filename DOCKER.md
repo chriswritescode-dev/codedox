@@ -222,7 +222,7 @@ This script will:
    docker-compose up -d postgres
    
    # Run API locally (uses same .env file)
-   python cli.py api
+   python cli.py serve --api
    ```
 
 2. **Full Docker Development**
