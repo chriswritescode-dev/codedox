@@ -65,7 +65,7 @@ const SourceCard = memo(({
         </div>
       </div>
 
-      <div className="flex items-start justify-end mb-4 pl-8">
+      <div className="flex items-start justify-end mb-4 ">
         <div className="flex items-center gap-2">
           <button
             onClick={(e) => {
@@ -91,7 +91,7 @@ const SourceCard = memo(({
         </div>
       </div>
 
-      <div className="mb-4 pl-8">
+      <div className="mb-4 ">
         <div 
           onClick={(e) => e.stopPropagation()}
           className="inline-block"
@@ -108,7 +108,7 @@ const SourceCard = memo(({
         </div>
       </div>
 
-      <div className="flex items-center justify-between pl-8">
+      <div className="flex items-center justify-between ">
         <div className="flex items-center gap-4 text-sm">
           <div className="flex items-center text-muted-foreground">
             <FileText className="h-4 w-4 mr-1" />

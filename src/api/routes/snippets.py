@@ -35,12 +35,31 @@ class FormatSnippetResponse(BaseModel):
 async def get_snippet(snippet_id: int, db: Session = Depends(get_db)) -> Dict[str, Any]:
     """Get details of a specific code snippet."""
     try:
+        # Get snippet with document and source relationships
         snippet = db.query(CodeSnippet).filter_by(id=snippet_id).first()
         
         if not snippet:
             raise HTTPException(status_code=404, detail="Snippet not found")
         
-        return snippet.to_dict()
+        result = snippet.to_dict()
+        
+        # Get source information through document relationship
+        if snippet.document_id:
+            document = db.query(Document).filter_by(id=snippet.document_id).first()
+            if document:
+                if document.crawl_job_id:
+                    crawl_job = db.query(CrawlJob).filter_by(id=document.crawl_job_id).first()
+                    if crawl_job:
+                        result['source_id'] = str(crawl_job.id)
+                        result['source_name'] = crawl_job.name
+                elif document.upload_job_id:
+                    from ...database.models import UploadJob
+                    upload_job = db.query(UploadJob).filter_by(id=document.upload_job_id).first()
+                    if upload_job:
+                        result['source_id'] = str(upload_job.id)
+                        result['source_name'] = upload_job.name
+        
+        return result
         
     except HTTPException:
         raise
