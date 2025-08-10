@@ -497,17 +497,26 @@ codedox/
 ├── frontend/                  # React web UI
 │   ├── src/
 │   │   ├── components/        # React components
-│   │   │   ├── Layout.tsx    # App layout wrapper
+│   │   │   ├── Layout.tsx             # App layout wrapper
 │   │   │   ├── QuickSearch.tsx        # Search component
 │   │   │   ├── SnippetList.tsx        # Code snippet list
 │   │   │   ├── CrawlProgress.tsx      # Crawl progress display
 │   │   │   ├── SourceActions.tsx      # Source action buttons
+│   │   │   ├── SourceDocumentsTab.tsx # Source documents tab
+│   │   │   ├── SourceSnippetsTab.tsx  # Source snippets tab
+│   │   │   ├── EditableSourceName.tsx # Editable source name
+│   │   │   ├── PaginationControls.tsx # Pagination controls
+│   │   │   ├── NewCrawlDialog.tsx     # New crawl dialog
+│   │   │   ├── RecrawlDialog.tsx      # Recrawl dialog
+│   │   │   ├── ConfirmationDialog.tsx # Confirmation dialog
 │   │   │   └── ui/                    # UI components
 │   │   ├── pages/            # Page components
 │   │   │   ├── Dashboard.tsx # Main dashboard
 │   │   │   ├── Search.tsx    # Search page
 │   │   │   ├── Sources.tsx   # Sources list
 │   │   │   ├── SourceDetail.tsx       # Source details
+│   │   │   ├── DocumentDetail.tsx     # Document details
+│   │   │   ├── SnippetDetail.tsx      # Snippet details
 │   │   │   ├── CrawlJobs.tsx          # Crawl job management
 │   │   │   ├── CrawlDetail.tsx        # Crawl job details
 │   │   │   └── Upload.tsx             # File upload
