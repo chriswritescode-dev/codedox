@@ -129,11 +129,10 @@ export default function Dashboard() {
         </div>
       </div>
 
-      {/* Language Distribution */}
       {stats?.languages && Object.keys(stats.languages).length > 0 && (
         <div className="bg-secondary/50 rounded-lg p-6">
           <h2 className="text-lg font-semibold mb-4">Language Distribution</h2>
-          <div className="space-y-2">
+          <div className="space-y-2 overflow-y-auto h-[200px] border border-white/90! p-1 px-2 rounded-md">
             {Object.entries(stats.languages)
               .sort(([, a], [, b]) => b - a)
               .slice(0, 10)
@@ -152,16 +151,15 @@ export default function Dashboard() {
         </div>
       )}
 
-      {/* Recent Crawls */}
       {stats?.recent_crawls && stats.recent_crawls.length > 0 && (
-        <div className="bg-secondary/50 rounded-lg p-6">
+        <div className="bg-secondary/50 rounded-lg p-6 mb-10">
           <div className="flex items-center justify-between mb-4">
             <h2 className="text-lg font-semibold">Recent Crawls</h2>
             <Link to="/crawl" className="text-sm text-primary hover:underline">
               View all
             </Link>
           </div>
-          <div className="space-y-3">
+          <div className="space-y-3 overflow-y-auto h-[450px] shadow-lg">
             {stats.recent_crawls.map((crawl) => (
               <Link
                 key={crawl.id}

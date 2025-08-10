@@ -1,6 +1,5 @@
 import { useNavigate, useParams } from "react-router-dom";
 import { DocumentList } from "./DocumentList";
-import { PaginationControls } from "./PaginationControls";
 import { Document } from "../lib/api";
 
 interface SourceDocumentsTabProps {
@@ -43,16 +42,6 @@ export function SourceDocumentsTab({
   return (
     <div className="space-y-4">
       <DocumentList documents={documents.documents} onDocumentClick={handleDocumentClick} />
-      {docsTotalPages > 1 && (
-        <PaginationControls
-          currentPage={docsPage}
-          totalPages={docsTotalPages}
-          onPageChange={setDocsPage}
-          totalItems={documents.total}
-          itemsPerPage={docsPerPage}
-          currentItemsCount={documents.documents.length}
-        />
-      )}
     </div>
   );
 }

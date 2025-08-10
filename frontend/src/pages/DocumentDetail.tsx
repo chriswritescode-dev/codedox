@@ -102,8 +102,9 @@ export default function DocumentDetail() {
   }
   
   return (
-    <div className="w-full">
-      <div className="space-y-6 max-w-6xl mx-auto w-full">
+    <div className="flex flex-col h-full min-h-0">
+      {/* Fixed header section */}
+      <div className="space-y-6 pb-4">
         {/* Breadcrumb navigation */}
         <div className="flex items-center gap-2 text-sm">
           <Link
@@ -201,10 +202,14 @@ export default function DocumentDetail() {
             </div>
           )}
         </div>
-        
-        {/* Snippets */}
-        {data.snippets.length === 0 ? (
-          <div className="text-center py-12 text-muted-foreground">
+      </div>
+
+      {/* Scrollable content area */}
+      <div className="flex-1 min-h-0 overflow-auto pb-4">
+        <div className="max-w-6xl mx-auto w-full">
+          {/* Snippets */}
+          {data.snippets.length === 0 ? (
+            <div className="text-center py-12 text-muted-foreground">
             {debouncedSearchQuery || selectedLanguage 
               ? 'No snippets match your filters.'
               : 'No code snippets found in this document.'}
@@ -213,19 +218,24 @@ export default function DocumentDetail() {
           <>
             <SnippetList snippets={data.snippets} />
             
-            {totalPages > 1 && (
-              <PaginationControls
-                currentPage={currentPage}
-                totalPages={totalPages}
-                onPageChange={handlePageChange}
-                totalItems={data.total}
-                itemsPerPage={itemsPerPage}
-                currentItemsCount={data.snippets.length}
-              />
-            )}
           </>
         )}
+        </div>
       </div>
+
+      {/* Pagination Controls - Always visible at bottom */}
+      {data && (
+        <div className="pt-4 border-t border-border">
+          <PaginationControls
+            currentPage={currentPage}
+            totalPages={totalPages}
+            onPageChange={handlePageChange}
+            totalItems={data.total}
+            itemsPerPage={itemsPerPage}
+            currentItemsCount={data.snippets.length}
+          />
+        </div>
+      )}
     </div>
   )
 }
