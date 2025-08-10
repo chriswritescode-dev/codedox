@@ -50,7 +50,7 @@ export function SnippetList({ snippets, showSource = true }: SnippetListProps) {
           )}
 
           <div className="relative">
-            <pre className="text-xs bg-background p-3 rounded overflow-x-auto max-h-32">
+            <pre className="text-xs bg-background p-3 rounded truncate  max-h-20">
               <code>{snippet.code.slice(0, 300)}{snippet.code.length > 300 ? '...' : ''}</code>
             </pre>
             {snippet.code.length > 300 && (

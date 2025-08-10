@@ -438,16 +438,15 @@ export default function Sources() {
 
   return (
     <div className="flex flex-col h-full w-full min-h-0">
-      <div className="flex-1 flex flex-col min-h-0 overflow-auto">
-        <div className="space-y-6 pb-6">
-          <div>
-            <h1 className="text-3xl font-bold">Documentation Sources</h1>
-            <p className="text-muted-foreground mt-2">
-              Browse all crawled documentation sources
-            </p>
-          </div>
+      {/* Fixed header section */}
+      <div className="space-y-4 pb-4">
+        <div>
+          <h1 className="text-3xl font-bold">Documentation Sources</h1>
+          <p className="text-muted-foreground mt-2">
+            Browse all crawled documentation sources
+          </p>
+        </div>
 
-          <div className="space-y-4">
         <div className="flex gap-4">
           <div className="relative flex-1">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
@@ -559,19 +558,22 @@ export default function Sources() {
         </div>
       </div>
 
-      {sources && sources.sources.length === 0 && (
-        <div className="text-center py-12 text-muted-foreground">
-          No sources found. Start by crawling some documentation.
-        </div>
-      )}
+      {/* Scrollable content area */}
+      <div className="flex-1 min-h-0 overflow-auto pb-4">
+        {sources && sources.sources.length === 0 && (
+          <div className="text-center py-12 text-muted-foreground">
+            No sources found. Start by crawling some documentation.
+          </div>
+        )}
 
-      {filteredSources.length === 0 && sources && sources.sources.length > 0 && (
-        <div className="text-center py-12 text-muted-foreground">
-          No sources match your search.
-        </div>
-      )}
+        {filteredSources.length === 0 && sources && sources.sources.length > 0 && (
+          <div className="text-center py-12 text-muted-foreground">
+            No sources match your search.
+          </div>
+        )}
 
-          {filteredSources.length > 0 && (
+        {filteredSources.length > 0 && (
+          <div className="px-1">
             <SourceGrid
               sources={filteredSources}
               selectedSources={selectedSources}
@@ -581,8 +583,8 @@ export default function Sources() {
               onUpdateName={handleUpdateSourceName}
               isPendingRecrawl={recrawlMutation.isPending}
             />
-          )}
-        </div>
+          </div>
+        )}
       </div>
 
       <ConfirmationDialog
@@ -625,8 +627,7 @@ export default function Sources() {
       {/* Pagination Controls */}
       {sources && (
         <div className="pt-4 border-t border-border">
-          <div className="flex items-center justify-between mb-4">
-            <div className="flex items-center gap-4">
+          <div className="flex items-center justify-between">
               <div className="flex items-center gap-2">
                 <label htmlFor="items-per-page" className="text-sm text-muted-foreground">
                   Items per page:
@@ -643,7 +644,6 @@ export default function Sources() {
                   <option value={100}>100</option>
                 </select>
               </div>
-            </div>
           </div>
           
           <PaginationControls
