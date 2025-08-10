@@ -44,6 +44,8 @@ export interface CodeSnippet {
   start_line?: number
   end_line?: number
   created_at: string
+  source_id?: string
+  source_name?: string
 }
 
 export interface Document {
@@ -209,6 +211,41 @@ class APIClient {
 
   async getSourceLanguages(id: string): Promise<{ languages: LanguageStat[] }> {
     return this.fetch<{ languages: LanguageStat[] }>(`/sources/${id}/languages`)
+  }
+
+  async getDocumentSnippets(
+    documentId: number,
+    params: {
+      query?: string
+      language?: string
+      limit?: number
+      offset?: number
+    } = {}
+  ): Promise<{
+    document: {
+      id: number
+      url: string
+      title: string
+      crawl_depth: number
+      created_at: string
+    }
+    source: {
+      id: string
+      name: string
+      type: string
+    } | null
+    snippets: CodeSnippet[]
+    total: number
+    limit: number
+    offset: number
+  }> {
+    const queryParams = new URLSearchParams()
+    if (params.query) queryParams.append('query', params.query)
+    if (params.language) queryParams.append('language', params.language)
+    if (params.limit !== undefined) queryParams.append('limit', String(params.limit))
+    if (params.offset !== undefined) queryParams.append('offset', String(params.offset))
+    
+    return this.fetch(`/documents/${documentId}/snippets?${queryParams}`)
   }
 
   async deleteSource(id: string): Promise<{ message: string }> {

@@ -247,8 +247,12 @@ class CodeSnippet(Base):  # type: ignore[misc,valid-type]
             'title': self.title,
             'description': self.description,
             'language': self.language,
-            'code_content': self.code_content,
+            'code': self.code_content,  # Frontend expects 'code' not 'code_content'
             'source_url': self.source_url,
+            'document_title': self.document.title if self.document else None,
+            'file_path': self.source_url,  # Using source_url as file_path for now
+            'start_line': self.line_start,
+            'end_line': self.line_end,
             'snippet_type': self.snippet_type,
             'functions': self.functions or [],
             'imports': self.imports or [],
