@@ -108,7 +108,7 @@ const SourceCard = memo(({
         </div>
       </div>
 
-      <div className="flex items-center justify-between ">
+      <div className="flex items-center justify-between flex-wrap ">
         <div className="flex items-center gap-4 text-sm">
           <div className="flex items-center text-muted-foreground">
             <FileText className="h-4 w-4 mr-1" />
@@ -147,7 +147,7 @@ const SourceGrid = memo(({
   isPendingRecrawl: boolean;
 }) => {
   return (
-    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+    <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4 pt-2 ">
       {sources.map((source) => (
         <SourceCard
           key={source.id}
@@ -447,7 +447,7 @@ export default function Sources() {
           </p>
         </div>
 
-        <div className="flex gap-4">
+        <div className="flex gap-4 items-center">
           <div className="relative flex-1">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
             <input
@@ -483,10 +483,8 @@ export default function Sources() {
               <option value="100+">100+ Snippets</option>
             </select>
           </div>
-        </div>
 
-        <div className="flex items-center justify-between p-4 bg-secondary/50 rounded-md">
-          <div className="flex items-center gap-4">
+          <div className="flex items-center gap-3 px-4 py-2 bg-secondary/50 rounded-md">
             <div className="flex items-center gap-2">
               <div
                 onClick={() => {
@@ -509,7 +507,7 @@ export default function Sources() {
                       : selectedSources.size > 0 &&
                         selectedSources.size < filteredSources.length
                       ? "bg-primary/50 border-primary"
-                      : "border-input bg-background"
+                      : "border-input bg-background hover:border-primary"
                   }`}
                 >
                   {selectedSources.size === filteredSources.length &&
@@ -522,44 +520,37 @@ export default function Sources() {
                     )}
                 </div>
               </div>
-              <span className="text-sm font-medium">
-                {selectedSources.size} of {filteredSources.length} selected
+              <span className="text-sm font-medium whitespace-nowrap">
+                {selectedSources.size}/{filteredSources.length}
               </span>
             </div>
-            <button
-              onClick={selectAll}
-              className="text-sm text-muted-foreground hover:text-foreground"
-            >
-              Select all {(debouncedSearchQuery || snippetFilter !== 'all') && "filtered"}
-            </button>
+            
             {selectedSources.size > 0 && (
-              <>
-                <span className="text-muted-foreground">•</span>
-                <button
-                  onClick={deselectAll}
-                  className="text-sm text-muted-foreground hover:text-foreground"
-                >
-                  Clear selection
-                </button>
-              </>
+              <button
+                onClick={deselectAll}
+                className="text-sm text-muted-foreground hover:text-foreground whitespace-nowrap"
+              >
+                Clear
+              </button>
             )}
+            
+            <button
+              onClick={handleBulkDelete}
+              disabled={selectedSources.size === 0}
+              className={`px-3 py-1 text-sm rounded-md transition-colors whitespace-nowrap ${
+                selectedSources.size > 0
+                  ? "bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                  : "bg-secondary text-muted-foreground cursor-not-allowed"
+              }`}
+            >
+              Delete ({selectedSources.size})
+            </button>
           </div>
-          <button
-            onClick={handleBulkDelete}
-            disabled={selectedSources.size === 0}
-            className={`px-4 py-2 rounded-md transition-colors ${
-              selectedSources.size > 0
-                ? "bg-destructive text-destructive-foreground hover:bg-destructive/90"
-                : "bg-secondary text-muted-foreground cursor-not-allowed"
-            }`}
-          >
-            Delete Selected
-          </button>
         </div>
       </div>
 
       {/* Scrollable content area */}
-      <div className="flex-1 min-h-0 overflow-auto pb-4">
+      <div className="flex-1 min-h-0 overflow-auto pb-4"> 
         {sources && sources.sources.length === 0 && (
           <div className="text-center py-12 text-muted-foreground">
             No sources found. Start by crawling some documentation.
