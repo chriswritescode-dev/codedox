@@ -437,16 +437,17 @@ export default function Sources() {
   }
 
   return (
-    <div className="flex flex-col h-full w-full">
-      <div className="flex-1 space-y-6 pb-6">
-        <div>
-          <h1 className="text-3xl font-bold">Documentation Sources</h1>
-          <p className="text-muted-foreground mt-2">
-            Browse all crawled documentation sources
-          </p>
-        </div>
+    <div className="flex flex-col h-full w-full min-h-0">
+      <div className="flex-1 flex flex-col min-h-0 overflow-auto">
+        <div className="space-y-6 pb-6">
+          <div>
+            <h1 className="text-3xl font-bold">Documentation Sources</h1>
+            <p className="text-muted-foreground mt-2">
+              Browse all crawled documentation sources
+            </p>
+          </div>
 
-      <div className="space-y-4">
+          <div className="space-y-4">
         <div className="flex gap-4">
           <div className="relative flex-1">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
@@ -570,17 +571,19 @@ export default function Sources() {
         </div>
       )}
 
-      {filteredSources.length > 0 && (
-        <SourceGrid
-          sources={filteredSources}
-          selectedSources={selectedSources}
-          onToggleSelect={toggleSelectSource}
-          onDelete={handleDeleteClick}
-          onRecrawl={handleRecrawlClick}
-          onUpdateName={handleUpdateSourceName}
-          isPendingRecrawl={recrawlMutation.isPending}
-        />
-      )}
+          {filteredSources.length > 0 && (
+            <SourceGrid
+              sources={filteredSources}
+              selectedSources={selectedSources}
+              onToggleSelect={toggleSelectSource}
+              onDelete={handleDeleteClick}
+              onRecrawl={handleRecrawlClick}
+              onUpdateName={handleUpdateSourceName}
+              isPendingRecrawl={recrawlMutation.isPending}
+            />
+          )}
+        </div>
+      </div>
 
       <ConfirmationDialog
         isOpen={deleteModalOpen}
@@ -619,11 +622,9 @@ export default function Sources() {
         />
       )}
 
-      </div>
-
       {/* Pagination Controls */}
       {sources && (
-        <div className="mt-8">
+        <div className="pt-4 border-t border-border">
           <div className="flex items-center justify-between mb-4">
             <div className="flex items-center gap-4">
               <div className="flex items-center gap-2">
