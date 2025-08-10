@@ -122,6 +122,14 @@ export default function SnippetDetail() {
                 {snippet.description}
               </p>
             )}
+            {snippet.source_id && snippet.source_name && (
+              <Link
+                to={`/sources/${snippet.source_id}?tab=snippets`}
+                className="inline-block mt-2 text-sm text-primary hover:underline"
+              >
+                View Source
+              </Link>
+            )}
           </div>
           <span className="px-3 py-1 bg-primary/10 text-primary rounded-md text-sm font-medium">
             {snippet.language}

@@ -7,7 +7,7 @@ from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
-from sqlalchemy import func
+from sqlalchemy import func, or_
 from sqlalchemy.orm import Session
 
 from ...database import get_db, CodeSearcher
@@ -458,6 +458,101 @@ async def get_source_languages(source_id: str, db: Session = Depends(get_db)) ->
             {"name": stat.language, "count": stat.count}
             for stat in language_stats
         ]
+    }
+
+
+@router.get("/documents/{document_id}/snippets")
+async def get_document_snippets(
+    document_id: int,
+    query: Optional[str] = Query(None),
+    language: Optional[str] = Query(None),
+    limit: int = Query(20, le=100),
+    offset: int = Query(0, ge=0),
+    db: Session = Depends(get_db)
+) -> Dict[str, Any]:
+    """Get paginated code snippets for a specific document with optional search."""
+    # Get the document
+    document = db.query(Document).filter_by(id=document_id).first()
+    
+    if not document:
+        raise HTTPException(status_code=404, detail="Document not found")
+    
+    # If query is provided, use the search functionality
+    if query:
+        searcher = CodeSearcher(db)
+        # Search within this document's snippets
+        snippet_query = db.query(CodeSnippet).filter(CodeSnippet.document_id == document_id)
+        
+        if language:
+            snippet_query = snippet_query.filter(CodeSnippet.language == language)
+        
+        # Apply text search
+        search_filter = or_(
+            CodeSnippet.title.ilike(f"%{query}%"),
+            CodeSnippet.description.ilike(f"%{query}%"),
+            CodeSnippet.code_content.ilike(f"%{query}%")
+        )
+        snippet_query = snippet_query.filter(search_filter)
+        
+        total = snippet_query.count()
+        snippets = snippet_query.order_by(CodeSnippet.created_at.desc()).offset(offset).limit(limit).all()
+    else:
+        # Build query for snippets
+        snippet_query = db.query(CodeSnippet).filter(CodeSnippet.document_id == document_id)
+        
+        if language:
+            snippet_query = snippet_query.filter(CodeSnippet.language == language)
+        
+        total = snippet_query.count()
+        snippets = snippet_query.order_by(CodeSnippet.created_at.desc()).offset(offset).limit(limit).all()
+    
+    # Get source info
+    source_info = None
+    if document.crawl_job_id:
+        source = db.query(CrawlJob).filter_by(id=document.crawl_job_id).first()
+        if source:
+            source_info = {
+                "id": str(source.id),
+                "name": source.name,
+                "type": "crawl"
+            }
+    elif document.upload_job_id:
+        source = db.query(UploadJob).filter_by(id=document.upload_job_id).first()
+        if source:
+            source_info = {
+                "id": str(source.id),
+                "name": source.name,
+                "type": "upload"
+            }
+    
+    return {
+        "document": {
+            "id": document.id,
+            "url": document.url,
+            "title": document.title or "Untitled",
+            "crawl_depth": document.crawl_depth,
+            "created_at": document.created_at.isoformat(),
+        },
+        "source": source_info,
+        "snippets": [
+            {
+                "id": str(snippet.id),
+                "title": snippet.title,
+                "code": snippet.code_content,
+                "language": snippet.language,
+                "description": snippet.description,
+                "source_url": snippet.source_url or document.url,
+                "document_title": document.title,
+                "file_path": snippet.source_url,
+                "start_line": snippet.line_start,
+                "end_line": snippet.line_end,
+                "created_at": snippet.created_at.isoformat(),
+            }
+            for snippet in snippets
+        ],
+        "total": total,
+        "limit": limit,
+        "offset": offset,
     }
 
 

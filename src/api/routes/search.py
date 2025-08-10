@@ -7,7 +7,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 
 from ...database import get_db, CodeSearcher
-from ...database.models import CodeSnippet
+from ...database.models import CodeSnippet, Document, CrawlJob
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -61,7 +61,7 @@ async def get_snippet(snippet_id: str, db: Session = Depends(get_db)) -> Dict[st
     if not snippet:
         raise HTTPException(status_code=404, detail="Snippet not found")
     
-    return {
+    result = {
         "id": str(snippet.id),
         "title": snippet.title,
         "code": snippet.code_content,
@@ -74,3 +74,21 @@ async def get_snippet(snippet_id: str, db: Session = Depends(get_db)) -> Dict[st
         "end_line": snippet.line_end,
         "created_at": snippet.created_at.isoformat(),
     }
+    
+    # Add source information if available
+    if snippet.document_id:
+        document = db.query(Document).filter_by(id=snippet.document_id).first()
+        if document:
+            if document.crawl_job_id:
+                crawl_job = db.query(CrawlJob).filter_by(id=document.crawl_job_id).first()
+                if crawl_job:
+                    result['source_id'] = str(crawl_job.id)
+                    result['source_name'] = crawl_job.name
+            elif document.upload_job_id:
+                from ...database.models import UploadJob
+                upload_job = db.query(UploadJob).filter_by(id=document.upload_job_id).first()
+                if upload_job:
+                    result['source_id'] = str(upload_job.id)
+                    result['source_name'] = upload_job.name
+    
+    return result
