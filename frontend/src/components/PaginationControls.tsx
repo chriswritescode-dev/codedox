@@ -53,7 +53,7 @@ export function PaginationControls({
   }
 
   return (
-    <div className="flex items-center justify-between py-4">
+    <div className="flex items-center justify-between ">
       <div className="text-sm text-muted-foreground">
         Showing {startItem} to {endItem} of {totalItems} results
       </div>

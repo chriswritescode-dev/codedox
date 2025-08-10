@@ -344,8 +344,9 @@ export default function CrawlJobs() {
   }
 
   return (
-    <div className="flex flex-col h-full">
-      <div className="flex-1 space-y-6 pb-6">
+    <div className="flex flex-col h-full min-h-0">
+      {/* Fixed header section */}
+      <div className="space-y-4 pb-4">
         <div className="flex items-center justify-between">
           <div>
             <h1 className="text-3xl font-bold">Crawl Jobs</h1>
@@ -362,8 +363,8 @@ export default function CrawlJobs() {
           </button>
         </div>
 
-      {/* Search and Selection Controls */}
-      <div className="space-y-4">
+        {/* Search and Selection Controls */}
+        <div className="space-y-4">
         <div className="relative">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
           <input
@@ -383,122 +384,7 @@ export default function CrawlJobs() {
           )}
         </div>
 
-        {/* Bulk Actions Bar */}
-        {filteredJobs.length > 0 && (
-          <div className="flex items-center justify-between p-4 bg-secondary/50 rounded-md">
-            <div className="flex items-center gap-4">
-              {/* Select All Checkbox */}
-              <div className="flex items-center gap-2">
-                <div
-                  onClick={() => {
-                    if (
-                      selectedJobs.size === filteredJobs.length &&
-                      filteredJobs.length > 0
-                    ) {
-                      deselectAll();
-                    } else {
-                      selectAll();
-                    }
-                  }}
-                  className="cursor-pointer"
-                >
-                  <div
-                    className={`w-5 h-5 rounded border-2 flex items-center justify-center ${
-                      selectedJobs.size === filteredJobs.length &&
-                      filteredJobs.length > 0
-                        ? "bg-primary border-primary"
-                        : selectedJobs.size > 0 &&
-                          selectedJobs.size < filteredJobs.length
-                        ? "bg-primary/50 border-primary"
-                        : "border-input bg-background"
-                    }`}
-                  >
-                    {selectedJobs.size === filteredJobs.length &&
-                      filteredJobs.length > 0 && (
-                        <Check className="h-3 w-3 text-primary-foreground" />
-                      )}
-                    {selectedJobs.size > 0 &&
-                      selectedJobs.size < filteredJobs.length && (
-                        <div className="w-2 h-2 bg-primary-foreground rounded-sm" />
-                      )}
-                  </div>
-                </div>
-                <span className="text-sm font-medium">
-                  {selectedJobs.size} of {filteredJobs.length} selected
-                  {(() => {
-                    const selectedCancellable = Array.from(selectedJobs).filter(id => 
-                      cancellableJobs.some(job => job.id === id)
-                    ).length;
-                    const selectedDeletable = Array.from(selectedJobs).filter(id => 
-                      deletableJobs.some(job => job.id === id)
-                    ).length;
-                    if (selectedCancellable > 0 && selectedDeletable > 0) {
-                      return ` (${selectedCancellable} running, ${selectedDeletable} deletable)`;
-                    } else if (selectedCancellable > 0) {
-                      return ` (${selectedCancellable} running)`;
-                    } else if (selectedDeletable > 0) {
-                      return ` (${selectedDeletable} deletable)`;
-                    }
-                    return "";
-                  })()}
-                </span>
-              </div>
-              <button
-                onClick={selectAll}
-                className="text-sm text-muted-foreground hover:text-foreground"
-              >
-                Select all {!!searchQuery && "matching"}
-              </button>
-              {selectedJobs.size > 0 && (
-                <>
-                  <span className="text-muted-foreground">•</span>
-                  <button
-                    onClick={deselectAll}
-                    className="text-sm text-muted-foreground hover:text-foreground"
-                  >
-                    Clear selection
-                  </button>
-                </>
-              )}
-            </div>
-            <div className="flex items-center gap-2">
-              {(() => {
-                const selectedCancellable = Array.from(selectedJobs).filter(id => 
-                  cancellableJobs.some(job => job.id === id)
-                ).length;
-                const selectedDeletable = Array.from(selectedJobs).filter(id => 
-                  deletableJobs.some(job => job.id === id)
-                ).length;
-                
-                return (
-                  <>
-                    {selectedCancellable > 0 && (
-                      <button
-                        onClick={handleBulkCancel}
-                        className="px-4 py-2 rounded-md bg-yellow-600 text-white hover:bg-yellow-700"
-                      >
-                        Cancel {selectedCancellable} Running
-                      </button>
-                    )}
-                    {selectedDeletable > 0 && (
-                      <button
-                        onClick={handleBulkDelete}
-                        className="px-4 py-2 rounded-md bg-destructive text-destructive-foreground hover:bg-destructive/90"
-                      >
-                        Delete {selectedDeletable} Selected
-                      </button>
-                    )}
-                    {selectedJobs.size > 0 && selectedCancellable === 0 && selectedDeletable === 0 && (
-                      <span className="text-sm text-muted-foreground">
-                        No actions available for selected jobs
-                      </span>
-                    )}
-                  </>
-                );
-              })()}
-            </div>
-          </div>
-        )}
+        </div>
       </div>
 
       {!!allJobs && allJobs.length === 0 && (
@@ -514,11 +400,100 @@ export default function CrawlJobs() {
       )}
 
       {filteredJobs.length > 0 && (
-        <div className="bg-secondary/50 rounded-lg overflow-hidden">
-          <table className="w-full">
-            <thead>
-              <tr className="border-b border-border">
-                <th className="w-12 px-6 py-3"></th>
+        <div className="flex-1 min-h-0 bg-secondary/50 rounded-lg overflow-hidden flex flex-col">
+            {selectedJobs.size > 0 && (
+              <div className="flex items-center justify-between p-4 bg-secondary/70 border-b border-border">
+                <div className="flex items-center gap-4">
+                  <span className="text-sm font-medium">
+                    {selectedJobs.size} of {filteredJobs.length} selected
+                  </span>
+                  <button
+                    onClick={selectAll}
+                    className="text-sm text-muted-foreground hover:text-foreground"
+                  >
+                    Select all
+                  </button>
+                  <button
+                    onClick={deselectAll}
+                    className="text-sm text-muted-foreground hover:text-foreground"
+                  >
+                    Clear selection
+                  </button>
+                </div>
+                <div className="flex items-center gap-2">
+                  {(() => {
+                    const selectedCancellable = Array.from(selectedJobs).filter(id => 
+                      cancellableJobs.some(job => job.id === id)
+                    ).length;
+                    const selectedDeletable = Array.from(selectedJobs).filter(id => 
+                      deletableJobs.some(job => job.id === id)
+                    ).length;
+                    
+                    return (
+                      <>
+                        {selectedCancellable > 0 && (
+                          <button
+                            onClick={handleBulkCancel}
+                            className="px-3 py-1.5 text-sm rounded-md bg-yellow-600 text-white hover:bg-yellow-700"
+                          >
+                            Cancel {selectedCancellable} Running
+                          </button>
+                        )}
+                        {selectedDeletable > 0 && (
+                          <button
+                            onClick={handleBulkDelete}
+                            className="px-3 py-1.5 text-sm rounded-md bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                          >
+                            Delete {selectedDeletable} Selected
+                          </button>
+                        )}
+                      </>
+                    );
+                  })()}
+                </div>
+              </div>
+            )}
+            
+            <div className="flex-1 min-h-0 overflow-auto">
+              <table className="w-full">
+                <thead className="sticky top-0 bg-secondary z-10 shadow-sm">
+                  <tr className="border-b border-border">
+                    <th className="w-12 px-6 py-3">
+                      <div
+                        onClick={() => {
+                          if (
+                            selectedJobs.size === filteredJobs.length &&
+                            filteredJobs.length > 0
+                          ) {
+                            deselectAll();
+                          } else {
+                            selectAll();
+                          }
+                        }}
+                        className="cursor-pointer"
+                      >
+                        <div
+                          className={`w-5 h-5 rounded border-2 flex items-center justify-center ${
+                            selectedJobs.size === filteredJobs.length &&
+                            filteredJobs.length > 0
+                              ? "bg-primary border-primary"
+                              : selectedJobs.size > 0 &&
+                                selectedJobs.size < filteredJobs.length
+                              ? "bg-primary/50 border-primary"
+                              : "border-input bg-background"
+                          }`}
+                        >
+                          {selectedJobs.size === filteredJobs.length &&
+                            filteredJobs.length > 0 && (
+                              <Check className="h-3 w-3 text-primary-foreground" />
+                            )}
+                          {selectedJobs.size > 0 &&
+                            selectedJobs.size < filteredJobs.length && (
+                              <div className="w-2 h-2 bg-primary-foreground rounded-sm" />
+                            )}
+                        </div>
+                      </div>
+                    </th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">
                   Name
                 </th>
@@ -540,9 +515,9 @@ export default function CrawlJobs() {
                 <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">
                   Actions
                 </th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-border">
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-border">
               {paginatedJobs.map((job) => {
                 const isDeletable = [
                   "completed",
@@ -661,10 +636,11 @@ export default function CrawlJobs() {
                   </tr>
                 );
               })}
-            </tbody>
-          </table>
-        </div>
-      )}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )}
 
       {/* New Crawl Dialog */}
       <NewCrawlDialog
@@ -717,11 +693,9 @@ export default function CrawlJobs() {
           setIsBulkDelete(false);
         }}
       />
-      </div>
 
-      {/* Pagination Controls */}
       {allJobs && filteredJobs.length > 0 && (
-        <div className="mt-8">
+        <div className="pt-4 mt-4 border-t border-border">
           <div className="flex items-center justify-between mb-4">
             <div className="flex items-center gap-4">
               <div className="flex items-center gap-2">

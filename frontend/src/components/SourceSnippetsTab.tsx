@@ -1,7 +1,6 @@
 import { Search, Trash2, X, Wand2 } from "lucide-react";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { SnippetList } from "./SnippetList";
-import { PaginationControls } from "./PaginationControls";
 import { Spinner } from "./Spinner";
 
 interface SourceSnippetsTabProps {
@@ -25,22 +24,21 @@ export function SourceSnippetsTab({
   snippets,
   languages,
   snippetsLoading,
-  snippetsPage,
   selectedLanguage,
   snippetsSearch,
   debouncedSnippetsSearch,
-  snippetsPerPage,
-  snippetsTotalPages,
   setSnippetsPage,
   setSelectedLanguage,
   setSnippetsSearch,
   formatPreviewMutation,
   setDeleteMatchesModalOpen,
-}: SourceSnippetsTabProps) {
+  hideSearch = false,
+}: SourceSnippetsTabProps & { hideSearch?: boolean }) {
   return (
     <div className="space-y-4 w-full">
       {/* Search and Filter Bar */}
-      <div className="flex items-center justify-between mb-4 gap-2">
+      {!hideSearch && (
+        <div className="flex items-center justify-between mb-4 gap-2">
         <div className="flex gap-3 flex-1 min-w-0">
           <div className="flex-1 relative min-w-[300px]">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
@@ -115,7 +113,8 @@ export function SourceSnippetsTab({
             </>
           )}
         </button>
-              </div>
+      </div>
+      )}
 
       {/* Snippets List */}
       <div className="min-h-[200px]">
@@ -129,16 +128,6 @@ export function SourceSnippetsTab({
               snippets={snippets.snippets}
               showSource={false}
             />
-            {snippetsTotalPages > 1 && (
-              <PaginationControls
-                currentPage={snippetsPage}
-                totalPages={snippetsTotalPages}
-                onPageChange={setSnippetsPage}
-                totalItems={snippets.total}
-                itemsPerPage={snippetsPerPage}
-                currentItemsCount={snippets.snippets.length}
-              />
-            )}
           </>
         ) : null}
       </div>
