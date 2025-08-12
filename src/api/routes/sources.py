@@ -63,6 +63,24 @@ def _get_snippet_counts_for_upload_jobs(db: Session, job_ids: list[str]) -> dict
     return {str(row.upload_job_id): getattr(row, 'count') for row in counts}
 
 
+def _batch_get_crawl_jobs(db: Session, job_ids: list[str]) -> dict[str, CrawlJob]:
+    """Batch fetch multiple crawl jobs in a single query."""
+    if not job_ids:
+        return {}
+    
+    jobs = db.query(CrawlJob).filter(CrawlJob.id.in_(job_ids)).all()
+    return {str(job.id): job for job in jobs}
+
+
+def _batch_get_upload_jobs(db: Session, job_ids: list[str]) -> dict[str, UploadJob]:
+    """Batch fetch multiple upload jobs in a single query."""
+    if not job_ids:
+        return {}
+    
+    jobs = db.query(UploadJob).filter(UploadJob.id.in_(job_ids)).all()
+    return {str(job.id): job for job in jobs}
+
+
 def _build_crawl_source_dict(source: CrawlJob, snippet_count: int) -> dict[str, Any]:
     """Build a standardized dictionary for a crawl source."""
     return {
@@ -224,22 +242,41 @@ async def search_sources(
 
     # Convert to sources format and filter
     sources = []
+    
+    # Collect IDs by type for batch fetching
+    crawl_ids = []
+    upload_ids = []
+    filtered_libraries = []
+    
     for lib in libraries:
         # Apply snippet count filter
         if min_snippets is not None and lib['snippet_count'] < min_snippets:
             continue
         if max_snippets is not None and lib['snippet_count'] > max_snippets:
             continue
-
-        # Get the actual source to get more details
+        
+        # Collect IDs for batch fetching
         if lib['source_type'] == 'crawl':
-            crawl_source = db.query(CrawlJob).filter_by(id=lib['library_id']).first()
+            crawl_ids.append(lib['library_id'])
+        else:
+            upload_ids.append(lib['library_id'])
+        
+        filtered_libraries.append(lib)
+    
+    # Batch fetch all needed sources (2 queries instead of N)
+    crawl_jobs = _batch_get_crawl_jobs(db, crawl_ids) if crawl_ids else {}
+    upload_jobs = _batch_get_upload_jobs(db, upload_ids) if upload_ids else {}
+    
+    # Build sources using pre-fetched data
+    for lib in filtered_libraries:
+        if lib['source_type'] == 'crawl':
+            crawl_source = crawl_jobs.get(lib['library_id'])
             if crawl_source:
                 source_dict = _build_crawl_source_dict(crawl_source, lib['snippet_count'])
                 source_dict['match_score'] = lib.get('similarity_score', 0.0)
                 sources.append(source_dict)
         else:
-            upload_source = db.query(UploadJob).filter_by(id=lib['library_id']).first()
+            upload_source = upload_jobs.get(lib['library_id'])
             if upload_source:
                 source_dict = _build_upload_source_dict(upload_source, lib['snippet_count'])
                 source_dict['match_score'] = lib.get('similarity_score', 0.0)
