@@ -1,6 +1,5 @@
 """Simple data structures for the new HTML extraction method."""
 
-from typing import List, Optional
 from dataclasses import dataclass, field
 
 
@@ -8,15 +7,15 @@ from dataclasses import dataclass, field
 class SimpleCodeBlock:
     """Simplified code block structure for HTML extraction + LLM description."""
     code: str
-    language: Optional[str] = None
-    title: Optional[str] = None
-    description: Optional[str] = None
-    source_url: Optional[str] = None
-    
+    language: str | None = None
+    title: str | None = None
+    description: str | None = None
+    source_url: str | None = None
+
     # Metadata from HTML extraction
-    container_type: Optional[str] = None  # example, api-method, tutorial-step, etc.
-    context_before: List[str] = field(default_factory=list)
-    context_after: List[str] = field(default_factory=list)
+    container_type: str | None = None  # example, api-method, tutorial-step, etc.
+    context_before: list[str] = field(default_factory=list)
+    context_after: list[str] = field(default_factory=list)
     metadata: dict = field(default_factory=dict)
 
 
@@ -27,7 +26,7 @@ Analyze the code snippet below and identify its programming language, then gener
 FORMAT YOUR RESPONSE EXACTLY AS:
 LANGUAGE: [programming language name]
 TITLE: [5-15 words describing what this specific code does]
-DESCRIPTION: [10-30 words explaining what this specific code accomplishes include version if exists in context]
+DESCRIPTION: [20-60 words explaining what this specific code accomplishes include version if exists in context]
 
 Guidelines:
 - Identify the programming language based on syntax, keywords, and context
@@ -37,9 +36,9 @@ Guidelines:
 - For Vue components, use "vue" not "javascript"
 - For markup/config files, be specific (e.g., "postcss" not just "css")
 - TITLE should describe the specific action or purpose of the code
-- DESCRIPTION should explain what this code does and how it works including any relevant versions if applicable
+- DESCRIPTION should explain what this code does and how it works including any relevant versions if applicable. 
 - DO NOT start description with "The code..." or "This code..."
-- Be direct and specific to the actual code provided
+- Be direct and specific to the actual code provided, provide enough detail for a definition. For a user to understand. 
 
 === ACTUAL CODE TO ANALYZE ===
 

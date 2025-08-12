@@ -245,10 +245,6 @@ export default function SourceDetail() {
             <SourceDocumentsTab
               documents={state.documents}
               docsLoading={state.docsLoading}
-              docsPage={state.docsPage}
-              docsPerPage={state.docsPerPage}
-              docsTotalPages={state.docsTotalPages}
-              setDocsPage={state.setDocsPage}
             />
           )}
 

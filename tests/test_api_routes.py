@@ -1,7 +1,5 @@
 """Tests for API routes."""
 
-import pytest
-from datetime import datetime
 from uuid import uuid4
 
 
@@ -90,7 +88,7 @@ class TestSourcesEndpoints:
         response = client.get("/api/sources")
         assert response.status_code == 200
         data = response.json()
-        
+
         assert "sources" in data
         sources = data["sources"]
         assert len(sources) == 1
@@ -333,7 +331,7 @@ class TestBulkDeleteEndpoints:
         self, client, db, sample_crawl_job, sample_document, sample_code_snippets
     ):
         """Test bulk deletion cascades to documents and snippets."""
-        from src.database.models import CrawlJob, Document, CodeSnippet
+        from src.database.models import CodeSnippet, CrawlJob, Document
 
         job_id = str(sample_crawl_job.id)
 
@@ -433,7 +431,7 @@ class TestBulkDeleteEndpoints:
         self, client, db, sample_crawl_job, sample_document, sample_code_snippets
     ):
         """Test crawl job bulk deletion cascades properly."""
-        from src.database.models import CrawlJob, Document, CodeSnippet
+        from src.database.models import CodeSnippet, CrawlJob, Document
 
         job_id = str(sample_crawl_job.id)
         doc_id = sample_document.id

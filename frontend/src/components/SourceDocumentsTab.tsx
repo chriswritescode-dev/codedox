@@ -5,19 +5,11 @@ import { Document } from "../lib/api";
 interface SourceDocumentsTabProps {
   documents: any;
   docsLoading: boolean;
-  docsPage: number;
-  docsPerPage: number;
-  docsTotalPages: number;
-  setDocsPage: (page: number) => void;
 }
 
 export function SourceDocumentsTab({
   documents,
   docsLoading,
-  docsPage,
-  docsPerPage,
-  docsTotalPages,
-  setDocsPage,
 }: SourceDocumentsTabProps) {
   const navigate = useNavigate();
   const { id: sourceId } = useParams<{ id: string }>();

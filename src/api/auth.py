@@ -1,9 +1,9 @@
 """Authentication middleware and utilities for CodeDox API."""
 
 import logging
-from typing import Optional
-from fastapi import HTTPException, Request, status, Depends
-from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
+
+from fastapi import Depends, HTTPException, Request, status
+from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
 from ..config import get_settings
 
@@ -16,12 +16,12 @@ security = HTTPBearer(auto_error=False)
 
 class MCPAuthMiddleware:
     """Middleware for MCP authentication."""
-    
-    def __init__(self):
+
+    def __init__(self) -> None:
         """Initialize the middleware."""
         self.settings = settings.mcp_auth
-    
-    async def __call__(self, request: Request, credentials: Optional[HTTPAuthorizationCredentials] = None) -> bool:
+
+    async def __call__(self, request: Request, credentials: HTTPAuthorizationCredentials | None = None) -> bool:
         """Verify MCP authentication.
         
         Args:
@@ -34,40 +34,40 @@ class MCPAuthMiddleware:
         # Skip auth if not enabled
         if not self.settings.enabled:
             return True
-        
+
         # Check for Authorization header
         auth_header = request.headers.get("Authorization")
         if not auth_header:
-            logger.warning(f"MCP auth failed: No Authorization header from {request.client.host}")
+            logger.warning(f"MCP auth failed: No Authorization header from {request.client.host if request.client else 'unknown'}")
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
                 detail="Authorization header required",
                 headers={"WWW-Authenticate": "Bearer"},
             )
-        
+
         # Extract token from header
         try:
             scheme, token = auth_header.split(" ", 1)
             if scheme.lower() != "bearer":
                 raise ValueError("Invalid authentication scheme")
         except ValueError:
-            logger.warning(f"MCP auth failed: Invalid Authorization header format from {request.client.host}")
+            logger.warning(f"MCP auth failed: Invalid Authorization header format from {request.client.host if request.client else 'unknown'}")
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
                 detail="Invalid authorization header format",
                 headers={"WWW-Authenticate": "Bearer"},
             )
-        
+
         # Validate token
         if not self.settings.is_token_valid(token):
-            logger.warning(f"MCP auth failed: Invalid token from {request.client.host}")
+            logger.warning(f"MCP auth failed: Invalid token from {request.client.host if request.client else 'unknown'}")
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
                 detail="Invalid authentication token",
                 headers={"WWW-Authenticate": "Bearer"},
             )
-        
-        logger.debug(f"MCP auth successful for {request.client.host}")
+
+        logger.debug(f"MCP auth successful for {request.client.host if request.client else 'unknown'}")
         return True
 
 
@@ -75,7 +75,7 @@ class MCPAuthMiddleware:
 mcp_auth = MCPAuthMiddleware()
 
 
-async def verify_mcp_token(request: Request, credentials: Optional[HTTPAuthorizationCredentials] = Depends(security)) -> bool:
+async def verify_mcp_token(request: Request, credentials: HTTPAuthorizationCredentials | None = Depends(security)) -> bool:
     """Dependency for MCP authentication.
     
     Use this as a dependency in FastAPI routes:
@@ -88,7 +88,7 @@ async def verify_mcp_token(request: Request, credentials: Optional[HTTPAuthoriza
     return await mcp_auth(request, credentials)
 
 
-def get_bearer_token(auth_header: Optional[str]) -> Optional[str]:
+def get_bearer_token(auth_header: str | None) -> str | None:
     """Extract bearer token from authorization header.
     
     Args:
@@ -99,12 +99,12 @@ def get_bearer_token(auth_header: Optional[str]) -> Optional[str]:
     """
     if not auth_header:
         return None
-    
+
     try:
         scheme, token = auth_header.split(" ", 1)
         if scheme.lower() == "bearer":
             return token
     except ValueError:
         pass
-    
+
     return None

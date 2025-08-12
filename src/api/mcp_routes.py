@@ -2,8 +2,10 @@
 
 import json
 import logging
-from typing import AsyncGenerator, Dict, Any
-from fastapi import APIRouter, HTTPException, Depends, Body, Request
+from collections.abc import AsyncGenerator
+from typing import Any
+
+from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
@@ -20,36 +22,36 @@ mcp_server = MCPServer()
 class MCPRequest(BaseModel):
     """MCP request format."""
     method: str
-    params: Dict[str, Any] = {}
+    params: dict[str, Any] = {}
 
 
 class MCPToolDefinition(BaseModel):
     """MCP tool definition."""
     name: str
     description: str
-    input_schema: Dict[str, Any]
+    input_schema: dict[str, Any]
 
 
-async def stream_response(data: Dict[str, Any]) -> AsyncGenerator[str, None]:
+async def stream_response(data: dict[str, Any]) -> AsyncGenerator[str, None]:
     """Stream a JSON response with Server-Sent Events format."""
     # Send the response as a single SSE event
     yield f"data: {json.dumps(data)}\n\n"
 
 
 @router.get("/health")
-async def mcp_health() -> Dict[str, str]:
+async def mcp_health() -> dict[str, str]:
     """Check MCP service health."""
     return {"status": "healthy", "service": "mcp-http"}
 
 
 @router.get("/tools", dependencies=[Depends(verify_mcp_token)])
-async def list_tools() -> Dict[str, Any]:
+async def list_tools() -> dict[str, Any]:
     """List available MCP tools."""
     return {"tools": mcp_server.get_tool_definitions()}
 
 
 @router.post("/execute/{tool_name}", dependencies=[Depends(verify_mcp_token)])
-async def execute_tool(tool_name: str, request: Request) -> Dict[str, Any]:
+async def execute_tool(tool_name: str, request: Request) -> dict[str, Any]:
     """Execute a specific MCP tool."""
     try:
         # Get params from request body
@@ -57,29 +59,29 @@ async def execute_tool(tool_name: str, request: Request) -> Dict[str, Any]:
             params = await request.json()
         except Exception as e:
             raise HTTPException(status_code=422, detail=f"Invalid JSON: {str(e)}")
-        
+
         # Get tool definitions to validate required parameters
         tool_defs = {tool["name"]: tool for tool in mcp_server.get_tool_definitions()}
-        
+
         if tool_name not in tool_defs:
             raise HTTPException(status_code=404, detail=f"Unknown tool: {tool_name}")
-        
+
         # Validate required parameters
         tool_def = tool_defs[tool_name]
         required_params = tool_def["input_schema"].get("required", [])
         for param in required_params:
             if param not in params:
                 raise HTTPException(status_code=422, detail=f"Missing required parameter: {param}")
-        
+
         # Execute the tool
         result = await mcp_server.execute_tool(tool_name, params)
-        
+
         # Format result based on tool type
         if tool_name == "get_content" and isinstance(result, str):
             return {"result": result, "format": "text"}
         else:
             return {"result": result}
-        
+
     except ValueError as e:
         # Handle unknown tool errors from execute_tool
         raise HTTPException(status_code=404, detail=str(e))
@@ -100,23 +102,23 @@ async def execute_tool_stream(tool_name: str, request: Request) -> StreamingResp
             params = await request.json()
         except Exception as e:
             raise HTTPException(status_code=422, detail=f"Invalid JSON: {str(e)}")
-        
+
         # Get tool definitions to validate
         tool_defs = {tool["name"]: tool for tool in mcp_server.get_tool_definitions()}
-        
+
         if tool_name not in tool_defs:
             raise ValueError(f"Unknown tool: {tool_name}")
-        
+
         # Validate required parameters
         tool_def = tool_defs[tool_name]
         required_params = tool_def["input_schema"].get("required", [])
         for param in required_params:
             if param not in params:
                 raise ValueError(f"Missing required parameter: {param}")
-        
+
         # Execute the tool
         result = await mcp_server.execute_tool(tool_name, params)
-        
+
         # Stream the response
         return StreamingResponse(
             stream_response({"tool": tool_name, "result": result}),
@@ -127,7 +129,7 @@ async def execute_tool_stream(tool_name: str, request: Request) -> StreamingResp
                 "X-Accel-Buffering": "no"  # Disable Nginx buffering
             }
         )
-        
+
     except Exception as e:
         logger.error(f"Error executing tool {tool_name}: {e}")
         error_response = {"error": str(e), "tool": tool_name}
@@ -154,10 +156,10 @@ async def mcp_stream(request: Request) -> StreamingResponse:
             media_type="text/event-stream",
             status_code=400
         )
-    
+
     method = mcp_request.method
     params = mcp_request.params
-    
+
     try:
         if method == "initialize":
             # Handle MCP initialization
@@ -172,7 +174,7 @@ async def mcp_stream(request: Request) -> StreamingResponse:
                     "version": "0.2.2"
                 }
             }
-            
+
         elif method == "tools/list":
             # Get tools from MCP server and convert to protocol format
             tool_defs = mcp_server.get_tool_definitions()
@@ -185,18 +187,18 @@ async def mcp_stream(request: Request) -> StreamingResponse:
                 for tool in tool_defs
             ]
             response_data = {"tools": tools}
-            
+
         elif method == "tools/call":
             # Execute a tool (MCP protocol uses tools/call)
             tool_name = params.get("name")
             tool_args = params.get("arguments", {})
-            
+
             if not tool_name:
                 raise ValueError("Tool name is required")
-            
+
             # Execute the tool using MCP server
             result = await mcp_server.execute_tool(tool_name, tool_args)
-            
+
             # Format response according to MCP protocol
             response_data = {
                 "content": [
@@ -206,27 +208,27 @@ async def mcp_stream(request: Request) -> StreamingResponse:
                     }
                 ]
             }
-            
+
         elif method == "tools/execute":
             # Legacy support for tools/execute
             tool_name = params.get("name")
             tool_params = params.get("params", {})
-            
+
             if not tool_name:
                 raise ValueError("Tool name is required")
-            
+
             # Execute the tool using MCP server
             result = await mcp_server.execute_tool(tool_name, tool_params)
-            
+
             response_data = {
                 "method": method,
                 "tool": tool_name,
                 "result": result
             }
-            
+
         else:
             raise ValueError(f"Unknown method: {method}")
-        
+
         # Stream the response
         return StreamingResponse(
             stream_response(response_data),
@@ -237,7 +239,7 @@ async def mcp_stream(request: Request) -> StreamingResponse:
                 "X-Accel-Buffering": "no"
             }
         )
-        
+
     except Exception as e:
         logger.error(f"Error in MCP stream: {e}")
         error_response = {"method": method, "error": str(e)}

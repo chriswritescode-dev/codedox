@@ -5,12 +5,13 @@ import os
 # Set testing environment variable before any imports
 os.environ["TESTING"] = "true"
 
-import pytest
 import asyncio
 import logging
+from collections.abc import Generator
 from datetime import datetime
-from typing import Generator
 from uuid import uuid4
+
+import pytest
 
 # Configure logging to avoid I/O errors during teardown
 logging.getLogger("asyncio").setLevel(logging.WARNING)
@@ -18,17 +19,17 @@ logging.getLogger("httpx").setLevel(logging.WARNING)
 
 # Add a null handler to prevent logging errors during teardown
 import sys
+
 if "pytest" in sys.modules:
     logging.getLogger().addHandler(logging.NullHandler())
 
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine, event, text
-from sqlalchemy.orm import sessionmaker, Session
+from sqlalchemy.orm import Session, sessionmaker
 
 from src.api.main import app
 from src.database import Base, get_db
-from src.database.models import CrawlJob, Document, CodeSnippet, FailedPage
-from src.database.connection import DatabaseManager
+from src.database.models import CodeSnippet, CrawlJob, Document
 
 logger = logging.getLogger(__name__)
 
@@ -79,7 +80,7 @@ def event_loop():
     loop = asyncio.get_event_loop_policy().new_event_loop()
     asyncio.set_event_loop(loop)
     yield loop
-    
+
     # Cancel all pending tasks before closing
     try:
         pending = asyncio.all_tasks(loop)
@@ -88,13 +89,13 @@ def event_loop():
         loop.run_until_complete(asyncio.gather(*pending, return_exceptions=True))
     except Exception:
         pass
-    
+
     # Close all async generators
     try:
         loop.run_until_complete(loop.shutdown_asyncgens())
     except Exception:
         pass
-    
+
     loop.close()
 
 
@@ -107,24 +108,24 @@ def setup_database():
         conn.execute(text(f"DROP SCHEMA IF EXISTS {TEST_SCHEMA} CASCADE"))
         conn.execute(text(f"CREATE SCHEMA {TEST_SCHEMA}"))
         conn.execute(text(f"SET search_path TO {TEST_SCHEMA}"))
-        
+
         # Create extensions in public schema (they're global)
         conn.execute(text("SET search_path TO public"))
         conn.execute(text("CREATE EXTENSION IF NOT EXISTS \"uuid-ossp\""))
         conn.execute(text("CREATE EXTENSION IF NOT EXISTS \"pg_trgm\""))
-        
+
         # Switch back to test schema
         conn.execute(text(f"SET search_path TO {TEST_SCHEMA}"))
-        
+
         # Create tables using SQLAlchemy models
         Base.metadata.create_all(bind=conn)
-        
+
         # Add the search_vector column and trigger manually
         conn.execute(text("""
             ALTER TABLE code_snippets 
             ADD COLUMN IF NOT EXISTS search_vector tsvector
         """))
-        
+
         # Create the update_search_vector function
         conn.execute(text("""
             CREATE OR REPLACE FUNCTION update_search_vector()
@@ -140,7 +141,7 @@ def setup_database():
             END;
             $$ LANGUAGE plpgsql
         """))
-        
+
         # Create the trigger
         conn.execute(text("""
             DROP TRIGGER IF EXISTS update_code_snippets_search_vector ON code_snippets
@@ -151,15 +152,15 @@ def setup_database():
             ON code_snippets
             FOR EACH ROW EXECUTE FUNCTION update_search_vector()
         """))
-        
+
         # Create index on search_vector
         conn.execute(text("""
             CREATE INDEX IF NOT EXISTS idx_snippets_search_vector 
             ON code_snippets USING GIN(search_vector)
         """))
-    
+
     yield
-    
+
     # Drop the test schema and all its tables
     try:
         with engine.begin() as conn:
@@ -169,7 +170,7 @@ def setup_database():
     except Exception as e:
         print(f"\n✗ Failed to clean up test schema: {TEST_SCHEMA} - {e}")
         logger.error(f"Failed to clean up test schema: {TEST_SCHEMA} - {e}")
-    
+
     # Final cleanup: Remove any test data from main schema
     try:
         with engine.begin() as conn:
@@ -186,7 +187,7 @@ def setup_database():
                 )
             """))
             snippets_deleted = result.rowcount
-            
+
             result = conn.execute(text("""
                 DELETE FROM documents 
                 WHERE crawl_job_id IN (
@@ -196,7 +197,7 @@ def setup_database():
                 )
             """))
             docs_deleted = result.rowcount
-            
+
             try:
                 result = conn.execute(text("""
                     DELETE FROM page_links 
@@ -210,14 +211,14 @@ def setup_database():
                 # page_links table doesn't exist, ignore
                 result = type('', (), {'rowcount': 0})()
             links_deleted = result.rowcount
-            
+
             result = conn.execute(text("""
                 DELETE FROM crawl_jobs 
                 WHERE name LIKE '%Test%' OR name LIKE '%test%' 
                    OR start_urls[1] LIKE '%example%'
             """))
             jobs_deleted = result.rowcount
-            
+
             if any([snippets_deleted, docs_deleted, links_deleted, jobs_deleted]):
                 print(f"\n✓ Final cleanup removed leaked test data: {jobs_deleted} jobs, {docs_deleted} docs, {snippets_deleted} snippets, {links_deleted} links")
             else:
@@ -231,21 +232,21 @@ def db(setup_database) -> Generator[Session, None, None]:
     """Get test database session with automatic cleanup."""
     connection = engine.connect()
     trans = connection.begin()
-    
+
     # Configure session to use our transaction
     session = TestingSessionLocal(bind=connection)
-    
+
     # Set search path to test schema
     session.execute(text(f"SET search_path TO {TEST_SCHEMA}, public"))
-    
+
     yield session
-    
+
     # Clean up ALL data from test schema after each test
     try:
         # Create a new connection for cleanup
         cleanup_conn = engine.connect()
         cleanup_trans = cleanup_conn.begin()
-        
+
         # Delete all test data in correct order
         cleanup_conn.execute(text(f"SET search_path TO {TEST_SCHEMA}, public"))
         cleanup_conn.execute(text("DELETE FROM code_snippets"))
@@ -253,17 +254,17 @@ def db(setup_database) -> Generator[Session, None, None]:
         cleanup_conn.execute(text("DELETE FROM page_links"))
         cleanup_conn.execute(text("DELETE FROM failed_pages"))
         cleanup_conn.execute(text("DELETE FROM crawl_jobs"))
-        
+
         cleanup_trans.commit()
         cleanup_conn.close()
     except Exception as e:
         print(f"Warning: Failed to cleanup test data: {e}")
-    
+
     # Close the test session
     session.close()
     trans.rollback()
     connection.close()
-    
+
     # Extra safety: Clean up any test data that might have leaked to the main schema
     try:
         with engine.begin() as cleanup_conn:
@@ -284,7 +285,7 @@ def db(setup_database) -> Generator[Session, None, None]:
                     )
                 )
             """))
-            
+
             cleanup_conn.execute(text("""
                 DELETE FROM documents 
                 WHERE crawl_job_id IN (
@@ -298,7 +299,7 @@ def db(setup_database) -> Generator[Session, None, None]:
                        OR start_urls[1] LIKE '%example4.com%'
                 )
             """))
-            
+
             cleanup_conn.execute(text("""
                 DELETE FROM page_links 
                 WHERE crawl_job_id IN (
@@ -312,7 +313,7 @@ def db(setup_database) -> Generator[Session, None, None]:
                        OR start_urls[1] LIKE '%example4.com%'
                 )
             """))
-            
+
             cleanup_conn.execute(text("""
                 DELETE FROM crawl_jobs 
                 WHERE name LIKE '%Test%' OR name LIKE '%test%' 
@@ -335,15 +336,15 @@ def async_db(setup_database):
     # This works because the tests will run in the event loop
     connection = engine.connect()
     trans = connection.begin()
-    
+
     # Configure session to use our transaction
     session = TestingSessionLocal(bind=connection)
-    
+
     # Set search path to test schema
     session.execute(text(f"SET search_path TO {TEST_SCHEMA}, public"))
-    
+
     yield session
-    
+
     # Clean up
     session.close()
     trans.rollback()
@@ -355,28 +356,28 @@ def client(db: Session) -> TestClient:
     """Get test client with database override."""
     # Store original overrides
     original_overrides = app.dependency_overrides.copy()
-    
+
     # Set test database override
     app.dependency_overrides[get_db] = lambda: db
-    
+
     # Mock MCP authentication for tests
     from src.api.auth import verify_mcp_token
     async def mock_verify_mcp_token():
         return True
     app.dependency_overrides[verify_mcp_token] = mock_verify_mcp_token
-    
+
     # Create test client
     test_client = TestClient(app)
-    
+
     try:
         yield test_client
     finally:
         # Ensure cleanup happens even on failure
         test_client.close()
-        
+
         # Restore original overrides
         app.dependency_overrides = original_overrides
-        
+
         # Small delay to ensure connections are closed
         import time
         time.sleep(0.05)
@@ -429,7 +430,7 @@ def sample_document(db: Session, sample_crawl_job: CrawlJob) -> Document:
 def sample_code_snippets(db: Session, sample_document: Document) -> list[CodeSnippet]:
     """Create sample code snippets."""
     snippets = []
-    
+
     # Python snippet
     python_snippet = CodeSnippet(
         document_id=sample_document.id,
@@ -447,7 +448,7 @@ def sample_code_snippets(db: Session, sample_document: Document) -> list[CodeSni
         updated_at=datetime.utcnow()
     )
     snippets.append(python_snippet)
-    
+
     # JavaScript snippet
     js_snippet = CodeSnippet(
         document_id=sample_document.id,
@@ -466,7 +467,7 @@ def sample_code_snippets(db: Session, sample_document: Document) -> list[CodeSni
         updated_at=datetime.utcnow()
     )
     snippets.append(js_snippet)
-    
+
     # Configuration snippet
     config_snippet = CodeSnippet(
         document_id=sample_document.id,
@@ -481,14 +482,14 @@ def sample_code_snippets(db: Session, sample_document: Document) -> list[CodeSni
         updated_at=datetime.utcnow()
     )
     snippets.append(config_snippet)
-    
+
     for snippet in snippets:
         db.add(snippet)
-    
+
     db.commit()
     for snippet in snippets:
         db.refresh(snippet)
-    
+
     return snippets
 
 
@@ -496,7 +497,7 @@ def sample_code_snippets(db: Session, sample_document: Document) -> list[CodeSni
 def multiple_crawl_jobs(db: Session) -> list[CrawlJob]:
     """Create multiple crawl jobs with different statuses."""
     jobs = []
-    
+
     statuses = ["completed", "running", "completed", "running"]
     for i, status in enumerate(statuses):
         job = CrawlJob(
@@ -516,11 +517,11 @@ def multiple_crawl_jobs(db: Session) -> list[CrawlJob]:
         )
         jobs.append(job)
         db.add(job)
-    
+
     db.commit()
     for job in jobs:
         db.refresh(job)
-    
+
     return jobs
 
 
@@ -538,7 +539,7 @@ def mock_mcp_tools(monkeypatch):
             "domain_restrictions": [],
             "url_patterns": url_patterns or []
         }
-    
+
     async def mock_search_libraries(self, query: str = "", limit: int = 20, page: int = 1):
         return {
             "status": "success",
@@ -550,7 +551,7 @@ def mock_mcp_tools(monkeypatch):
             },
             "explanation": "Exact match found for 'test'"
         }
-    
+
     async def mock_get_content(self, library_id: str, query: str = None, limit: int = 20, page: int = 1):
         return """Found 1 results in Test Source
 
@@ -565,8 +566,8 @@ print('test')
 ```
 
 ----------------------------------------"""
-    
-    
+
+
     # Patch the MCPTools methods
     from src.mcp_server.tools import MCPTools
     monkeypatch.setattr(MCPTools, "init_crawl", mock_init_crawl)

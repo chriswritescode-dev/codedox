@@ -1,18 +1,17 @@
 """Tests for HTML code extraction functionality."""
 
-import pytest
-from unittest.mock import Mock, patch
 from bs4 import BeautifulSoup
+
 from src.crawler.html_code_extractor import HTMLCodeExtractor
 
 
 class TestHTMLCodeExtractor:
     """Test HTML code extraction and language detection."""
-    
+
     def setup_method(self):
         """Set up test fixtures."""
         self.extractor = HTMLCodeExtractor()
-    
+
     def test_extract_code_from_pre_tags(self):
         """Test extracting code from <pre> tags."""
         html = """
@@ -25,12 +24,12 @@ class TestHTMLCodeExtractor:
         </html>
         """
         soup = BeautifulSoup(html, 'html.parser')
-        
+
         blocks = self.extractor.extract_code_blocks(html, "https://test.com")
-        
+
         assert len(blocks) >= 1
         assert "function hello()" in blocks[0].code
-    
+
     def test_extract_code_from_code_tags(self):
         """Test extracting code from <code> tags inside <pre> (standalone <code> tags are not extracted by design)."""
         html = """
@@ -40,12 +39,12 @@ class TestHTMLCodeExtractor:
             </body>
         </html>
         """
-        
+
         blocks = self.extractor.extract_code_blocks(html, "https://test.com")
-        
+
         assert len(blocks) >= 1
         assert "const x: number = 42;" in blocks[0].code
-    
+
     def test_language_detection_typescript(self):
         """Test TypeScript language detection."""
         html = """
@@ -55,9 +54,9 @@ class TestHTMLCodeExtractor:
 }</code></pre>
         """
         blocks = self.extractor.extract_code_blocks(html, "https://test.com")
-        
+
         assert len(blocks) >= 1
-    
+
     def test_language_detection_javascript(self):
         """Test JavaScript language detection."""
         html = """
@@ -66,9 +65,9 @@ class TestHTMLCodeExtractor:
 }</code></pre>
         """
         blocks = self.extractor.extract_code_blocks(html, "https://test.com")
-        
+
         assert len(blocks) >= 1
-    
+
     def test_language_detection_python(self):
         """Test Python language detection."""
         html = """
@@ -78,9 +77,9 @@ class TestHTMLCodeExtractor:
     return fibonacci(n-1) + fibonacci(n-2)</code></pre>
         """
         blocks = self.extractor.extract_code_blocks(html, "https://test.com")
-        
+
         assert len(blocks) >= 1
-    
+
     def test_language_detection_bash(self):
         """Test Bash language detection."""
         html = """
@@ -89,9 +88,9 @@ echo "Hello World"
 ls -la</code></pre>
         """
         blocks = self.extractor.extract_code_blocks(html, "https://test.com")
-        
+
         assert len(blocks) >= 1
-    
+
     def test_language_detection_json(self):
         """Test JSON language detection."""
         html = """
@@ -101,9 +100,9 @@ ls -la</code></pre>
 }</code></pre>
         """
         blocks = self.extractor.extract_code_blocks(html, "https://test.com")
-        
+
         assert len(blocks) >= 1
-    
+
     def test_language_detection_css_import(self):
         """Test CSS language detection with @import statement."""
         html = """
@@ -113,9 +112,9 @@ body {
 }</code></pre>
         """
         blocks = self.extractor.extract_code_blocks(html, "https://test.com")
-        
+
         assert len(blocks) >= 1
-    
+
     def test_skip_short_code_blocks(self):
         """Test that very short code blocks are skipped."""
         html = """
@@ -129,10 +128,10 @@ body {
         </html>
         """
         blocks = self.extractor.extract_code_blocks(html, "https://test.com")
-        
+
         assert len(blocks) >= 1
         assert "longEnoughFunction" in blocks[0].code
-    
+
     def test_extract_surrounding_context(self):
         """Test extraction of surrounding context."""
         html = """
@@ -148,12 +147,12 @@ body {
         </html>
         """
         blocks = self.extractor.extract_code_blocks(html, "https://test.com")
-        
+
         assert len(blocks) >= 1
         # Context extraction may not be implemented yet, just check the structure
         assert hasattr(blocks[0], 'context_before')
         assert hasattr(blocks[0], 'context_after')
-    
+
     def test_stats_tracking(self):
         """Test that statistics are properly tracked."""
         html = """
@@ -165,19 +164,19 @@ body {
         </html>
         """
         soup = BeautifulSoup(html, 'html.parser')
-        
-        # Reset stats  
+
+        # Reset stats
         self.extractor.stats = {
             'total_blocks': 0,
             'blocks_by_type': {},
             'languages_found': set()
         }
-        
+
         blocks = self.extractor.extract_code_blocks(html, "https://test.com")
-        
+
         assert len(blocks) >= 2
         assert self.extractor.stats['total_blocks'] >= 2
-    
+
     def test_extract_from_complex_nested_structure(self):
         """Test extraction from complex nested HTML structure."""
         html = """
@@ -198,10 +197,10 @@ body {
         </html>
         """
         blocks = self.extractor.extract_code_blocks(html, "https://test.com")
-        
+
         assert len(blocks) >= 1
         assert "ApiResponse" in blocks[0].code
-    
+
     def test_handle_empty_code_blocks(self):
         """Test handling of empty or whitespace-only code blocks."""
         html = """
@@ -217,7 +216,7 @@ body {
         </html>
         """
         blocks = self.extractor.extract_code_blocks(html, "https://test.com")
-        
+
         # Only the valid function should be extracted
         assert len(blocks) >= 1
         assert "function valid()" in blocks[0].code

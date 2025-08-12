@@ -1,13 +1,13 @@
 """Content hash checking utilities for avoiding redundant LLM extraction."""
 
-from typing import Optional, Tuple
-from sqlalchemy.orm import Session
+
 from sqlalchemy import func
+from sqlalchemy.orm import Session
 
-from .models import Document, CodeSnippet
+from .models import CodeSnippet, Document
 
 
-def check_content_hash(session: Session, url: str, content_hash: str) -> Tuple[bool, int]:
+def check_content_hash(session: Session, url: str, content_hash: str) -> tuple[bool, int]:
     """Check if content with the given hash already exists for URL.
     
     Args:
@@ -22,23 +22,23 @@ def check_content_hash(session: Session, url: str, content_hash: str) -> Tuple[b
     """
     # Find existing document by URL
     existing_doc = session.query(Document).filter_by(url=url).first()
-    
+
     if not existing_doc:
         return False, 0
-    
+
     # Check if content hash matches
     if existing_doc.content_hash != content_hash:
         return False, 0
-    
+
     # Content unchanged - get snippet count
     snippet_count = session.query(func.count(CodeSnippet.id))\
         .filter(CodeSnippet.document_id == existing_doc.id)\
         .scalar() or 0
-    
+
     return True, snippet_count
 
 
-def get_existing_document_info(session: Session, url: str) -> Optional[Tuple[int, str, int]]:
+def get_existing_document_info(session: Session, url: str) -> tuple[int, str, int] | None:
     """Get existing document info by URL.
     
     Args:
@@ -49,13 +49,13 @@ def get_existing_document_info(session: Session, url: str) -> Optional[Tuple[int
         Tuple of (document_id, content_hash, snippet_count) or None if not found
     """
     existing_doc = session.query(Document).filter_by(url=url).first()
-    
+
     if not existing_doc:
         return None
-    
+
     # Get snippet count
     snippet_count = session.query(func.count(CodeSnippet.id))\
         .filter(CodeSnippet.document_id == existing_doc.id)\
         .scalar() or 0
-    
+
     return existing_doc.id, existing_doc.content_hash, snippet_count

@@ -187,6 +187,8 @@ export default function Sources() {
     new Set()
   );
   const [isBulkDelete, setIsBulkDelete] = useState(false);
+  const [isFilteredDelete, setIsFilteredDelete] = useState(false);
+  const [filteredDeleteCount, setFilteredDeleteCount] = useState<number | null>(null);
   const [recrawlDialogOpen, setRecrawlDialogOpen] = useState(false);
   const [sourceToRecrawl, setSourceToRecrawl] = useState<{
     id: string;
@@ -232,10 +234,7 @@ export default function Sources() {
   const getSnippetBounds = useCallback(() => {
     switch(snippetFilter) {
       case '0': return { min: 0, max: 0 };
-      case '1-10': return { min: 1, max: 10 };
-      case '11-50': return { min: 11, max: 50 };
-      case '51-100': return { min: 51, max: 100 };
-      case '100+': return { min: 101, max: undefined };
+      case 'has-snippets': return { min: 1, max: undefined };
       default: return { min: undefined, max: undefined };
     }
   }, [snippetFilter]);
@@ -299,6 +298,31 @@ export default function Sources() {
     },
   });
 
+  const filteredDeleteMutation = useMutation({
+    mutationFn: () => {
+      const bounds = getSnippetBounds();
+      return api.deleteFilteredSources({
+        min_snippets: bounds.min,
+        max_snippets: bounds.max,
+        query: debouncedSearchQuery || undefined
+      });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["sources"] });
+      setDeleteModalOpen(false);
+      setSelectedSources(new Set());
+      setIsFilteredDelete(false);
+      setFilteredDeleteCount(null);
+    },
+    onError: (error) => {
+      console.error("Failed to delete filtered sources:", error);
+      toast.error(
+        "Failed to delete filtered sources: " +
+          (error instanceof Error ? error.message : "Unknown error")
+      );
+    },
+  });
+
   const updateSourceNameMutation = useMutation({
     mutationFn: ({ id, name }: { id: string; name: string }) =>
       api.updateSourceName(id, name),
@@ -343,18 +367,47 @@ export default function Sources() {
     setDeleteModalOpen(true);
   }, []);
 
-  const handleBulkDelete = useCallback(() => {
+  const handleBulkDelete = useCallback(async () => {
+    // Check if we have a filter active and all visible items are selected
+    const hasFilter = snippetFilter !== 'all' || debouncedSearchQuery;
+    const allVisibleSelected = selectedSources.size === filteredSources.length && filteredSources.length > 0;
+    
+    if (hasFilter && allVisibleSelected) {
+      // Get count of all sources matching the filter
+      const bounds = getSnippetBounds();
+      try {
+        const result = await api.countFilteredSources({
+          min_snippets: bounds.min,
+          max_snippets: bounds.max,
+          query: debouncedSearchQuery || undefined
+        });
+        setFilteredDeleteCount(result.count);
+        setIsFilteredDelete(true);
+      } catch (error) {
+        console.error('Failed to count filtered sources:', error);
+        setFilteredDeleteCount(null);
+        setIsFilteredDelete(false);
+      }
+    } else {
+      setIsFilteredDelete(false);
+      setFilteredDeleteCount(null);
+    }
+    
     setIsBulkDelete(true);
     setDeleteModalOpen(true);
-  }, []);
+  }, [snippetFilter, debouncedSearchQuery, selectedSources.size, filteredSources.length, getSnippetBounds]);
 
   const confirmDelete = useCallback(() => {
     if (isBulkDelete) {
-      bulkDeleteMutation.mutate(Array.from(selectedSources));
+      if (isFilteredDelete) {
+        filteredDeleteMutation.mutate();
+      } else {
+        bulkDeleteMutation.mutate(Array.from(selectedSources));
+      }
     } else if (sourceToDelete) {
       deleteMutation.mutate(sourceToDelete.id);
     }
-  }, [isBulkDelete, selectedSources, sourceToDelete, bulkDeleteMutation, deleteMutation]);
+  }, [isBulkDelete, isFilteredDelete, selectedSources, sourceToDelete, bulkDeleteMutation, filteredDeleteMutation, deleteMutation]);
 
   const toggleSelectSource = useCallback((sourceId: string) => {
     setSelectedSources(prev => {
@@ -475,12 +528,9 @@ export default function Sources() {
               onChange={(e) => handleFilterChange(e.target.value)}
               className="px-3 py-2 bg-secondary border border-input rounded-md focus:outline-none focus:ring-2 focus:ring-primary"
             >
-              <option value="all">All Snippets</option>
+              <option value="all">All Sources</option>
+              <option value="has-snippets">Has Snippets</option>
               <option value="0">No Snippets</option>
-              <option value="1-10">1-10 Snippets</option>
-              <option value="11-50">11-50 Snippets</option>
-              <option value="51-100">51-100 Snippets</option>
-              <option value="100+">100+ Snippets</option>
             </select>
           </div>
 
@@ -488,16 +538,22 @@ export default function Sources() {
             <div className="flex items-center gap-2">
               <div
                 onClick={() => {
-                  if (
-                    selectedSources.size === filteredSources.length &&
-                    filteredSources.length > 0
-                  ) {
+                  // In filtered mode, track if we mean "all on page" or "all matching filter"
+                  const hasFilter = snippetFilter !== 'all' || debouncedSearchQuery;
+                  const allVisibleSelected = selectedSources.size === filteredSources.length && filteredSources.length > 0;
+                  
+                  if (allVisibleSelected) {
                     deselectAll();
                   } else {
                     selectAll();
                   }
                 }}
                 className="cursor-pointer"
+                title={
+                  (snippetFilter !== 'all' || debouncedSearchQuery) && selectedSources.size === filteredSources.length && filteredSources.length > 0
+                    ? `All ${sources?.total || 0} matching sources selected`
+                    : "Select all on this page"
+                }
               >
                 <div
                   className={`w-5 h-5 rounded border-2 flex items-center justify-center ${
@@ -521,7 +577,10 @@ export default function Sources() {
                 </div>
               </div>
               <span className="text-sm font-medium whitespace-nowrap">
-                {selectedSources.size}/{filteredSources.length}
+                {selectedSources.size}/
+                {(snippetFilter !== 'all' || debouncedSearchQuery) && selectedSources.size === filteredSources.length && filteredSources.length > 0
+                  ? sources?.total || filteredSources.length
+                  : filteredSources.length}
               </span>
             </div>
             
@@ -542,8 +601,15 @@ export default function Sources() {
                   ? "bg-destructive text-destructive-foreground hover:bg-destructive/90"
                   : "bg-secondary text-muted-foreground cursor-not-allowed"
               }`}
+              title={
+                (snippetFilter !== 'all' || debouncedSearchQuery) && selectedSources.size === filteredSources.length && filteredSources.length > 0
+                  ? "Delete all sources matching the current filter"
+                  : "Delete selected sources"
+              }
             >
-              Delete ({selectedSources.size})
+              {(snippetFilter !== 'all' || debouncedSearchQuery) && selectedSources.size === filteredSources.length && filteredSources.length > 0
+                ? `Delete All Filtered`
+                : `Delete (${selectedSources.size})`}
             </button>
           </div>
         </div>
@@ -583,19 +649,25 @@ export default function Sources() {
         title="Confirm Delete"
         message={
           isBulkDelete
-            ? `Are you sure you want to delete ${selectedSources.size} source${
-                selectedSources.size > 1 ? "s" : ""
-              }? This will permanently remove all associated documents and code snippets.`
+            ? isFilteredDelete && filteredDeleteCount !== null
+              ? `Are you sure you want to delete ALL ${filteredDeleteCount} source${
+                  filteredDeleteCount > 1 ? "s" : ""
+                } matching the current filter? This will permanently remove all associated documents and code snippets.`
+              : `Are you sure you want to delete ${selectedSources.size} source${
+                  selectedSources.size > 1 ? "s" : ""
+                }? This will permanently remove all associated documents and code snippets.`
             : `Are you sure you want to delete the source "${sourceToDelete?.name}"? This will permanently remove all associated documents and code snippets.`
         }
         confirmText="Delete"
         cancelText="Cancel"
         variant="destructive"
-        isConfirming={deleteMutation.isPending || bulkDeleteMutation.isPending}
+        isConfirming={deleteMutation.isPending || bulkDeleteMutation.isPending || filteredDeleteMutation.isPending}
         onConfirm={confirmDelete}
         onCancel={() => {
           setDeleteModalOpen(false);
           setIsBulkDelete(false);
+          setIsFilteredDelete(false);
+          setFilteredDeleteCount(null);
         }}
       />
 

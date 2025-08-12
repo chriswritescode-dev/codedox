@@ -3,14 +3,17 @@
 import json
 import logging
 import uuid
-from typing import Any, Dict, List, Optional, Union
-from fastapi import Request, Response, HTTPException, APIRouter, Header
-from fastapi.responses import StreamingResponse, JSONResponse
+from typing import Any
+
+from fastapi import APIRouter, Header, HTTPException, Request, Response
+from fastapi.responses import JSONResponse, StreamingResponse
+from mcp.server import Server
+from mcp.shared.exceptions import McpError
+from mcp.types import ErrorData
+
 # Use FastAPI's StreamingResponse for SSE instead of MCP's EventSourceResponse
 # to avoid the asyncio event loop issues in tests
 from pydantic import BaseModel
-from mcp.server import Server
-from mcp.shared.exceptions import McpError
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/mcp")
@@ -19,11 +22,11 @@ router = APIRouter(prefix="/mcp")
 class JSONRPCMessage(BaseModel):
     """JSON-RPC 2.0 message format."""
     jsonrpc: str = "2.0"
-    id: Optional[Union[str, int]] = None
-    method: Optional[str] = None
-    params: Optional[Union[Dict[str, Any], List[Any]]] = None
-    result: Optional[Any] = None
-    error: Optional[Dict[str, Any]] = None
+    id: str | int | None = None
+    method: str | None = None
+    params: dict[str, Any] | list[Any] | None = None
+    result: Any | None = None
+    error: dict[str, Any] | None = None
 
 
 # Create a single transport instance
@@ -32,20 +35,20 @@ transport = None
 @router.post("")
 async def handle_mcp_streamable_request(
     request: Request,
-    mcp_session_id: Optional[str] = Header(None),
+    mcp_session_id: str | None = Header(None),
     accept: str = Header(None),
-    origin: Optional[str] = Header(None),
-    last_event_id: Optional[str] = Header(None)
+    origin: str | None = Header(None),
+    last_event_id: str | None = Header(None)
 ) -> Response:
     """Handle incoming MCP streamable HTTP requests."""
     global transport
-    
+
     # Initialize transport if not already done
     if transport is None:
         from mcp.server import Server
-        mcp_server = Server("codedox")
+        mcp_server: Server = Server("codedox")
         transport = StreamableTransport(mcp_server)
-    
+
     return await transport.handle_request(
         request, mcp_session_id, accept, origin, last_event_id
     )
@@ -56,15 +59,15 @@ class StreamableTransport:
 
     def __init__(self, server: Server):
         self.server = server
-        self.sessions: Dict[str, Dict[str, Any]] = {}
+        self.sessions: dict[str, dict[str, Any]] = {}
 
     async def handle_request(
         self,
         request: Request,
-        mcp_session_id: Optional[str] = Header(None),
+        mcp_session_id: str | None = Header(None),
         accept: str = Header(None),
-        origin: Optional[str] = Header(None),
-        last_event_id: Optional[str] = Header(None)
+        origin: str | None = Header(None),
+        last_event_id: str | None = Header(None)
     ) -> Response:
         """Handle incoming MCP streamable HTTP requests."""
 
@@ -142,9 +145,9 @@ class StreamableTransport:
 
     async def _process_message(
         self,
-        msg: Dict[str, Any],
-        session_id: Optional[str]
-    ) -> Optional[Dict[str, Any]]:
+        msg: dict[str, Any],
+        session_id: str | None
+    ) -> dict[str, Any] | None:
         """Process a single JSON-RPC message."""
 
         method = msg.get("method")
@@ -224,7 +227,7 @@ class StreamableTransport:
                     result = await mcp_server.execute_tool(tool_name, tool_args)
                 except ValueError as e:
                     logger.error(f"Tool execution failed for '{tool_name}': {e}")
-                    raise McpError(f"Unknown tool: {tool_name}")
+                    raise McpError(ErrorData(code=-32601, message=f"Unknown tool: {tool_name}"))
 
                 # Format result as text content
                 if isinstance(result, str):
@@ -282,9 +285,9 @@ class StreamableTransport:
 
     async def _create_event_stream(  # type: ignore[no-untyped-def]
         self,
-        initial_responses: List[Dict[str, Any]],
-        session_id: Optional[str],
-        last_event_id: Optional[str]
+        initial_responses: list[dict[str, Any]],
+        session_id: str | None,
+        last_event_id: str | None
     ):
         """Create an SSE event stream."""
 

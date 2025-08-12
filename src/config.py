@@ -3,16 +3,17 @@
 import logging
 import logging.handlers
 from pathlib import Path
-from typing import Optional, List, Any, Set
+from typing import Any
+
+from dotenv import load_dotenv
 from pydantic import Field
 from pydantic.types import SecretStr
 from pydantic_settings import BaseSettings, SettingsConfigDict
-from dotenv import load_dotenv
 
 # Load .env file before anything else
 load_dotenv()
 
-logger = logging.getLogger(__name__)  
+logger = logging.getLogger(__name__)
 
 
 class DatabaseConfig(BaseSettings):
@@ -53,7 +54,7 @@ class MCPConfig(BaseSettings):
     port: int = 8899  # Only used for standalone stdio server
     host: str = "localhost"  # Only used for standalone stdio server
     max_connections: int = 10
-    tools: List[str] = ["init_crawl", "get_sources", "get_content"]
+    tools: list[str] = ["init_crawl", "get_sources", "get_content"]
 
 
 class CrawlingConfig(BaseSettings):
@@ -66,7 +67,7 @@ class CrawlingConfig(BaseSettings):
     content_size_limit: int = 50000
     user_agent: str = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36"
     max_concurrent_sessions: int = 20
-    
+
     # Concurrent crawl management
     max_concurrent_crawls: int = Field(
         default=5,
@@ -101,7 +102,7 @@ class CodeExtractionConfig(BaseSettings):
     max_code_block_size: int = 50000
     preserve_context_chars: int = 500
     min_code_lines: int = 2
-    
+
     # LLM extraction configuration
     llm_api_key: SecretStr = Field(
         default=SecretStr(""),
@@ -111,7 +112,7 @@ class CodeExtractionConfig(BaseSettings):
         default="gpt-4o-mini",
         description="LLM model for code extraction"
     )
-    llm_base_url: Optional[str] = Field(
+    llm_base_url: str | None = Field(
         default=None,
         description="Base URL for LLM API (if using custom endpoint)"
     )
@@ -139,13 +140,13 @@ class SearchConfig(BaseSettings):
     snippet_preview_length: int = 200
     default_max_results: int = 10
     min_score: float = 0.1
-    
+
     # Library name matching thresholds
     library_exact_match_threshold: float = 1.0  # Exact match always wins
     library_auto_select_threshold: float = 0.7  # Minimum score to auto-select
     library_auto_select_gap: float = 0.2  # Minimum gap between 1st and 2nd match
     library_suggestion_threshold: float = 0.3  # Minimum score to show as suggestion
-    
+
     # Relationship-based search
     include_related_snippets: bool = True  # Include related snippets in search results
 
@@ -153,13 +154,13 @@ class SearchConfig(BaseSettings):
 class APIConfig(BaseSettings):
     """API server configuration."""
     model_config = SettingsConfigDict(env_prefix="API_", extra="allow")
-    
+
     host: str = "0.0.0.0"
     port: int = 8000
     cors_origins: str = "http://localhost:3000,http://localhost:5173,http://localhost:8000"
     max_request_size: int = 10485760  # 10MB
-    
-    def get_cors_origins_list(self) -> List[str]:
+
+    def get_cors_origins_list(self) -> list[str]:
         """Get CORS origins as a list."""
         return [origin.strip() for origin in self.cors_origins.split(',')]
 
@@ -167,7 +168,7 @@ class APIConfig(BaseSettings):
 class MCPAuthConfig(BaseSettings):
     """MCP authentication configuration."""
     model_config = SettingsConfigDict(env_prefix="MCP_AUTH_", extra="allow")
-    
+
     enabled: bool = Field(
         default=False,
         description="Enable authentication for MCP endpoints"
@@ -176,35 +177,35 @@ class MCPAuthConfig(BaseSettings):
         default=SecretStr(""),
         description="Single authentication token for MCP access"
     )
-    tokens: Optional[str] = Field(
+    tokens: str | None = Field(
         default=None,
         description="Multiple authentication tokens (comma-separated)"
     )
-    
-    def get_valid_tokens(self) -> Set[str]:
+
+    def get_valid_tokens(self) -> set[str]:
         """Get all valid authentication tokens."""
         tokens = set()
-        
+
         # Add single token if configured
         if self.token.get_secret_value():
             tokens.add(self.token.get_secret_value())
-        
+
         # Add multiple tokens if configured
         if self.tokens:
             tokens.update(token.strip() for token in self.tokens.split(',') if token.strip())
-        
+
         return tokens
-    
+
     def is_token_valid(self, token: str) -> bool:
         """Check if a token is valid."""
         if not self.enabled:
             return True  # No auth required
-        
+
         valid_tokens = self.get_valid_tokens()
         if not valid_tokens:
             # If auth is enabled but no tokens configured, reject all
             return False
-        
+
         return token in valid_tokens
 
 
@@ -214,7 +215,7 @@ class LoggingConfig(BaseSettings):
 
     level: str = "INFO"
     format: str = "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
-    file: Optional[str] = "logs/codedox.log"
+    file: str | None = "logs/codedox.log"
     max_size: int = 10485760  # 10MB
     backup_count: int = 5
 
@@ -234,11 +235,11 @@ class Settings(BaseSettings):
         extra="allow",
         validate_assignment=True,
     )
-    
+
     def __init__(self, **kwargs: Any) -> None:
         """Initialize settings with sub-configurations."""
         super().__init__(**kwargs)
-        
+
         # Initialize sub-configurations
         self.database = DatabaseConfig()
         self.mcp = MCPConfig()
@@ -274,7 +275,7 @@ class Settings(BaseSettings):
 
 
 # Global settings instance
-_settings: Optional[Settings] = None
+_settings: Settings | None = None
 
 
 def get_settings() -> Settings:

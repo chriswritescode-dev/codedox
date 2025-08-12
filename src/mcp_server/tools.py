@@ -1,12 +1,12 @@
 """MCP tool implementations."""
 
 import logging
-from typing import Dict, Any, List, Optional
 from datetime import datetime
+from typing import Any
 
 from ..config import get_settings
-from ..database import get_db_manager, CodeSearcher
-from ..crawler import CrawlManager, CrawlConfig
+from ..crawler import CrawlConfig, CrawlManager
+from ..database import CodeSearcher, get_db_manager
 
 logger = logging.getLogger(__name__)
 settings = get_settings()
@@ -14,22 +14,22 @@ settings = get_settings()
 
 class MCPTools:
     """Implementation of MCP tools for code extraction."""
-    
+
     def __init__(self) -> None:
         """Initialize MCP tools."""
         self.db_manager = get_db_manager()
         self.crawl_manager = CrawlManager()
-    
+
     async def init_crawl(
         self,
-        name: Optional[str],
-        start_urls: List[str],
+        name: str | None,
+        start_urls: list[str],
         max_depth: int = 1,
-        domain_filter: Optional[str] = None,
-        url_patterns: Optional[List[str]] = None,
-        metadata: Optional[Dict[str, Any]] = None,
+        domain_filter: str | None = None,
+        url_patterns: list[str] | None = None,
+        metadata: dict[str, Any] | None = None,
         max_concurrent_crawls: int | None = None
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """Initialize a new crawl job.
         
         Args:
@@ -48,7 +48,7 @@ class MCPTools:
             # Prepare metadata
             if metadata is None:
                 metadata = {}
-            
+
             # Generate temporary name if not provided
             if not name:
                 from urllib.parse import urlparse
@@ -56,13 +56,13 @@ class MCPTools:
                 domain = parsed.netloc.replace('www.', '')
                 name = f"[Auto-detecting from {domain}]"
                 metadata['auto_detect_name'] = True
-            
+
             metadata.update({
                 'library_name': name,
                 'initiated_via': 'mcp',
                 'initiated_at': datetime.now().isoformat()
             })
-            
+
             # Prepare domain restrictions
             domain_restrictions = []
             if domain_filter:
@@ -74,11 +74,11 @@ class MCPTools:
                     parsed = urlparse(url)
                     if parsed.netloc:
                         domain_restrictions.append(parsed.netloc)
-            
+
             # Warn about deep crawls
             if max_depth > 1:
                 logger.warning(f"Deep crawl requested with depth={max_depth}. This may take several minutes.")
-            
+
             # Create crawl configuration
             config = CrawlConfig(
                 name=name,
@@ -89,10 +89,10 @@ class MCPTools:
                 metadata=metadata,
                 max_concurrent_crawls=max_concurrent_crawls or settings.crawling.max_concurrent_crawls
             )
-            
+
             # Start crawl job
             job_id = await self.crawl_manager.start_crawl(config)
-            
+
             return {
                 "job_id": job_id,
                 "status": "started",
@@ -104,7 +104,7 @@ class MCPTools:
                 "url_patterns": url_patterns or [],
                 "auto_detect_name": metadata.get('auto_detect_name', False)
             }
-            
+
         except Exception as e:
             logger.error(f"Failed to initialize crawl: {e}")
             return {
@@ -112,14 +112,14 @@ class MCPTools:
                 "status": "failed",
                 "library_name": name
             }
-    
-    
+
+
     async def search_libraries(
         self,
         query: str = "",
         limit: int = 20,
         page: int = 1
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """Search for available libraries by name or keyword, or list all libraries.
         
         Args:
@@ -133,16 +133,16 @@ class MCPTools:
         try:
             with self.db_manager.session_scope() as session:
                 searcher = CodeSearcher(session)
-                
+
                 # Calculate offset for pagination
                 offset = (page - 1) * limit
-                
+
                 libraries, total_count = searcher.search_libraries(
                     query=query,
                     limit=limit,
                     offset=offset
                 )
-                
+
                 if not libraries:
                     if query:
                         return {
@@ -156,17 +156,17 @@ class MCPTools:
                             "message": "No libraries have been crawled yet",
                             "suggestion": "Use init_crawl to add documentation sources"
                         }
-                
+
                 # Calculate total pages
                 import math
                 total_pages = math.ceil(total_count / limit) if total_count > 0 else 0
-                
+
                 # If no query provided, return all libraries
                 if not query:
                     message = f"Found {total_count} available libraries"
                     if total_pages > 1:
                         message += f" (showing page {page} of {total_pages})"
-                    
+
                     return {
                         "status": "success",
                         "libraries": [
@@ -183,17 +183,17 @@ class MCPTools:
                         "total_pages": total_pages,
                         "message": message
                     }
-                
+
                 # For searches with query, find the best match
                 best_match = libraries[0]  # Already sorted by relevance
                 other_matches = libraries[1:5] if len(libraries) > 1 else []
-                
+
                 # Determine match quality
                 exact_match = best_match['name'].lower() == query.lower()
                 strong_match = query.lower() in best_match['name'].lower()
-                
+
                 # Build response
-                response = {
+                response: dict[str, Any] = {
                     "status": "success",
                     "selected_library": {
                         "library_id": best_match['library_id'],
@@ -202,11 +202,11 @@ class MCPTools:
                         "snippet_count": best_match['snippet_count']
                     }
                 }
-                
+
                 # Add versions if available
                 if 'versions' in best_match:
                     response["selected_library"]["versions"] = best_match['versions']
-                
+
                 # Add explanation
                 if exact_match:
                     response["explanation"] = f"Exact match found for '{query}'"
@@ -214,11 +214,11 @@ class MCPTools:
                     response["explanation"] = f"Strong match found: '{best_match['name']}' contains '{query}'"
                 else:
                     response["explanation"] = f"Best match based on similarity: '{best_match['name']}'"
-                
+
                 # Add similarity score if available
                 if 'similarity_score' in best_match:
                     response["match_confidence"] = f"{best_match['similarity_score']:.2%}"
-                
+
                 # Acknowledge other matches
                 if other_matches:
                     response["other_matches"] = [
@@ -234,18 +234,18 @@ class MCPTools:
                         response["note"] += f" Showing page {page} of {total_pages}."
                     else:
                         response["note"] += " Showing the most relevant."
-                
+
                 # Add pagination info
                 response["page"] = page
                 response["total_pages"] = total_pages
                 response["total_count"] = total_count
-                
+
                 # Add warning for low snippet count
                 if best_match['snippet_count'] < 10:
                     response["warning"] = "This library has limited documentation coverage"
-                
+
                 return response
-                
+
         except Exception as e:
             logger.error(f"Failed to search libraries: {e}")
             return {
@@ -253,11 +253,11 @@ class MCPTools:
                 "error": str(e),
                 "message": "Failed to search libraries"
             }
-    
+
     async def get_content(
         self,
         library_id: str,
-        query: Optional[str] = None,
+        query: str | None = None,
         limit: int = 20,
         page: int = 1
     ) -> str:
@@ -275,19 +275,19 @@ class MCPTools:
         try:
             with self.db_manager.session_scope() as session:
                 searcher = CodeSearcher(session)
-                
+
                 # Check if library_id is a valid UUID
                 import re
                 uuid_pattern = re.compile(r'^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$', re.I)
                 is_uuid = bool(uuid_pattern.match(library_id))
-                
+
                 actual_library_id = library_id
                 library_name = library_id  # Default to the input for display
-                
+
                 # If not a UUID, treat as library name and search for it
                 if not is_uuid:
                     libraries, _ = searcher.search_libraries(query=library_id, limit=20)
-                    
+
                     if not libraries:
                         # No matches found, try to find all libraries and suggest the most similar
                         all_libraries, _ = searcher.search_libraries(query="", limit=100)
@@ -299,14 +299,14 @@ class MCPTools:
                                 # Use difflib for better similarity matching
                                 similarity = SequenceMatcher(None, library_id.lower(), lib['name'].lower()).ratio()
                                 scored_libs.append((lib, similarity))
-                            
+
                             # Sort by similarity and take top 5
                             scored_libs.sort(key=lambda x: x[1], reverse=True)
                             suggestions = []
                             for lib, score in scored_libs[:5]:
                                 if score > settings.search.library_suggestion_threshold:  # Only show somewhat similar libraries
                                     suggestions.append(f"  - {lib['name']} (similarity: {score:.0%}, snippets: {lib['snippet_count']})")
-                            
+
                             if suggestions:
                                 return (f"❌ No library found matching '{library_id}'.\n\n"
                                        f"📚 Did you mean one of these?\n" + "\n".join(suggestions) + "\n\n"
@@ -315,14 +315,14 @@ class MCPTools:
                                 return f"❌ No library found matching '{library_id}' and no similar libraries found.\n\n💡 Use search_libraries to find available libraries."
                         else:
                             return "❌ No libraries have been crawled yet. Use init_crawl to add documentation sources."
-                    
+
                     # Check for exact match first (case-insensitive)
                     exact_match = None
                     for lib in libraries:
                         if lib['name'].lower() == library_id.lower():
                             exact_match = lib
                             break
-                    
+
                     if exact_match:
                         # Use exact match
                         actual_library_id = exact_match['library_id']
@@ -337,7 +337,7 @@ class MCPTools:
                         # Check if we have a clear winner
                         first_score = libraries[0].get('similarity_score', 0)
                         second_score = libraries[1].get('similarity_score', 0) if len(libraries) > 1 else 0
-                        
+
                         # Use configurable thresholds: auto-select if first is good and significantly better than second
                         if first_score > settings.search.library_auto_select_threshold and (first_score - second_score) > settings.search.library_auto_select_gap:
                             actual_library_id = libraries[0]['library_id']
@@ -359,14 +359,14 @@ class MCPTools:
                                 else:
                                     emoji = "  "
                                 suggestions.append(f"{emoji} {lib['name']} (match: {score:.0%}, snippets: {snippets})")
-                            
-                            return (f"🤔 Multiple libraries match '{library_id}'. Please be more specific:\n\n" + 
+
+                            return (f"🤔 Multiple libraries match '{library_id}'. Please be more specific:\n\n" +
                                    "\n".join(suggestions) + "\n\n"
                                    "💡 Tip: Use the exact library name for best results.")
-                
+
                 # Calculate offset for pagination
                 offset = (page - 1) * limit
-                
+
                 # Search with resolved library_id
                 snippets, total_count = searcher.search(
                     query=query or "",  # Use empty string if query is None
@@ -375,21 +375,21 @@ class MCPTools:
                     offset=offset,
                     include_context=False  # Don't include context in search results
                 )
-                
+
                 if not snippets:
                     if query:
                         no_results_msg = f"No results found for query '{query}' in library '{library_name}'"
                     else:
                         no_results_msg = f"No content found in library '{library_name}'"
                     return no_results_msg
-                
+
                 # Format results using the specified format
                 formatted_results = searcher.format_search_results(snippets)
-                
+
                 # Calculate total pages
                 import math
                 total_pages = math.ceil(total_count / limit) if total_count > 0 else 0
-                
+
                 # Add summary header
                 header = f"Found {total_count} results"
                 if total_pages > 1:
@@ -399,14 +399,14 @@ class MCPTools:
                 else:
                     header += f" in library '{library_name}'"
                 header += "\n\n"
-                
+
                 return header + formatted_results
-                
+
         except Exception as e:
             logger.error(f"Failed to search content: {e}")
             return f"Error searching content: {str(e)}"
-    
-    async def get_crawl_status(self, job_id: str) -> Dict[str, Any]:
+
+    async def get_crawl_status(self, job_id: str) -> dict[str, Any]:
         """Get status of a specific crawl job.
         
         Args:
@@ -417,18 +417,18 @@ class MCPTools:
         """
         try:
             status = self.crawl_manager.get_job_status(job_id)
-            
+
             if not status:
                 return {
                     "error": "Job not found",
                     "job_id": job_id
                 }
-            
+
             # Calculate progress percentage
             progress = 0
             if status['total_pages'] > 0:
                 progress = int((status['processed_pages'] / status['total_pages']) * 100)
-            
+
             result = {
                 "job_id": job_id,
                 "name": status['name'],
@@ -440,21 +440,21 @@ class MCPTools:
                 "started_at": status['started_at'],
                 "completed_at": status['completed_at']
             }
-            
+
             # Add error message if present
             if status.get('error_message'):
                 result['error_message'] = status['error_message']
-            
+
             return result
-            
+
         except Exception as e:
             logger.error(f"Failed to get crawl status: {e}")
             return {
                 "error": str(e),
                 "job_id": job_id
             }
-    
-    async def cancel_crawl(self, job_id: str) -> Dict[str, Any]:
+
+    async def cancel_crawl(self, job_id: str) -> dict[str, Any]:
         """Cancel a running crawl job.
         
         Args:
@@ -465,7 +465,7 @@ class MCPTools:
         """
         try:
             success = await self.crawl_manager.cancel_job(job_id)
-            
+
             if success:
                 return {
                     "status": "cancelled",
@@ -478,7 +478,7 @@ class MCPTools:
                     "job_id": job_id,
                     "message": "Job may have already completed or does not exist"
                 }
-                
+
         except Exception as e:
             logger.error(f"Failed to cancel crawl: {e}")
             return {
