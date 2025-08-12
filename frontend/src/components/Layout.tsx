@@ -69,7 +69,7 @@ export default function Layout() {
 
       {/* Main content */}
       <div className="lg:pl-64 flex-1 flex flex-col h-screen">
-        <main className="flex-1 py-8 px-4 sm:px-6 lg:px-8 flex min-h-0">
+        <main className="flex-1  p-4 flex min-h-0">
           <div className="w-full flex flex-col">
             <Outlet />
           </div>

@@ -283,6 +283,17 @@ class APIClient {
     })
   }
 
+  async getFilteredSourceIds(params: {
+    min_snippets?: number
+    max_snippets?: number
+    query?: string
+  }): Promise<{ ids: string[]; total: number }> {
+    return this.fetch<{ ids: string[]; total: number }>('/sources/ids', {
+      method: 'POST',
+      body: JSON.stringify(params),
+    })
+  }
+
   async deleteMatches(sourceId: string, params: { query?: string; language?: string } = {}): Promise<{ deleted_count: number; source_id: string; source_name: string }> {
     return this.fetch<{ deleted_count: number; source_id: string; source_name: string }>(`/snippets/sources/${sourceId}/delete-matches`, {
       method: 'POST',

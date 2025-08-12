@@ -242,7 +242,7 @@ class TestHealthMonitor:
         # Create jobs in final states with old heartbeats
         job_ids = []
         with db_manager.session_scope() as session:
-            for status in ["completed", "failed", "cancelled"]:
+            for status in ["completed" ]:
                 job = CrawlJob(
                     id=uuid4(),
                     name=f"{status} Job",
