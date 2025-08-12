@@ -37,7 +37,7 @@ class CodeSearcher:
         
         Args:
             query: Text search query
-            source: Filter by source URL pattern
+            source: Filter by source name (supports fuzzy/domain matching)
             language: Filter by programming language
             job_id: Filter by crawl job ID
             snippet_type: Filter by snippet type (function, class, etc.)
@@ -49,6 +49,22 @@ class CodeSearcher:
             Tuple of (results, total_count)
         """
         limit = limit or self.settings.default_max_results
+        
+        # Resolve source name to job IDs if provided
+        resolved_job_ids = []
+        if source and not job_id:
+            # Use search_libraries to resolve source name (supports domain matching)
+            libraries, _ = self.search_libraries(query=source, limit=10, offset=0)
+            if libraries:
+                # Collect all matching job IDs
+                resolved_job_ids = [lib['library_id'] for lib in libraries]
+                # For single best match, use only the first one
+                if len(libraries) == 1 or (
+                    len(libraries) > 1 and 
+                    libraries[0].get('similarity_score', 0) > 0.8
+                ):
+                    # Use only the best match if it's clearly the right one
+                    resolved_job_ids = [libraries[0]['library_id']]
 
         # For full-text search, use raw SQL to leverage the generated search_vector column
         if query:
@@ -64,18 +80,18 @@ class CodeSearcher:
             sql_parts.append("LEFT JOIN crawl_jobs cj ON d.crawl_job_id = cj.id")
             sql_parts.append("LEFT JOIN upload_jobs uj ON d.upload_job_id = uj.id")
 
-            # Exclude cancelled jobs from both types
-            where_clauses.append("(cj.status != 'cancelled' OR cj.id IS NULL)")
-            where_clauses.append("(uj.status != 'cancelled' OR uj.id IS NULL)")
+            # Include all jobs regardless of status
 
-            if job_id:
-                where_clauses.append("(d.crawl_job_id = :job_id OR d.upload_job_id = :job_id)")
-                params['job_id'] = job_id
-
-            # Add source filter by name (check both crawl and upload jobs)
-            if source:
-                where_clauses.append("(cj.name = :source OR uj.name = :source)")
-                params['source'] = source
+            # Filter by job IDs (either explicit job_id or resolved from source)
+            if job_id or resolved_job_ids:
+                if job_id:
+                    # Explicit job_id takes precedence
+                    where_clauses.append("(d.crawl_job_id = :job_id OR d.upload_job_id = :job_id)")
+                    params['job_id'] = job_id
+                else:
+                    # Use resolved job IDs from source search
+                    where_clauses.append("(d.crawl_job_id = ANY(:job_ids) OR d.upload_job_id = ANY(:job_ids))")
+                    params['job_ids'] = resolved_job_ids
 
             if language:
                 where_clauses.append("cs.language = :language")
@@ -140,26 +156,22 @@ class CodeSearcher:
             base_query = base_query.outerjoin(CrawlJob, Document.crawl_job_id == CrawlJob.id)
             base_query = base_query.outerjoin(UploadJob, Document.upload_job_id == UploadJob.id)
 
-            # Exclude cancelled jobs from both types
-            filters.append(or_(
-                CrawlJob.status != 'cancelled',
-                CrawlJob.id == None
-            ))
-            filters.append(or_(
-                UploadJob.status != 'cancelled',
-                UploadJob.id == None
-            ))
+            # Include all jobs regardless of status
 
-            if source:
-                filters.append(or_(
-                    CrawlJob.name == source,
-                    UploadJob.name == source
-                ))
-            if job_id:
-                filters.append(or_(
-                    Document.crawl_job_id == job_id,
-                    Document.upload_job_id == job_id
-                ))
+            # Filter by job IDs (either explicit job_id or resolved from source)
+            if job_id or resolved_job_ids:
+                if job_id:
+                    # Explicit job_id takes precedence
+                    filters.append(or_(
+                        Document.crawl_job_id == job_id,
+                        Document.upload_job_id == job_id
+                    ))
+                else:
+                    # Use resolved job IDs from source search
+                    filters.append(or_(
+                        Document.crawl_job_id.in_(resolved_job_ids),
+                        Document.upload_job_id.in_(resolved_job_ids)
+                    ))
 
             if language:
                 filters.append(CodeSnippet.language == language.lower())
@@ -196,8 +208,7 @@ class CodeSearcher:
         limit = limit or self.settings.default_max_results
 
         results = self.session.query(CodeSnippet).join(Document).join(CrawlJob).filter(
-            CodeSnippet.functions.contains([function_name]),
-            CrawlJob.status != 'cancelled'
+            CodeSnippet.functions.contains([function_name])
         ).limit(limit).all()
 
         return results
@@ -215,8 +226,7 @@ class CodeSearcher:
         limit = limit or self.settings.default_max_results
 
         results = self.session.query(CodeSnippet).join(Document).join(CrawlJob).filter(
-            CodeSnippet.imports.contains([import_name]),
-            CrawlJob.status != 'cancelled'
+            CodeSnippet.imports.contains([import_name])
         ).limit(limit).all()
 
         return results
@@ -240,8 +250,7 @@ class CodeSearcher:
             CodeSnippet,
             similarity.label('sim_score')
         ).join(Document).join(CrawlJob).filter(
-            similarity > 0.1,  # Minimum similarity threshold
-            CrawlJob.status != 'cancelled'
+            similarity > 0.1  # Minimum similarity threshold
         ).order_by(
             similarity.desc()
         ).limit(limit).all()
@@ -272,36 +281,44 @@ class CodeSearcher:
             SELECT 
                 cj.id,
                 cj.name,
+                cj.domain,
                 'crawl' as source_type,
                 COALESCE(cj.config->>'description', '') as description,
                 cj.config->>'versions' as versions_json,
                 COUNT(DISTINCT cs.id) as snippet_count,
-                similarity(LOWER(cj.name), LOWER(:query)) as name_similarity
+                similarity(LOWER(cj.name), LOWER(:query)) as name_similarity,
+                CASE 
+                    WHEN cj.domain IS NOT NULL 
+                    THEN similarity(LOWER(SPLIT_PART(cj.domain, '.', 1)), LOWER(:query))
+                    ELSE 0 
+                END as domain_similarity
             FROM crawl_jobs cj
             LEFT JOIN documents d ON d.crawl_job_id = cj.id
             LEFT JOIN code_snippets cs ON cs.document_id = d.id
-            WHERE cj.status != 'cancelled'
-            AND (
+            WHERE (
                 LOWER(cj.name) LIKE LOWER(:pattern)
+                OR (cj.domain IS NOT NULL AND LOWER(SPLIT_PART(cj.domain, '.', 1)) LIKE LOWER(:pattern))
                 OR similarity(LOWER(cj.name), LOWER(:query)) > 0.1
+                OR (cj.domain IS NOT NULL AND similarity(LOWER(SPLIT_PART(cj.domain, '.', 1)), LOWER(:query)) > 0.1)
             )
-            GROUP BY cj.id, cj.name, cj.config
+            GROUP BY cj.id, cj.name, cj.domain, cj.config
             
             UNION ALL
             
             SELECT 
                 uj.id,
                 uj.name,
+                NULL as domain,
                 'upload' as source_type,
                 COALESCE(uj.config->>'description', '') as description,
                 NULL as versions_json,
                 COUNT(DISTINCT cs.id) as snippet_count,
-                similarity(LOWER(uj.name), LOWER(:query)) as name_similarity
+                similarity(LOWER(uj.name), LOWER(:query)) as name_similarity,
+                0 as domain_similarity
             FROM upload_jobs uj
             LEFT JOIN documents d ON d.upload_job_id = uj.id
             LEFT JOIN code_snippets cs ON cs.document_id = d.id
-            WHERE uj.status != 'cancelled'
-            AND (
+            WHERE (
                 LOWER(uj.name) LIKE LOWER(:pattern)
                 OR similarity(LOWER(uj.name), LOWER(:query)) > 0.1
             )
@@ -309,8 +326,12 @@ class CodeSearcher:
         )
         SELECT * FROM all_sources
         ORDER BY 
-            CASE WHEN LOWER(name) = LOWER(:query) THEN 0 ELSE 1 END,
-            name_similarity DESC,
+            CASE 
+                WHEN LOWER(name) = LOWER(:query) THEN 0
+                WHEN domain IS NOT NULL AND LOWER(SPLIT_PART(domain, '.', 1)) = LOWER(:query) THEN 0
+                ELSE 1 
+            END,
+            GREATEST(name_similarity, COALESCE(domain_similarity, 0)) DESC,
             snippet_count DESC
         LIMIT :limit OFFSET :offset
         """
@@ -320,18 +341,18 @@ class CodeSearcher:
         SELECT COUNT(*) FROM (
             SELECT cj.id
             FROM crawl_jobs cj
-            WHERE cj.status != 'cancelled'
-            AND (
+            WHERE (
                 LOWER(cj.name) LIKE LOWER(:pattern)
+                OR (cj.domain IS NOT NULL AND LOWER(SPLIT_PART(cj.domain, '.', 1)) LIKE LOWER(:pattern))
                 OR similarity(LOWER(cj.name), LOWER(:query)) > 0.1
+                OR (cj.domain IS NOT NULL AND similarity(LOWER(SPLIT_PART(cj.domain, '.', 1)), LOWER(:query)) > 0.1)
             )
             
             UNION ALL
             
             SELECT uj.id
             FROM upload_jobs uj
-            WHERE uj.status != 'cancelled'
-            AND (
+            WHERE (
                 LOWER(uj.name) LIKE LOWER(:pattern)
                 OR similarity(LOWER(uj.name), LOWER(:query)) > 0.1
             )
@@ -467,8 +488,7 @@ class CodeSearcher:
         cutoff_time = datetime.utcnow() - timedelta(hours=hours)
 
         query = self.session.query(CodeSnippet).join(Document).join(CrawlJob).filter(
-            CodeSnippet.created_at >= cutoff_time,
-            CrawlJob.status != 'cancelled'
+            CodeSnippet.created_at >= cutoff_time
         )
 
         if language:
@@ -489,9 +509,7 @@ class CodeSearcher:
         result = self.session.query(
             CodeSnippet.language,
             func.count(CodeSnippet.id).label('count')
-        ).join(Document).join(CrawlJob).filter(
-            CrawlJob.status != 'cancelled'
-        ).group_by(
+        ).join(Document).join(CrawlJob).group_by(
             CodeSnippet.language
         ).order_by(
             func.count(CodeSnippet.id).desc()
@@ -581,8 +599,7 @@ class CodeSearcher:
 
         # Apply filters
         filters = [
-            CodeSnippet.id.in_(list(related_info.keys())),
-            CrawlJob.status != 'cancelled'
+            CodeSnippet.id.in_(list(related_info.keys()))
         ]
 
         if job_id:
