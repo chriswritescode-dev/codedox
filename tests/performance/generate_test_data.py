@@ -2,8 +2,8 @@
 
 import json
 import random
-from typing import List, Dict, Any
 from pathlib import Path
+from typing import Any
 
 # Code templates for different languages
 CODE_TEMPLATES = {
@@ -41,7 +41,7 @@ export const {func_name} = async ({params}) => {{
     }}
 }}"""
     ],
-    
+
     "typescript": [
         """interface {interface_name} {{
     {properties}
@@ -73,7 +73,7 @@ export const {func_name} = async ({params}): Promise<{return_type}> => {{
     }}
 }}"""
     ],
-    
+
     "python": [
         """def {func_name}({params}):
     \"\"\"{docstring}\"\"\"
@@ -108,7 +108,7 @@ class {class_name}:
     def {method_name}(self) -> {return_type}:
         {method_body}"""
     ],
-    
+
     "react": [
         """import React, {{ useState, useEffect }} from 'react';
 
@@ -147,12 +147,12 @@ export default {component_name};"""
 
 # Variable names and values for template filling
 VARIABLE_NAMES = ["data", "result", "value", "item", "user", "config", "response", "request", "state", "props"]
-FUNCTION_NAMES = ["processData", "handleClick", "fetchUser", "validateInput", "transformResponse", 
+FUNCTION_NAMES = ["processData", "handleClick", "fetchUser", "validateInput", "transformResponse",
                   "calculateTotal", "renderComponent", "updateState", "parseConfig", "formatDate"]
 CLASS_NAMES = ["UserService", "DataProcessor", "APIClient", "Component", "Controller", "Manager", "Handler"]
 PARAM_NAMES = ["id", "name", "value", "options", "callback", "data", "config", "props", "state"]
 RETURN_TYPES = ["string", "number", "boolean", "void", "any", "Promise<any>", "JSX.Element", "object"]
-PROPERTIES = ["id: string", "name: string", "value: number", "enabled: boolean", "data: any[]", 
+PROPERTIES = ["id: string", "name: string", "value: number", "enabled: boolean", "data: any[]",
               "config: Config", "status: Status", "createdAt: Date"]
 
 # Comments and docstrings
@@ -187,13 +187,13 @@ SOURCE_URLS = [
 def generate_random_body(lines: int, language: str) -> str:
     """Generate random code body with specified number of lines."""
     body_lines = []
-    
+
     for i in range(lines):
         indent = "    " if language == "python" else "        "
-        
+
         # Generate different types of statements
         statement_type = random.choice(["assignment", "condition", "loop", "call", "comment"])
-        
+
         if statement_type == "assignment":
             var = random.choice(VARIABLE_NAMES)
             value = random.choice(["true", "false", "null", "42", "'string'", "[]", "{}"])
@@ -201,7 +201,7 @@ def generate_random_body(lines: int, language: str) -> str:
                 body_lines.append(f"{indent}{var} = {value}")
             else:
                 body_lines.append(f"{indent}const {var} = {value};")
-                
+
         elif statement_type == "condition":
             condition = random.choice(["value > 0", "data !== null", "isValid", "user.active"])
             if language == "python":
@@ -211,7 +211,7 @@ def generate_random_body(lines: int, language: str) -> str:
                 body_lines.append(f"{indent}if ({condition}) {{")
                 body_lines.append(f"{indent}    // Do something")
                 body_lines.append(f"{indent}}}")
-                
+
         elif statement_type == "loop":
             if language == "python":
                 body_lines.append(f"{indent}for item in items:")
@@ -220,21 +220,21 @@ def generate_random_body(lines: int, language: str) -> str:
                 body_lines.append(f"{indent}items.forEach(item => {{")
                 body_lines.append(f"{indent}    process(item);")
                 body_lines.append(f"{indent}}});")
-                
+
         elif statement_type == "call":
             func = random.choice(FUNCTION_NAMES)
             if language == "python":
                 body_lines.append(f"{indent}{func}()")
             else:
                 body_lines.append(f"{indent}{func}();")
-                
+
         elif statement_type == "comment":
             comment = random.choice(COMMENTS)
             if language == "python":
                 body_lines.append(f"{indent}# {comment}")
             else:
                 body_lines.append(f"{indent}// {comment}")
-    
+
     return "\n".join(body_lines)
 
 
@@ -243,7 +243,7 @@ def fill_template(template: str, language: str, target_lines: int) -> str:
     # Calculate how many lines the template itself takes
     template_lines = template.count('\n') + 1
     body_lines = max(1, target_lines - template_lines - 5)  # Leave room for template
-    
+
     replacements = {
         "func_name": random.choice(FUNCTION_NAMES),
         "class_name": random.choice(CLASS_NAMES),
@@ -284,20 +284,20 @@ def fill_template(template: str, language: str, target_lines: int) -> str:
         "async_call": random.choice(["fetchData", "apiRequest", "loadUser"]),
         "initial_value": random.choice(["null", "0", "''", "[]", "{}"])
     }
-    
+
     # Replace all placeholders
     result = template
     for key, value in replacements.items():
         result = result.replace(f"{{{key}}}", str(value))
-    
+
     return result
 
 
 def generate_code_snippet(
     min_lines: int = 10,
     max_lines: int = 200,
-    languages: List[str] = None
-) -> Dict[str, Any]:
+    languages: list[str] = None
+) -> dict[str, Any]:
     """Generate a single code snippet with metadata."""
     if languages is None:
         languages = list(CODE_TEMPLATES.keys())
@@ -334,9 +334,9 @@ def generate_test_dataset(
 ) -> None:
     """Generate a complete test dataset."""
     print(f"Generating {num_snippets} test code snippets...")
-    
+
     snippets = []
-    
+
     # Distribution of languages
     language_distribution = {
         "javascript": 0.35,
@@ -344,12 +344,12 @@ def generate_test_dataset(
         "python": 0.20,
         "react": 0.20
     }
-    
+
     # Generate snippets according to distribution
     for language, ratio in language_distribution.items():
         count = int(num_snippets * ratio)
         print(f"  Generating {count} {language} snippets...")
-        
+
         for i in range(count):
             # Vary the line counts
             if i % 10 == 0:  # 10% very small
@@ -358,17 +358,17 @@ def generate_test_dataset(
                 min_lines, max_lines = 100, 200
             else:  # 70% medium
                 min_lines, max_lines = 20, 80
-            
+
             snippet = generate_code_snippet(
                 min_lines=min_lines,
                 max_lines=max_lines,
                 languages=[language]
             )
             snippets.append(snippet)
-    
+
     # Shuffle snippets
     random.shuffle(snippets)
-    
+
     # Save to file
     output_path = Path(__file__).parent / output_file
     with open(output_path, 'w') as f:
@@ -380,18 +380,18 @@ def generate_test_dataset(
             },
             "snippets": snippets
         }, f, indent=2)
-    
+
     print(f"✓ Generated {len(snippets)} snippets saved to {output_path}")
-    
+
     # Print statistics
     print("\nDataset Statistics:")
     lang_counts = {}
     size_distribution = {"small": 0, "medium": 0, "large": 0}
-    
+
     for snippet in snippets:
         lang = snippet["language"]
         lang_counts[lang] = lang_counts.get(lang, 0) + 1
-        
+
         lines = snippet["lines_of_code"]
         if lines < 20:
             size_distribution["small"] += 1
@@ -399,11 +399,11 @@ def generate_test_dataset(
             size_distribution["medium"] += 1
         else:
             size_distribution["large"] += 1
-    
+
     print("\nLanguage distribution:")
     for lang, count in sorted(lang_counts.items()):
         print(f"  {lang}: {count} ({count/len(snippets)*100:.1f}%)")
-    
+
     print("\nSize distribution:")
     for size, count in size_distribution.items():
         print(f"  {size}: {count} ({count/len(snippets)*100:.1f}%)")

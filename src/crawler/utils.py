@@ -1,13 +1,12 @@
 """Utility functions for crawling operations."""
 
 import logging
-from typing import List, Optional
 from urllib.parse import urlparse
 
 logger = logging.getLogger(__name__)
 
 
-def is_allowed_domain(url: str, domain_restrictions: List[str]) -> bool:
+def is_allowed_domain(url: str, domain_restrictions: list[str]) -> bool:
     """Check if URL matches domain restrictions.
 
     Args:
@@ -35,7 +34,7 @@ def is_allowed_domain(url: str, domain_restrictions: List[str]) -> bool:
     return False
 
 
-def matches_patterns(url: str, include_patterns: List[str], exclude_patterns: List[str]) -> bool:
+def matches_patterns(url: str, include_patterns: list[str], exclude_patterns: list[str]) -> bool:
     """Check if URL matches include/exclude patterns.
 
     Args:
@@ -106,9 +105,9 @@ def is_valid_url(url: str) -> bool:
 
 def should_crawl_url(
     url: str,
-    domain_restrictions: List[str],
-    include_patterns: List[str],
-    exclude_patterns: List[str],
+    domain_restrictions: list[str],
+    include_patterns: list[str],
+    exclude_patterns: list[str],
 ) -> bool:
     """Check if URL should be crawled based on all restrictions.
 

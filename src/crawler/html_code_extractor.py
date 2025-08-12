@@ -282,14 +282,15 @@ class HTMLCodeExtractor:
         ui_classes = ['copy', 'copy-button', 'clipboard', 'tab', 'tabs', 'sr-only']
         for ui_elem in element_copy.find_all(True):
             if hasattr(ui_elem, 'get'):
-                classes = ui_elem.get('class', []) or []
+                classes: list = ui_elem.get('class', None) or []
                 classes_str = ' '.join(classes).lower()
                 if any(ui_class in classes_str for ui_class in ui_classes):
                     ui_elem.decompose()
 
         # Remove any remaining links within code
         for link in element_copy.find_all('a'):
-            link.unwrap()
+            if hasattr(link, 'unwrap'):
+                link.unwrap()
 
         # Extract text while preserving meaningful whitespace but not adding extra spaces
         # between syntax highlighting spans
@@ -310,7 +311,7 @@ class HTMLCodeExtractor:
     def _extract_text_no_extra_spaces(self, element: Tag) -> str:
         """Extract text from element without adding spaces between syntax highlighting spans."""
         # Handle different ways HTML might represent code with line breaks
-        result = []
+        result: list[str] = []
 
         # Track if we're at the start of a new line-like element
         for elem in element.descendants:
@@ -358,7 +359,7 @@ class HTMLCodeExtractor:
         if parent and parent.name in {'p', 'span', 'li', 'td'}:
             # But allow if it's in a list item that's specifically for code
             if parent.name == 'li':
-                parent_classes = parent.get('class', []) or []
+                parent_classes: list = parent.get('class', None) or []
                 if any('code' in cls or 'example' in cls for cls in parent_classes):
                     return False
             return True
@@ -367,7 +368,7 @@ class HTMLCodeExtractor:
 
     def _extract_context(self, code_element: Tag) -> dict[str, Any]:
         """Extract surrounding context for a code block."""
-        context = {
+        context: dict[str, Any] = {
             'before': [],
             'after': [],
             'hierarchy': [],
@@ -390,7 +391,7 @@ class HTMLCodeExtractor:
             # Record hierarchy
             hierarchy_info = {
                 'tag': parent.name,
-                'classes': parent.get('class', []),
+                'classes': parent.get('class', None) or [],
                 'id': parent.get('id')
             }
             context['hierarchy'].append(hierarchy_info)
@@ -410,7 +411,10 @@ class HTMLCodeExtractor:
 
                 # Check for elements with filename-related classes
                 for elem in parent.find_all(['div', 'span', 'code']):
-                    elem_classes = elem.get('class', []) or []
+                    if hasattr(elem, 'get'):
+                        elem_classes = elem.get('class', None) or []
+                    else:
+                        elem_classes = []
                     if any('filename' in cls.lower() or 'file-name' in cls.lower()
                            or 'code-title' in cls.lower() for cls in elem_classes):
                         filename_elem = elem
@@ -432,9 +436,9 @@ class HTMLCodeExtractor:
             for sibling in list(current.previous_siblings)[:3]:  # Limit to 3 siblings
                 if isinstance(sibling, NavigableString):
                     continue
-                if sibling.name in self.CONTEXT_ELEMENTS:
+                if hasattr(sibling, 'name') and sibling.name in self.CONTEXT_ELEMENTS:
                     # Check if sibling contains code blocks
-                    if sibling.find_all(['pre', 'code']):
+                    if hasattr(sibling, 'find_all') and sibling.find_all(['pre', 'code']):
                         # Skip elements that contain code blocks
                         continue
                     text = sibling.get_text(separator=' ', strip=True)
@@ -445,9 +449,9 @@ class HTMLCodeExtractor:
             for sibling in list(current.next_siblings)[:2]:  # Limit to 2 siblings after
                 if isinstance(sibling, NavigableString):
                     continue
-                if sibling.name in self.CONTEXT_ELEMENTS:
+                if hasattr(sibling, 'name') and sibling.name in self.CONTEXT_ELEMENTS:
                     # Check if sibling contains code blocks
-                    if sibling.find_all(['pre', 'code']):
+                    if hasattr(sibling, 'find_all') and sibling.find_all(['pre', 'code']):
                         # Skip elements that contain code blocks
                         continue
                     text = sibling.get_text(separator=' ', strip=True)

@@ -2,15 +2,15 @@
 
 import asyncio
 import logging
-from typing import Optional, List, Dict, Any, Set
 from dataclasses import dataclass, field
+from typing import Any
 
 from ..config import get_settings
 from .config import create_browser_config
 from .job_manager import JobManager
+from .page_crawler import PageCrawler
 from .progress_tracker import ProgressTracker
 from .result_processor import ResultProcessor
-from .page_crawler import PageCrawler
 
 logger = logging.getLogger(__name__)
 settings = get_settings()
@@ -21,18 +21,18 @@ class CrawlConfig:
     """Configuration for a crawl job."""
 
     name: str
-    start_urls: List[str]
+    start_urls: list[str]
     max_depth: int = 0
-    domain_restrictions: List[str] = field(default_factory=list)
-    include_patterns: List[str] = field(default_factory=list)
-    exclude_patterns: List[str] = field(default_factory=list)
-    max_pages: Optional[int] = None
+    domain_restrictions: list[str] = field(default_factory=list)
+    include_patterns: list[str] = field(default_factory=list)
+    exclude_patterns: list[str] = field(default_factory=list)
+    max_pages: int | None = None
     max_concurrent_crawls: int = 5
     respect_robots_txt: bool = False
-    content_types: List[str] = field(default_factory=lambda: ["text/markdown", "text/plain"])
+    content_types: list[str] = field(default_factory=lambda: ["text/markdown", "text/plain"])
     min_content_length: int = 100
     extract_code_only: bool = False
-    metadata: Dict[str, Any] = field(default_factory=dict)
+    metadata: dict[str, Any] = field(default_factory=dict)
 
 
 class CrawlManager:
@@ -41,7 +41,7 @@ class CrawlManager:
     def __init__(self) -> None:
         """Initialize the crawl manager."""
         self.settings = settings
-        self._active_crawl_tasks: Dict[str, asyncio.Task] = {}  # Track active crawl tasks
+        self._active_crawl_tasks: dict[str, asyncio.Task] = {}  # Track active crawl tasks
         self._task_cleanup_lock = asyncio.Lock()  # Lock for task cleanup
 
         # Initialize components
@@ -50,7 +50,7 @@ class CrawlManager:
 
         # Get user agent from settings
         user_agent = self.settings.crawling.user_agent
-        
+
         # Initialize browser config
         self.browser_config = create_browser_config(
             headless=True,
@@ -62,10 +62,10 @@ class CrawlManager:
         # Initialize crawler and processor
         self.page_crawler = PageCrawler(self.browser_config)
         self.result_processor = ResultProcessor()
-        
+
         # Cleanup task will be started when first crawl starts
-        self._cleanup_task: Optional[asyncio.Task] = None
-    
+        self._cleanup_task: asyncio.Task | None = None
+
     async def _periodic_cleanup(self) -> None:
         """Periodically clean up completed tasks from active tasks dict."""
         while True:
@@ -80,7 +80,7 @@ class CrawlManager:
                     for job_id in completed_tasks:
                         self._active_crawl_tasks.pop(job_id, None)
                         logger.debug(f"Cleaned up completed task for job {job_id}")
-                    
+
                     if completed_tasks:
                         logger.info(f"Cleaned up {len(completed_tasks)} completed crawl tasks")
             except Exception as e:
@@ -117,7 +117,7 @@ class CrawlManager:
         if self._cleanup_task is None or self._cleanup_task.done():
             self._cleanup_task = asyncio.create_task(self._periodic_cleanup())
             logger.debug("Started periodic cleanup task")
-        
+
         # Cancel any existing active task for this job
         existing_task = self._active_crawl_tasks.get(job_id)
         logger.info(f"Checking for existing task for job {job_id}: {existing_task is not None}")
@@ -156,14 +156,14 @@ class CrawlManager:
             raise asyncio.CancelledError("Job cancelled by user")
 
     async def _update_crawl_progress(
-        self, job_id: str, processed_count: int, visited_urls: Set[str], 
+        self, job_id: str, processed_count: int, visited_urls: set[str],
         total_snippets: int, docs_count: int, last_ws_count: int, base_snippet_count: int
     ) -> int:
         """Update crawl progress and return new last_ws_count if notification sent."""
         send_notification = self.progress_tracker.should_send_update(
             processed_count, last_ws_count
         )
-        
+
         await self.progress_tracker.update_progress(
             job_id,
             processed_pages=processed_count,
@@ -172,7 +172,7 @@ class CrawlManager:
             documents_crawled=docs_count,
             send_notification=send_notification,
         )
-        
+
         return processed_count if send_notification else last_ws_count
 
     async def _execute_crawl(self, job_id: str, config: CrawlConfig) -> None:
@@ -200,7 +200,7 @@ class CrawlManager:
             final_status = self.job_manager.get_job_status(job_id)
             final_snippet_count = final_status.get("snippets_extracted", 0) if final_status else 0
             base_count = final_status.get("config", {}).get("base_snippet_count", 0) if final_status else 0
-            
+
             logger.info(f"[SNIPPET_COUNT] Job {job_id} completion - Base: {base_count}, Final: {final_snippet_count}, New: {final_snippet_count - base_count}")
 
             # Complete job immediately after crawl
@@ -240,14 +240,14 @@ class CrawlManager:
 
     async def _execute_deep_crawl(self, job_id: str, config: CrawlConfig) -> None:
         """Execute deep crawl."""
-        visited_urls: Set[str] = set()
+        visited_urls: set[str] = set()
         processed_count = 0
         last_ws_count = 0
 
         # Initialize tracking
         base_snippet_count, total_snippets = self._initialize_crawl_tracking(job_id)
         logger.info(f"[SNIPPET_COUNT] Starting deep crawl for job {job_id} with base count: {base_snippet_count}")
-        
+
         # Build fresh config for this crawl - don't merge with old config
         job_config = {
             "domain_restrictions": config.domain_restrictions,
@@ -257,7 +257,7 @@ class CrawlManager:
             "metadata": config.metadata,
             "max_concurrent_crawls": config.max_concurrent_crawls,
         }
-        
+
         # Preserve base_snippet_count for tracking (needed by _initialize_crawl_tracking)
         job_data = self.job_manager.get_job_status(job_id)
         if job_data and job_data.get("config", {}).get("base_snippet_count") is not None:
@@ -284,7 +284,7 @@ class CrawlManager:
                 processed_count += len(results)
                 total_snippets += snippets
                 visited_urls.update(r.url for r in results)
-                
+
                 logger.info(f"[SNIPPET_COUNT] Deep crawl batch - New snippets: {snippets}, Total: {total_snippets} (base: {base_snippet_count})")
 
                 # Update progress
@@ -294,10 +294,10 @@ class CrawlManager:
 
     async def _execute_single_crawl(self, job_id: str, config: CrawlConfig) -> None:
         """Execute single page crawl."""
-        visited_urls: Set[str] = set()
+        visited_urls: set[str] = set()
         processed_count = 0
         last_ws_count = 0
-        
+
         # Initialize tracking
         base_snippet_count, total_snippets = self._initialize_crawl_tracking(job_id)
         logger.info(f"[SNIPPET_COUNT] Starting single crawl for job {job_id} with base count: {base_snippet_count}")
@@ -311,11 +311,11 @@ class CrawlManager:
             "metadata": config.metadata,
             "max_concurrent_crawls": config.max_concurrent_crawls,
         }
-        
+
         # Get job data for base_snippet_count and any special flags
         job_data = self.job_manager.get_job_status(job_id)
         logger.info(f"DEBUG: job_data config = {job_data.get('config') if job_data else 'No job data'}")
-        
+
         # Preserve base_snippet_count and ignore_hash flag if present
         if job_data and job_data.get("config"):
             old_config = job_data["config"]
@@ -328,15 +328,15 @@ class CrawlManager:
         # If we have multiple URLs, use the efficient arun_many approach
         if len(config.start_urls) > 1:
             logger.info(f"Using multi-URL crawling for {len(config.start_urls)} URLs")
-            
+
             # Check if job is cancelled before starting
             await self._check_job_cancelled(job_id)
-            
+
             # Use the new crawl_multiple_urls method
             results = await self.page_crawler.crawl_multiple_urls(
                 config.start_urls, job_id, job_config, self.progress_tracker
             )
-            
+
             if results:
                 # Process all results
                 for result in results:
@@ -346,7 +346,7 @@ class CrawlManager:
                     processed_count += 1
                     total_snippets += snippet_count
                     visited_urls.add(result.url)
-                
+
                 # Final progress update
                 await self._update_crawl_progress(
                     job_id, processed_count, visited_urls, total_snippets, processed_count, 0, base_snippet_count
@@ -383,7 +383,7 @@ class CrawlManager:
 
                         processed_count += 1
                         total_snippets += snippet_count
-                        
+
                     # Update progress
                     last_ws_count = await self._update_crawl_progress(
                         job_id, processed_count, visited_urls, total_snippets, processed_count, last_ws_count, base_snippet_count
@@ -435,8 +435,7 @@ class CrawlManager:
                 return False
 
         # Check if there are failed pages to retry
-        from ..database import FailedPage
-        from ..database import get_db_manager
+        from ..database import FailedPage, get_db_manager
 
         db_manager = get_db_manager()
         with db_manager.session_scope() as session:
@@ -476,15 +475,14 @@ class CrawlManager:
             self._active_crawl_tasks[job_id] = task
             return True
 
-    async def retry_failed_pages(self, job_id: str, specific_urls: Optional[List[str]] = None) -> Optional[str]:
+    async def retry_failed_pages(self, job_id: str, specific_urls: list[str] | None = None) -> str | None:
         """Create a new job to retry by re-running the original configuration.
         
         Args:
             job_id: The ID of the original job
             specific_urls: Optional list of specific URLs to recrawl (if None, recrawls all)
         """
-        from ..database import FailedPage, CrawlJob
-        from ..database import get_db_manager
+        from ..database import CrawlJob, FailedPage, get_db_manager
 
         db_manager = get_db_manager()
 
@@ -504,7 +502,7 @@ class CrawlManager:
 
         # Reconstruct the original configuration completely
         original_config = job_dict.get("config", {})
-        
+
         # Preserve all metadata from original job and add retry markers
         original_metadata = original_config.get("metadata", {})
         retry_metadata = {
@@ -513,7 +511,7 @@ class CrawlManager:
             "original_job_name": job_dict["name"],
             "failed_pages_count": failed_count
         }
-        
+
         # Determine which URLs to use and appropriate depth
         if specific_urls:
             # Use only the specific URLs provided
@@ -527,12 +525,12 @@ class CrawlManager:
             # For full recrawl, use original depth
             crawl_depth = job_dict["max_depth"]
             logger.info(f"Using all {len(start_urls)} original start URLs for retry with depth={crawl_depth}")
-        
+
         # Create retry config with appropriate settings
         original_name = job_dict['name']
         retry_name = f"{original_name} - Retry"
         logger.info(f"[RETRY DEBUG] Creating retry job - Original name: '{original_name}', Retry name: '{retry_name}'")
-        
+
         retry_config = CrawlConfig(
             name=retry_name,
             start_urls=start_urls,  # Use filtered or original URLs
@@ -551,11 +549,11 @@ class CrawlManager:
 
         return new_job_id
 
-    def get_job_status(self, job_id: str) -> Optional[Dict[str, Any]]:
+    def get_job_status(self, job_id: str) -> dict[str, Any] | None:
         """Get job status."""
         return self.job_manager.get_job_status(job_id)
 
-    def _reconstruct_config(self, job_dict: Dict[str, Any]) -> CrawlConfig:
+    def _reconstruct_config(self, job_dict: dict[str, Any]) -> CrawlConfig:
         """Reconstruct config from job data."""
         config_data = job_dict.get("config", {})
         return CrawlConfig(
@@ -569,11 +567,11 @@ class CrawlManager:
             max_concurrent_crawls=config_data.get("max_concurrent_crawls", self.settings.crawling.max_concurrent_crawls),
             metadata=config_data.get("metadata", {}),
         )
-    
+
     async def shutdown(self) -> None:
         """Shutdown the crawl manager and cleanup resources."""
         logger.info("Shutting down CrawlManager...")
-        
+
         # Cancel cleanup task
         if hasattr(self, '_cleanup_task') and not self._cleanup_task.done():
             self._cleanup_task.cancel()
@@ -581,23 +579,23 @@ class CrawlManager:
                 await self._cleanup_task
             except asyncio.CancelledError:
                 pass
-        
+
         # Cancel all active crawl tasks
         async with self._task_cleanup_lock:
             for job_id, task in self._active_crawl_tasks.items():
                 if not task.done():
                     logger.info(f"Cancelling active crawl task for job {job_id}")
                     task.cancel()
-            
+
             # Wait for all tasks to complete
             tasks = list(self._active_crawl_tasks.values())
             if tasks:
                 await asyncio.gather(*tasks, return_exceptions=True)
-            
+
             self._active_crawl_tasks.clear()
-        
+
         # Cleanup result processor
         if hasattr(self, 'result_processor'):
             self.result_processor.cleanup()
-        
+
         logger.info("CrawlManager shutdown complete")

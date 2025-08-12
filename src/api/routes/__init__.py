@@ -2,12 +2,12 @@
 
 from fastapi import APIRouter
 
-from .sources import router as sources_router
 from .crawl_jobs import router as crawl_jobs_router
-from .search import router as search_router
 from .health import router as health_router
-from .statistics import router as statistics_router
+from .search import router as search_router
 from .snippets import router as snippets_router
+from .sources import router as sources_router
+from .statistics import router as statistics_router
 from .upload import router as upload_router
 
 # Create main router

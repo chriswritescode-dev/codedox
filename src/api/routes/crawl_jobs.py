@@ -315,10 +315,10 @@ async def get_failed_pages(job_id: str, db: Session = Depends(get_db)) -> list[d
     job = db.query(CrawlJob).filter_by(id=job_id).first()
     if not job:
         raise HTTPException(status_code=404, detail="Crawl job not found")
-    
+
     # Get failed pages
     failed_pages = db.query(FailedPage).filter_by(crawl_job_id=job_id).all()
-    
+
     return [
         {
             "id": page.id,
@@ -343,13 +343,13 @@ async def recrawl_job(job_id: str, request: RecrawlJobRequest | None = None) -> 
         request: Optional request body with specific URLs to recrawl
     """
     crawl_manager = CrawlManager()
-    
+
     # Extract specific URLs if provided
     specific_urls = None
     if request and request.urls:
         specific_urls = request.urls
         logger.info(f"Recrawling job {job_id} with {len(specific_urls)} specific URLs")
-    
+
     new_job_id = await crawl_manager.retry_failed_pages(job_id, specific_urls=specific_urls)
 
     if not new_job_id:

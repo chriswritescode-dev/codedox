@@ -89,7 +89,7 @@ class ProgressTracker:
                 except asyncio.CancelledError:
                     pass
             del self._heartbeat_tasks[job_id]
-        
+
         # Clean up tracking info
         if job_id in self._tracking_info:
             del self._tracking_info[job_id]

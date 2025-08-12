@@ -261,6 +261,28 @@ class APIClient {
     })
   }
 
+  async deleteFilteredSources(params: {
+    min_snippets?: number
+    max_snippets?: number
+    query?: string
+  }): Promise<{ message: string; deleted_count: number }> {
+    return this.fetch<{ message: string; deleted_count: number }>('/sources/bulk/delete-filtered', {
+      method: 'POST',
+      body: JSON.stringify(params),
+    })
+  }
+
+  async countFilteredSources(params: {
+    min_snippets?: number
+    max_snippets?: number
+    query?: string
+  }): Promise<{ count: number; filters: { min_snippets?: number; max_snippets?: number; query?: string } }> {
+    return this.fetch<{ count: number; filters: { min_snippets?: number; max_snippets?: number; query?: string } }>('/sources/bulk/count-filtered', {
+      method: 'POST',
+      body: JSON.stringify(params),
+    })
+  }
+
   async deleteMatches(sourceId: string, params: { query?: string; language?: string } = {}): Promise<{ deleted_count: number; source_id: string; source_name: string }> {
     return this.fetch<{ deleted_count: number; source_id: string; source_name: string }>(`/snippets/sources/${sourceId}/delete-matches`, {
       method: 'POST',

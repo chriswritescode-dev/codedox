@@ -175,7 +175,7 @@ class CodeFormatter:
 
         # Check for problematic XML-like content (pytest output)
         if language in ["xml", "html"] and self._is_pytest_xml_output(code):
-            logger.warning(f"Skipping Prettier formatting for pytest XML-like output")
+            logger.warning("Skipping Prettier formatting for pytest XML-like output")
             return code
 
         # Map language to Prettier parser
@@ -533,10 +533,10 @@ class CodeFormatter:
         try:
             result = subprocess.run(
                 [
-                    self.prettier_path, 
-                    "--config", 
-                    config_path, 
-                    "--parser", 
+                    self.prettier_path,
+                    "--config",
+                    config_path,
+                    "--parser",
                     parser,
                     "--stdin-filepath",
                     f"code.{extension}",
@@ -649,19 +649,19 @@ class CodeFormatter:
             r'<Class\s+[^>]*(?<!/)>',  # <Class name> without closing
             r'<Item\s+[^>]*(?<!/)>',  # <Item name> without closing
         ]
-        
+
         for pattern in pytest_patterns:
             if re.search(pattern, code):
                 return True
-        
+
         # Also check for multiple unclosed tags
         open_tags = re.findall(r'<(\w+)[^>]*(?<!/)>', code)
         close_tags = re.findall(r'</(\w+)>', code)
-        
+
         # If there are significantly more open tags than close tags, it's likely pytest output
         if len(open_tags) > 2 and len(open_tags) > len(close_tags) * 2:
             return True
-            
+
         return False
 
     def format_with_info(self, code: str, language: str | None = None) -> dict[str, Any]:

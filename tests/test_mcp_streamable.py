@@ -1,6 +1,7 @@
 """Tests for MCP Streamable HTTP Transport."""
 
 import json
+
 import pytest
 from fastapi.testclient import TestClient
 
@@ -37,7 +38,7 @@ def test_mcp_streamable_initialize_json(client):
             }
         }
     }
-    
+
     # Request JSON response by putting application/json first
     response = client.post(
         "/mcp",
@@ -47,10 +48,10 @@ def test_mcp_streamable_initialize_json(client):
             "Content-Type": "application/json"
         }
     )
-    
+
     assert response.status_code == 200
     assert "application/json" in response.headers.get("content-type", "")
-    
+
     result = response.json()
     assert result["jsonrpc"] == "2.0"
     assert result["id"] == "1"
@@ -74,7 +75,7 @@ def test_mcp_streamable_initialize_sse(client):
             }
         }
     }
-    
+
     # Request SSE response by putting text/event-stream first
     response = client.post(
         "/mcp",
@@ -84,14 +85,14 @@ def test_mcp_streamable_initialize_sse(client):
             "Content-Type": "application/json"
         }
     )
-    
+
     assert response.status_code == 200
     assert "text/event-stream" in response.headers.get("content-type", "")
-    
+
     # Parse SSE response
     content = response.content.decode()
     result = parse_sse_response(content)
-    
+
     assert result["jsonrpc"] == "2.0"
     assert result["id"] == "1"
     assert "result" in result
@@ -107,7 +108,7 @@ def test_mcp_streamable_tools_list_json(client):
         "method": "tools/list",
         "params": {}
     }
-    
+
     response = client.post(
         "/mcp",
         json=tools_request,
@@ -116,19 +117,19 @@ def test_mcp_streamable_tools_list_json(client):
             "Content-Type": "application/json"
         }
     )
-    
+
     assert response.status_code == 200
     assert "application/json" in response.headers.get("content-type", "")
-    
+
     result = response.json()
     assert result["jsonrpc"] == "2.0"
     assert result["id"] == "2"
     assert "result" in result
     assert "tools" in result["result"]
-    
+
     tools = result["result"]["tools"]
     tool_names = [tool["name"] for tool in tools]
-    
+
     assert "init_crawl" in tool_names
     assert "search_libraries" in tool_names
     assert "get_content" in tool_names
@@ -142,7 +143,7 @@ def test_mcp_streamable_tools_list_sse(client):
         "method": "tools/list",
         "params": {}
     }
-    
+
     response = client.post(
         "/mcp",
         json=tools_request,
@@ -151,22 +152,22 @@ def test_mcp_streamable_tools_list_sse(client):
             "Content-Type": "application/json"
         }
     )
-    
+
     assert response.status_code == 200
     assert "text/event-stream" in response.headers.get("content-type", "")
-    
+
     # Parse SSE response
     content = response.content.decode()
     result = parse_sse_response(content)
-    
+
     assert result["jsonrpc"] == "2.0"
     assert result["id"] == "2"
     assert "result" in result
     assert "tools" in result["result"]
-    
+
     tools = result["result"]["tools"]
     tool_names = [tool["name"] for tool in tools]
-    
+
     assert "init_crawl" in tool_names
     assert "search_libraries" in tool_names
     assert "get_content" in tool_names
@@ -192,7 +193,7 @@ def test_mcp_streamable_batch_request_json(client):
             "params": {}
         }
     ]
-    
+
     response = client.post(
         "/mcp",
         json=batch_request,
@@ -201,10 +202,10 @@ def test_mcp_streamable_batch_request_json(client):
             "Content-Type": "application/json"
         }
     )
-    
+
     assert response.status_code == 200
     assert "application/json" in response.headers.get("content-type", "")
-    
+
     results = response.json()
     assert len(results) == 2
     assert all(result["jsonrpc"] == "2.0" for result in results)
@@ -232,7 +233,7 @@ def test_mcp_streamable_batch_request_sse(client):
             "params": {}
         }
     ]
-    
+
     response = client.post(
         "/mcp",
         json=batch_request,
@@ -241,19 +242,19 @@ def test_mcp_streamable_batch_request_sse(client):
             "Content-Type": "application/json"
         }
     )
-    
+
     assert response.status_code == 200
     assert "text/event-stream" in response.headers.get("content-type", "")
-    
+
     # Parse SSE response - should contain multiple events
     content = response.content.decode()
     lines = content.strip().split('\n')
-    
+
     results = []
     for line in lines:
         if line.startswith('data: {'):
             results.append(json.loads(line[6:]))
-    
+
     assert len(results) == 2
     assert all(result["jsonrpc"] == "2.0" for result in results)
     assert results[0]["id"] == "1"
@@ -268,7 +269,7 @@ def test_mcp_streamable_invalid_accept_header(client):
         "method": "initialize",
         "params": {}
     }
-    
+
     response = client.post(
         "/mcp",
         json=init_request,
@@ -277,7 +278,7 @@ def test_mcp_streamable_invalid_accept_header(client):
             "Content-Type": "application/json"
         }
     )
-    
+
     assert response.status_code == 406
 
 
@@ -291,7 +292,7 @@ def test_mcp_streamable_invalid_json(client):
             "Content-Type": "application/json"
         }
     )
-    
+
     assert response.status_code == 400
 
 
@@ -302,7 +303,7 @@ def test_mcp_streamable_notification(client):
         "method": "notifications/initialized",
         "params": {}
     }
-    
+
     response = client.post(
         "/mcp",
         json=notification,
@@ -311,7 +312,7 @@ def test_mcp_streamable_notification(client):
             "Content-Type": "application/json"
         }
     )
-    
+
     # Notifications should return 202 Accepted with no content
     assert response.status_code == 202
 
@@ -324,7 +325,7 @@ def test_mcp_streamable_unknown_method(client):
         "method": "unknown/method",
         "params": {}
     }
-    
+
     response = client.post(
         "/mcp",
         json=unknown_request,
@@ -333,10 +334,10 @@ def test_mcp_streamable_unknown_method(client):
             "Content-Type": "application/json"
         }
     )
-    
+
     assert response.status_code == 200
     result = response.json()
-    
+
     assert result["jsonrpc"] == "2.0"
     assert result["id"] == "3"
     assert "error" in result
@@ -356,7 +357,7 @@ def test_mcp_streamable_session_handling(client):
             "clientInfo": {"name": "test", "version": "1.0"}
         }
     }
-    
+
     response = client.post(
         "/mcp",
         json=init_request,
@@ -366,7 +367,7 @@ def test_mcp_streamable_session_handling(client):
             "Mcp-Session-Id": "test-session-123"
         }
     )
-    
+
     assert response.status_code == 200
     result = response.json()
     assert result["jsonrpc"] == "2.0"
@@ -387,7 +388,7 @@ def test_mcp_streamable_prefixed_tool_name(client):
             "clientInfo": {"name": "test", "version": "1.0"}
         }
     }
-    
+
     response = client.post(
         "/mcp",
         json=init_request,
@@ -397,7 +398,7 @@ def test_mcp_streamable_prefixed_tool_name(client):
         }
     )
     assert response.status_code == 200
-    
+
     # Now test prefixed tool call
     tool_request = {
         "jsonrpc": "2.0",
@@ -411,7 +412,7 @@ def test_mcp_streamable_prefixed_tool_name(client):
             }
         }
     }
-    
+
     response = client.post(
         "/mcp",
         json=tool_request,
@@ -420,15 +421,15 @@ def test_mcp_streamable_prefixed_tool_name(client):
             "Content-Type": "application/json"
         }
     )
-    
+
     assert response.status_code == 200
     result = response.json()
     assert result["jsonrpc"] == "2.0"
     assert result["id"] == "2"
-    
+
     # Should have result (tool extracted correctly) or error with details
     assert "result" in result or "error" in result
-    
+
     # If error, it should have meaningful details
     if "error" in result:
         assert "message" in result["error"]

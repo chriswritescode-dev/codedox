@@ -1,7 +1,6 @@
 """Domain utilities for crawl job management."""
 
 from urllib.parse import urlparse
-from typing import Optional, List
 
 
 def extract_domain(url: str) -> str:
@@ -24,7 +23,7 @@ def extract_domain(url: str) -> str:
                 url = f"https://{url}"
             else:
                 raise ValueError(f"Invalid URL format: {url}")
-        
+
         parsed = urlparse(url)
         if not parsed.netloc:
             raise ValueError(f"Invalid URL or no domain found: {url}")
@@ -33,7 +32,7 @@ def extract_domain(url: str) -> str:
         raise ValueError(f"Failed to parse URL '{url}': {e}")
 
 
-def extract_domains_from_urls(urls: List[str]) -> List[str]:
+def extract_domains_from_urls(urls: list[str]) -> list[str]:
     """Extract unique domains from a list of URLs.
     
     Args:
@@ -54,7 +53,7 @@ def extract_domains_from_urls(urls: List[str]) -> List[str]:
     return domains
 
 
-def get_primary_domain(start_urls: List[str]) -> Optional[str]:
+def get_primary_domain(start_urls: list[str]) -> str | None:
     """Get the primary domain from start URLs.
     
     Args:
