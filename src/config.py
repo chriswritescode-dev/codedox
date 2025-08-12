@@ -128,6 +128,10 @@ class CodeExtractionConfig(BaseSettings):
         default=1000,
         description="Maximum characters of context to extract around code blocks"
     )
+    disable_formatting: bool = Field(
+        default=False,
+        description="Disable code formatting when set to true"
+    )
 
 
 class SearchConfig(BaseSettings):

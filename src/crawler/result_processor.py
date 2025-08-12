@@ -651,8 +651,15 @@ If you cannot determine the name, respond with "UNKNOWN"."""
 
         # Format all blocks concurrently
         if blocks_to_format:
+            # Check if formatting is disabled
+            if self.settings.code_extraction.disable_formatting:
+                logger.info("Code formatting disabled - preserving original code")
+                # Skip formatting, just copy content as-is
+                for block in blocks_to_format:
+                    block['formatted_content'] = block['content']
+                formatted_blocks = blocks_to_format
             # Add safety check for excessive blocks
-            if len(blocks_to_format) > 100:
+            elif len(blocks_to_format) > 100:
                 logger.warning(f"Skipping formatting for {len(blocks_to_format)} blocks (exceeds safety limit of 100)")
                 # Skip formatting, just copy content as-is
                 for block in blocks_to_format:
