@@ -1,13 +1,13 @@
 """MCP (Model Context Protocol) server implementation."""
 
 import asyncio
-import logging
 import json
-from typing import Dict, Any, List
+import logging
 from datetime import datetime
+from typing import Any
 
 from mcp.server import Server
-from mcp.types import Tool, TextContent
+from mcp.types import TextContent, Tool
 
 from ..config import get_settings
 from ..database import get_db_manager
@@ -22,20 +22,20 @@ class MCPServer:
 
     def __init__(self) -> None:
         """Initialize the MCP server."""
-        self.server = Server("codedox")
+        self.server: Server = Server("codedox")
         self.db_manager = get_db_manager()
         self.tools = MCPTools()
-        self._tool_definitions = []
+        self._tool_definitions: list[Tool] = []
         self._register_handlers()
 
-    def get_tool_definitions(self) -> List[Dict[str, Any]]:
+    def get_tool_definitions(self) -> list[dict[str, Any]]:
         """Get tool definitions in a format suitable for HTTP API."""
         return [
             {"name": tool.name, "description": tool.description, "input_schema": tool.inputSchema}
             for tool in self._tool_definitions
         ]
 
-    async def execute_tool(self, name: str, arguments: Dict[str, Any]) -> Any:
+    async def execute_tool(self, name: str, arguments: dict[str, Any]) -> Any:
         """Execute a tool by name with given arguments."""
         logger.debug(f"MCPServer.execute_tool called with name='{name}', arguments={arguments}")
 
@@ -50,7 +50,7 @@ class MCPServer:
             )
         elif name == "search_libraries":
             return await self.tools.search_libraries(
-                query=arguments.get("query", ""), 
+                query=arguments.get("query", ""),
                 limit=arguments.get("limit", 20),
                 page=arguments.get("page", 1)
             )
@@ -217,12 +217,12 @@ class MCPServer:
         ]
 
         @self.server.list_tools()
-        async def list_tools() -> List[Tool]:
+        async def list_tools() -> list[Tool]:
             """List available MCP tools."""
             return self._tool_definitions
 
         @self.server.call_tool()
-        async def call_tool(name: str, arguments: Dict[str, Any]) -> List[TextContent]:
+        async def call_tool(name: str, arguments: dict[str, Any]) -> list[TextContent]:
             """Execute a tool and return results."""
             try:
                 result = await self.execute_tool(name, arguments)
@@ -274,7 +274,7 @@ def main() -> None:
         logger.error("Failed to connect to database. Please ensure PostgreSQL is running and the database exists.")
         logger.error("Run 'python cli.py init' to initialize the database.")
         raise RuntimeError("Database connection failed")
-    
+
     # Start server
     server = MCPServer()
     server.run()

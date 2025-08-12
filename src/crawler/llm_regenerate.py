@@ -2,18 +2,17 @@
 
 import asyncio
 import logging
-from typing import List, Optional, Dict, Any, Callable
+from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import datetime
+from typing import Any
 
-import openai
 from sqlalchemy.orm import Session
 
-from .llm_retry import LLMDescriptionGenerator
+from ..database import CodeSnippet, CrawlJob, Document
 from .extraction_models import TITLE_AND_DESCRIPTION_PROMPT
 from .language_mapping import normalize_language
-from ..database import CodeSnippet, Document, CrawlJob
-from ..config import get_settings
+from .llm_retry import LLMDescriptionGenerator
 
 logger = logging.getLogger(__name__)
 
@@ -25,9 +24,9 @@ class RegenerationProgress:
     processed_snippets: int
     changed_snippets: int
     failed_snippets: int
-    current_snippet: Optional[str] = None
-    error: Optional[str] = None
-    
+    current_snippet: str | None = None
+    error: str | None = None
+
     @property
     def percentage(self) -> float:
         """Get completion percentage."""
@@ -40,13 +39,13 @@ class RegenerationProgress:
 class SnippetChange:
     """Represents a change to a snippet."""
     snippet_id: int
-    original_title: Optional[str]
-    original_description: Optional[str]
-    original_language: Optional[str]
-    new_title: Optional[str]
-    new_description: Optional[str]
-    new_language: Optional[str]
-    
+    original_title: str | None
+    original_description: str | None
+    original_language: str | None
+    new_title: str | None
+    new_description: str | None
+    new_language: str | None
+
     @property
     def has_changes(self) -> bool:
         """Check if any changes were made."""
@@ -59,8 +58,8 @@ class SnippetChange:
 
 class LLMRegenerator(LLMDescriptionGenerator):
     """Handles regeneration of snippet metadata using LLM."""
-    
-    def __init__(self, model: Optional[str] = None, custom_prompt: Optional[str] = None):
+
+    def __init__(self, model: str | None = None, custom_prompt: str | None = None):
         """Initialize regenerator with optional custom model and prompt.
         
         Args:
@@ -70,15 +69,15 @@ class LLMRegenerator(LLMDescriptionGenerator):
         super().__init__()
         self.model = model or self.settings.code_extraction.llm_extraction_model
         self.custom_prompt = custom_prompt or TITLE_AND_DESCRIPTION_PROMPT
-        
+
     async def regenerate_source_metadata(
         self,
         session: Session,
         source_id: str,
         preview_only: bool = True,
-        progress_callback: Optional[Callable[[RegenerationProgress], None]] = None,
+        progress_callback: Callable[[RegenerationProgress], None] | None = None,
         max_concurrent: int = 5
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """Regenerate metadata for all snippets in a source.
         
         Args:
@@ -95,7 +94,7 @@ class LLMRegenerator(LLMDescriptionGenerator):
         source = session.query(CrawlJob).filter_by(id=source_id).first()
         if not source:
             raise ValueError(f"Source {source_id} not found")
-        
+
         # Get all snippets for the source
         snippets = (
             session.query(CodeSnippet)
@@ -103,7 +102,7 @@ class LLMRegenerator(LLMDescriptionGenerator):
             .filter(Document.crawl_job_id == source_id)
             .all()
         )
-        
+
         if not snippets:
             return {
                 "source_id": source_id,
@@ -114,7 +113,7 @@ class LLMRegenerator(LLMDescriptionGenerator):
                 "preview": [],
                 "error": "No snippets found for this source"
             }
-        
+
         # Initialize progress
         progress = RegenerationProgress(
             total_snippets=len(snippets),
@@ -122,32 +121,32 @@ class LLMRegenerator(LLMDescriptionGenerator):
             changed_snippets=0,
             failed_snippets=0
         )
-        
+
         # Process snippets
-        changes: List[SnippetChange] = []
+        changes: list[SnippetChange] = []
         semaphore = asyncio.Semaphore(max_concurrent)
-        
-        async def process_snippet(snippet: CodeSnippet) -> Optional[SnippetChange]:
+
+        async def process_snippet(snippet: CodeSnippet) -> SnippetChange | None:
             async with semaphore:
                 try:
                     # Update progress
                     progress.current_snippet = snippet.title or f"Snippet {snippet.id}"
                     if progress_callback:
                         progress_callback(progress)
-                    
+
                     # Generate new metadata
                     change = await self._regenerate_snippet_metadata(snippet)
-                    
+
                     # Update progress
                     progress.processed_snippets += 1
                     if change and change.has_changes:
                         progress.changed_snippets += 1
-                    
+
                     if progress_callback:
                         progress_callback(progress)
-                    
+
                     return change
-                    
+
                 except Exception as e:
                     logger.error(f"Failed to regenerate snippet {snippet.id}: {e}")
                     progress.processed_snippets += 1
@@ -155,14 +154,14 @@ class LLMRegenerator(LLMDescriptionGenerator):
                     if progress_callback:
                         progress_callback(progress)
                     return None
-        
+
         # Process all snippets concurrently
         tasks = [process_snippet(snippet) for snippet in snippets]
         results = await asyncio.gather(*tasks)
-        
+
         # Filter out None results and collect changes
         changes = [r for r in results if r is not None]
-        
+
         # Apply changes if not preview only
         if not preview_only and changes:
             for change in changes:
@@ -176,9 +175,9 @@ class LLMRegenerator(LLMDescriptionGenerator):
                         if change.new_language is not None:
                             snippet.language = change.new_language
                         snippet.updated_at = datetime.utcnow()
-            
+
             session.commit()
-        
+
         # Prepare preview (first 10 changes)
         preview_changes = [
             {
@@ -197,7 +196,7 @@ class LLMRegenerator(LLMDescriptionGenerator):
             for change in changes[:10]
             if change.has_changes
         ]
-        
+
         return {
             "source_id": source_id,
             "source_name": source.name,
@@ -208,8 +207,8 @@ class LLMRegenerator(LLMDescriptionGenerator):
             "preview": preview_changes,
             "preview_only": preview_only
         }
-    
-    async def _regenerate_snippet_metadata(self, snippet: CodeSnippet) -> Optional[SnippetChange]:
+
+    async def _regenerate_snippet_metadata(self, snippet: CodeSnippet) -> SnippetChange | None:
         """Regenerate metadata for a single snippet.
         
         Args:
@@ -221,7 +220,7 @@ class LLMRegenerator(LLMDescriptionGenerator):
         if not self.client:
             logger.error("LLM client not initialized")
             return None
-        
+
         # Build context
         context_parts = []
         if snippet.context_before:
@@ -230,9 +229,9 @@ class LLMRegenerator(LLMDescriptionGenerator):
             context_parts.append(snippet.context_after)
         if snippet.section_title:
             context_parts.append(f"Section: {snippet.section_title}")
-        
+
         context = " ".join(context_parts) if context_parts else "No additional context available"
-        
+
         # Create the prompt
         prompt = self.custom_prompt.replace(
             "{url}", snippet.source_url or snippet.document.url
@@ -241,7 +240,7 @@ class LLMRegenerator(LLMDescriptionGenerator):
         ).replace(
             "{code}", snippet.code_content[:2000]
         )
-        
+
         try:
             # Make LLM call
             response = await self.client.chat.completions.create(
@@ -250,14 +249,14 @@ class LLMRegenerator(LLMDescriptionGenerator):
                 temperature=0.1,
                 max_tokens=200
             )
-            
+
             # Parse response
             content = response.choices[0].message.content.strip()
-            
+
             language = None
             title = None
             description = None
-            
+
             for line in content.split('\n'):
                 line = line.strip()
                 if line.startswith("LANGUAGE:"):
@@ -266,7 +265,7 @@ class LLMRegenerator(LLMDescriptionGenerator):
                     title = line[6:].strip()
                 elif line.startswith("DESCRIPTION:"):
                     description = line[12:].strip()
-            
+
             # Create change object
             return SnippetChange(
                 snippet_id=snippet.id,
@@ -277,7 +276,7 @@ class LLMRegenerator(LLMDescriptionGenerator):
                 new_description=description,
                 new_language=language
             )
-            
+
         except Exception as e:
             logger.error(f"LLM regeneration error for snippet {snippet.id}: {e}")
             return None

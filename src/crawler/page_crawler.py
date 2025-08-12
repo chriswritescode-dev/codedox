@@ -313,7 +313,7 @@ class PageCrawler:
             List of CrawlResult objects
         """
         logger.info(f"Starting multi-URL crawl for {len(urls)} URLs with job_id: {job_id}")
-        
+
         # Get API key for LLM extraction
         api_key = None
         if self.settings.code_extraction.llm_api_key:
@@ -325,21 +325,21 @@ class PageCrawler:
 
         # Get user agent from settings
         user_agent = self.settings.crawling.user_agent
-        
+
         all_results = []
-        
+
         try:
             async with AsyncWebCrawler(config=self.browser_config) as crawler:
                 # Configure rate limiter and dispatcher for multi-URL crawling
                 max_concurrent = job_config.get("max_concurrent_crawls", get_settings().crawling.max_concurrent_crawls) if job_config else get_settings().crawling.max_concurrent_crawls
-                
+
                 rate_limiter = RateLimiter(base_delay=(1.0, 2.0), max_delay=30.0, max_retries=4)
                 dispatcher = SemaphoreDispatcher(
                     semaphore_count=5,
                     max_session_permit=max_concurrent,
                     rate_limiter=rate_limiter,
                 )
-                
+
                 # Create crawler config for single page crawls (max_depth=0)
                 crawler_run_config = create_crawler_config(
                     max_depth=0,
@@ -349,15 +349,15 @@ class PageCrawler:
                     user_agent=user_agent,
                     max_pages=job_config.get("max_pages") if job_config else None,
                 )
-                
+
                 # Create queues for parallel processing
                 extraction_queue = asyncio.Queue()
                 processed_results = asyncio.Queue()
-                
+
                 # Start extraction workers
                 llm_parallel_limit = int(os.getenv('CODE_LLM_NUM_PARALLEL', '5'))
                 extraction_semaphore = asyncio.Semaphore(llm_parallel_limit)
-                
+
                 workers = []
                 for i in range(llm_parallel_limit):
                     worker = asyncio.create_task(
@@ -372,7 +372,7 @@ class PageCrawler:
                         )
                     )
                     workers.append(worker)
-                
+
                 # Track progress
                 crawl_progress = {
                     'crawled_count': 0,
@@ -381,44 +381,44 @@ class PageCrawler:
                     'snippets_extracted': 0,
                     'base_snippet_count': job_config.get('base_snippet_count', 0) if job_config else 0
                 }
-                
+
                 # Result collector task
                 collector_task = asyncio.create_task(
                     self._collect_results(processed_results, all_results, crawl_progress, progress_tracker, job_id)
                 )
-                
+
                 try:
                     # Use arun_many for efficient multi-URL crawling
                     logger.info(f"Starting crawler.arun_many for {len(urls)} URLs")
-                    
-                   
-                    
+
+
+
                     # Enable streaming in the config
                     crawler_run_config.stream = True
-                    
+
                     # arun_many returns either an async generator (when streaming) or a container
                     logger.info("Calling arun_many with dispatcher...")
                     results = await crawler.arun_many(urls, config=crawler_run_config)
                     logger.info("arun_many completed successfully")
-                    
+
                     # Check if results is iterable
                     logger.info(f"Results type: {type(results)}")
                     logger.info(f"Results has __aiter__: {hasattr(results, '__aiter__')}")
-                    
+
                     # Since we enabled streaming, we can iterate directly
                     logger.info("Starting to iterate over results...")
                     async for result in results:
                         crawl_progress['crawled_count'] += 1
-                        
+
                         # Check if job is cancelled periodically
                         if crawl_progress['crawled_count'] % 5 == 0:
                             if await self._is_job_cancelled(job_id):
                                 logger.info(f"Crawl job {job_id} is cancelled - stopping crawl")
                                 raise asyncio.CancelledError("Job cancelled by user")
-                        
+
                         # Queue result for extraction
                         await extraction_queue.put(result)
-                        
+
                         # Send progress update
                         if progress_tracker and crawl_progress['crawled_count'] % 3 == 0:
                             await progress_tracker.update_progress(
@@ -429,18 +429,18 @@ class PageCrawler:
                                 snippets_extracted=crawl_progress['base_snippet_count'] + crawl_progress['snippets_extracted'],
                                 send_notification=True
                             )
-                    
+
                     # Signal workers to stop
                     for _ in workers:
                         await extraction_queue.put(None)
-                    
+
                     # Wait for all workers to complete
                     await asyncio.gather(*workers)
-                    
+
                     # Signal collector to stop
                     await processed_results.put(None)
                     await collector_task
-                    
+
                 finally:
                     # Cancel any remaining tasks
                     for worker in workers:
@@ -448,11 +448,11 @@ class PageCrawler:
                             worker.cancel()
                     if not collector_task.done():
                         collector_task.cancel()
-                
+
                 logger.info(f"Multi-URL crawl completed. Processed {crawl_progress['processed_count']} pages, extracted {crawl_progress['snippets_extracted']} snippets")
-                
+
                 return all_results if all_results else []
-                
+
         except asyncio.CancelledError as e:
             logger.info(f"Multi-URL crawl cancelled: {e}")
             raise
@@ -605,7 +605,7 @@ class PageCrawler:
         if not markdown_for_hash:
             logger.warning(f"No raw markdown content for content hash from {result.url}")
             return None
-        
+
         # Also get markdown for actual content (may be fit_markdown)
         markdown_content = self._extract_markdown_content(result)
         if not markdown_content:
@@ -621,7 +621,7 @@ class PageCrawler:
 
         # Calculate content hash from raw markdown for consistency
         content_hash = hashlib.md5(markdown_for_hash.encode("utf-8")).hexdigest()
-        
+
         if logger.isEnabledFor(logging.DEBUG):
             logger.debug(f"Content hash for {result.url}: {content_hash[:8]}... (using raw_markdown)")
 
@@ -847,11 +847,11 @@ class PageCrawler:
         if hasattr(result, "markdown") and result.markdown:
             if isinstance(result.markdown, dict):
                 raw_markdown = result.markdown.get("raw_markdown", "")
-                
+
                 # For hash calculation, always use raw_markdown
                 if for_hash:
                     return raw_markdown
-                
+
                 # For other uses, prefer fit_markdown
                 fit_markdown = result.markdown.get("fit_markdown")
                 if fit_markdown:

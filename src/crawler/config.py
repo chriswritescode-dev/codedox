@@ -1,14 +1,13 @@
 """Simplified crawler configuration."""
 
-from typing import Optional, List
 
 from crawl4ai import (
-    CrawlerRunConfig,
-    BrowserConfig,  
+    BrowserConfig,
     CacheMode,
+    CrawlerRunConfig,
 )
 from crawl4ai.deep_crawling import BFSDeepCrawlStrategy
-from crawl4ai.deep_crawling.filters import FilterChain, DomainFilter, URLPatternFilter
+from crawl4ai.deep_crawling.filters import DomainFilter, FilterChain, URLPatternFilter
 
 
 def create_browser_config(
@@ -22,21 +21,21 @@ def create_browser_config(
         headless=headless,
         viewport={"width": viewport_width, "height": viewport_height},
     )
-    
+
     # Set custom user agent if provided
     if user_agent:
         config.user_agent = user_agent
-    
+
     return config
 
 
 def create_crawler_config(
     max_depth: int = 0,
-    domain_restrictions: Optional[List[str]] = None,
-    include_patterns: Optional[List[str]] = None,
-    exclude_patterns: Optional[List[str]] = None,
-    user_agent: Optional[str] = None,
-    max_pages: Optional[int] = None,
+    domain_restrictions: list[str] | None = None,
+    include_patterns: list[str] | None = None,
+    exclude_patterns: list[str] | None = None,
+    user_agent: str | None = None,
+    max_pages: int | None = None,
 ) -> CrawlerRunConfig:
     """Create unified crawler configuration for both single page and deep crawl.
     
@@ -52,7 +51,7 @@ def create_crawler_config(
         Configured CrawlerRunConfig instance
     """
     config_dict = {
-        
+
         "wait_until": "networkidle",
         "page_timeout": 60000,
         "cache_mode": CacheMode.BYPASS,
@@ -60,7 +59,7 @@ def create_crawler_config(
         "verbose": True,
         "exclude_external_links": True,
     }
-    
+
     # Add custom user agent if provided
     if user_agent:
         config_dict["user_agent"] = user_agent
@@ -76,8 +75,8 @@ def create_crawler_config(
         if include_patterns:
             filters.append(
                 URLPatternFilter(
-                    patterns=include_patterns, 
-                    use_glob=True, 
+                    patterns=include_patterns,
+                    use_glob=True,
                     reverse=False
                 )
             )
@@ -85,8 +84,8 @@ def create_crawler_config(
         if exclude_patterns:
             filters.append(
                 URLPatternFilter(
-                    patterns=exclude_patterns, 
-                    use_glob=True, 
+                    patterns=exclude_patterns,
+                    use_glob=True,
                     reverse=True
                 )
             )
@@ -98,11 +97,11 @@ def create_crawler_config(
         }
         if max_pages is not None:
             strategy_kwargs["max_pages"] = max_pages
-        
+
         # Only add filter_chain if we have filters
         if filters:
             strategy_kwargs["filter_chain"] = FilterChain(filters)
-        
+
         config_dict["deep_crawl_strategy"] = BFSDeepCrawlStrategy(**strategy_kwargs)
 
     return CrawlerRunConfig(**config_dict)

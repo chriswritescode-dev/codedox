@@ -3,11 +3,9 @@
 import logging
 import sys
 from contextlib import asynccontextmanager
-from pathlib import Path
 
 from fastapi import Depends, FastAPI, HTTPException, WebSocket
 from fastapi.middleware.cors import CORSMiddleware
-
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
@@ -138,40 +136,41 @@ async def health_check_db(db: Session = Depends(get_db)):
 @app.get("/api/health/crawler")
 async def health_check_crawler():
     """Crawler health check endpoint with resource monitoring."""
+    import threading
+
+    import psutil
+
     from ..crawler import CrawlManager
     from ..database import get_db_manager
-    import psutil
-    import threading
-    
+
     crawl_manager = CrawlManager()
     db_manager = get_db_manager()
-    
+
     # Get active crawl tasks
     active_tasks = len([
         task for task in crawl_manager._active_crawl_tasks.values()
         if not task.done()
     ])
-    
+
     # Get thread pool status
     thread_count = threading.active_count()
-    
+
     # Get database pool status
     pool = db_manager.engine.pool
     pool_size = pool.size()
     pool_checked_out = pool.checked_out_connections()
     pool_overflow = pool.overflow()
-    
+
     # Get system memory usage
     process = psutil.Process()
     memory_info = process.memory_info()
     memory_percent = process.memory_percent()
-    
+
     # Get ResultProcessor thread pool status
-    from ..crawler.result_processor import ResultProcessor
     result_processor = crawl_manager.result_processor
     format_pool_active = result_processor.format_thread_pool._threads
     format_pool_queue_size = result_processor.format_thread_pool._work_queue.qsize()
-    
+
     return {
         "status": "healthy",
         "crawler": {

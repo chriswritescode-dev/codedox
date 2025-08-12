@@ -1,12 +1,9 @@
 """Tests for crawl job deletion endpoints."""
-import pytest
-import json
 from uuid import uuid4
-from fastapi import status
+
 from sqlalchemy.orm import Session
 
-from src.database.models import CrawlJob, Document, CodeSnippet
-from src.api.routes import router
+from src.database.models import CodeSnippet, CrawlJob, Document
 
 
 def test_delete_single_crawl_job_success(client, db: Session):
@@ -21,7 +18,7 @@ def test_delete_single_crawl_job_success(client, db: Session):
         snippets_extracted=10
     )
     db.add(job)
-    
+
     # Add a document
     doc = Document(
         crawl_job_id=job.id,
@@ -30,7 +27,7 @@ def test_delete_single_crawl_job_success(client, db: Session):
         content_type="html"
     )
     db.add(doc)
-    
+
     # Add a code snippet
     snippet = CodeSnippet(
         document_id=doc.id,
@@ -41,12 +38,12 @@ def test_delete_single_crawl_job_success(client, db: Session):
     )
     db.add(snippet)
     db.commit()
-    
+
     # Delete the job
     response = client.delete(f"/api/crawl-jobs/{job.id}")
     assert response.status_code == 200
     assert response.json()["message"] == "Crawl job deleted successfully"
-    
+
     # Verify job and related data are deleted
     assert db.query(CrawlJob).filter_by(id=job.id).first() is None
     assert db.query(Document).filter_by(crawl_job_id=job.id).first() is None
@@ -72,12 +69,12 @@ def test_delete_running_crawl_job_fails(client, db: Session):
     )
     db.add(job)
     db.commit()
-    
+
     # Try to delete the running job
     response = client.delete(f"/api/crawl-jobs/{job.id}")
     assert response.status_code == 400
     assert "Cannot delete job with status 'running'" in response.json()["detail"]
-    
+
     # Verify job still exists
     assert db.query(CrawlJob).filter_by(id=job.id).first() is not None
 
@@ -99,16 +96,16 @@ def test_bulk_delete_crawl_jobs_success(client, db: Session):
         )
         jobs.append(job)
         db.add(job)
-    
+
     db.commit()
-    
+
     # Bulk delete the jobs
     job_ids = [str(job.id) for job in jobs]
     response = client.request("DELETE", "/api/crawl-jobs/bulk", json=job_ids)
     assert response.status_code == 200
     assert response.json()["deleted_count"] == 3
     assert "Successfully deleted 3 job(s)" in response.json()["message"]
-    
+
     # Verify all jobs are deleted
     for job_id in job_ids:
         assert db.query(CrawlJob).filter_by(id=job_id).first() is None
@@ -138,7 +135,7 @@ def test_bulk_delete_mixed_statuses(client, db: Session):
     )
     pending_job = CrawlJob(
         id=uuid4(),
-        name="Running Job 2", 
+        name="Running Job 2",
         start_urls=["https://example.com"],
         status="running"
     )
@@ -149,19 +146,19 @@ def test_bulk_delete_mixed_statuses(client, db: Session):
         status="completed",
         error_message="Test error"
     )
-    
+
     db.add_all([completed_job, running_job, pending_job, failed_job])
     db.commit()
-    
+
     # Try to bulk delete all jobs
     job_ids = [str(job.id) for job in [completed_job, running_job, pending_job, failed_job]]
     response = client.request("DELETE", "/api/crawl-jobs/bulk", json=job_ids)
-    
+
     # Should only delete completed jobs (both completed_job and failed_job have status='completed')
     assert response.status_code == 200
     assert response.json()["deleted_count"] == 2
     assert "Successfully deleted 2 job(s)" in response.json()["message"]
-    
+
     # Verify only deletable jobs were deleted
     assert db.query(CrawlJob).filter_by(id=completed_job.id).first() is None
     assert db.query(CrawlJob).filter_by(id=failed_job.id).first() is None  # This also has status='completed'
@@ -187,7 +184,7 @@ def test_cascade_delete_documents_and_snippets(client, db: Session):
         status="completed"
     )
     db.add(job)
-    
+
     # Add multiple documents
     docs = []
     for i in range(3):
@@ -199,9 +196,9 @@ def test_cascade_delete_documents_and_snippets(client, db: Session):
         )
         docs.append(doc)
         db.add(doc)
-    
+
     db.flush()
-    
+
     # Add snippets to each document
     snippet_count = 0
     for doc in docs:
@@ -215,17 +212,17 @@ def test_cascade_delete_documents_and_snippets(client, db: Session):
             )
             db.add(snippet)
             snippet_count += 1
-    
+
     db.commit()
-    
+
     # Verify data exists
     assert db.query(Document).filter_by(crawl_job_id=job.id).count() == 3
     assert db.query(CodeSnippet).join(Document).filter(Document.crawl_job_id == job.id).count() == 6
-    
+
     # Delete the job
     response = client.delete(f"/api/crawl-jobs/{job.id}")
     assert response.status_code == 200
-    
+
     # Verify all related data is deleted
     assert db.query(CrawlJob).filter_by(id=job.id).first() is None
     assert db.query(Document).filter_by(crawl_job_id=job.id).count() == 0

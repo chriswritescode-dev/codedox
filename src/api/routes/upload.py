@@ -1,21 +1,20 @@
 """Upload routes for processing markdown files."""
 
 import hashlib
+import logging
 import re
 from datetime import datetime
-from typing import Dict, Any, Optional, List
+from typing import Any
 from uuid import uuid4
 
-from fastapi import APIRouter, HTTPException, Depends, UploadFile, File, Form
-from sqlalchemy.orm import Session
+from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
 from pydantic import BaseModel, Field
+from sqlalchemy.orm import Session
 
-from ...database import get_db
-from ...database.models import CrawlJob, Document, CodeSnippet
-from ...crawler.llm_retry import LLMDescriptionGenerator
 from ...crawler.extraction_models import SimpleCodeBlock
-
-import logging
+from ...crawler.llm_retry import LLMDescriptionGenerator
+from ...database import get_db
+from ...database.models import CodeSnippet, CrawlJob, Document
 
 logger = logging.getLogger(__name__)
 
@@ -27,10 +26,10 @@ class UploadMarkdownRequest(BaseModel):
 
     content: str = Field(..., description="Markdown content to process")
     name: str = Field(..., description="Name for this upload batch")
-    title: Optional[str] = Field(None, description="Optional title")
+    title: str | None = Field(None, description="Optional title")
 
 
-def extract_code_blocks_with_context(content: str, url: str) -> List[SimpleCodeBlock]:
+def extract_code_blocks_with_context(content: str, url: str) -> list[SimpleCodeBlock]:
     """Extract code blocks from markdown content with surrounding context."""
     code_blocks = []
     lines = content.split("\n")
@@ -76,7 +75,7 @@ def extract_code_blocks_with_context(content: str, url: str) -> List[SimpleCodeB
 @router.post("/markdown")
 async def upload_markdown(
     request: UploadMarkdownRequest, db: Session = Depends(get_db)
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """Upload and process markdown content."""
     try:
         # Create a crawl job for this upload
@@ -183,10 +182,10 @@ async def upload_markdown(
 @router.post("/file")
 async def upload_file(
     file: UploadFile = File(...),
-    name: Optional[str] = Form(None, description="Name for this upload batch"),
-    title: Optional[str] = Form(None, description="Optional title"),
+    name: str | None = Form(None, description="Name for this upload batch"),
+    title: str | None = Form(None, description="Optional title"),
     db: Session = Depends(get_db),
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """Upload a markdown file for processing."""
     try:
         # Check file type
@@ -220,11 +219,11 @@ async def upload_file(
 
 @router.post("/files")
 async def upload_files(
-    files: List[UploadFile] = File(...),
-    name: Optional[str] = Form(None),
-    title: Optional[str] = Form(None),
+    files: list[UploadFile] = File(...),
+    name: str | None = Form(None),
+    title: str | None = Form(None),
     db: Session = Depends(get_db),
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """Upload multiple markdown files and process them."""
     try:
         if not files:

@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useMemo } from 'react'
-import { useParams, Link, useNavigate } from 'react-router-dom'
+import { useParams, Link } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import { api } from '../lib/api'
 import { 
@@ -17,7 +17,6 @@ import { useDebounce } from '../hooks/useDebounce'
 
 export default function DocumentDetail() {
   const { sourceId, documentId } = useParams<{ sourceId: string; documentId: string }>()
-  const navigate = useNavigate()
   
   const [currentPage, setCurrentPage] = useState(1)
   const [searchQuery, setSearchQuery] = useState('')

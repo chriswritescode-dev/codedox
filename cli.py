@@ -1,17 +1,17 @@
 #!/usr/bin/env python
 """Command-line interface for CodeDox."""
 
-import click
 import asyncio
 import sys
-from typing import Optional
+
+import click
 from rich.console import Console
-from rich.table import Table
 from rich.progress import Progress, SpinnerColumn, TextColumn
+from rich.table import Table
 
 from src.config import get_settings
-from src.database import init_db, get_db_manager
-from src.crawler import CrawlManager, CrawlConfig
+from src.crawler import CrawlManager
+from src.database import get_db_manager, init_db
 from src.mcp_server import MCPTools
 
 console = Console()
@@ -46,19 +46,19 @@ def crawl():
 @click.option('--domain', help='Domain restriction pattern')
 @click.option('--url-patterns', multiple=True, help='URL patterns to include (e.g., "*docs*", "*guide*")')
 @click.option('--concurrent', default=None, help='Maximum concurrent crawl sessions (default: from config)')
-def crawl_start(name: str, urls: tuple, depth: int, domain: Optional[str], url_patterns: tuple, 
+def crawl_start(name: str, urls: tuple, depth: int, domain: str | None, url_patterns: tuple,
                 concurrent: int):
     """Start a new crawl job."""
     async def run_crawl():
         tools = MCPTools()
-        
+
         with Progress(
             SpinnerColumn(),
             TextColumn("[progress.description]{task.description}"),
             console=console
         ) as progress:
             task = progress.add_task(f"Starting crawl job '{name}'...", total=None)
-            
+
             result = await tools.init_crawl(
                 name=name,
                 start_urls=list(urls),
@@ -67,18 +67,18 @@ def crawl_start(name: str, urls: tuple, depth: int, domain: Optional[str], url_p
                 url_patterns=list(url_patterns) if url_patterns else None,
                 max_concurrent_crawls=concurrent
             )
-            
+
             if "error" in result:
                 console.print(f"[red]Error:[/red] {result['error']}")
                 return
-            
-            console.print(f"[green]✓[/green] Crawl job started!")
+
+            console.print("[green]✓[/green] Crawl job started!")
             console.print(f"Job ID: [cyan]{result['job_id']}[/cyan]")
             console.print(f"URLs: {len(urls)}")
             console.print(f"Max depth: {depth}")
             if url_patterns:
                 console.print(f"URL patterns: {', '.join(url_patterns)}")
-    
+
     asyncio.run(run_crawl())
 
 
@@ -88,23 +88,23 @@ def crawl_list():
     async def list_sources():
         from src.database import get_db_manager
         from src.database.models import CrawlJob
-        
+
         db_manager = get_db_manager()
-        
+
         with db_manager.get_session() as session:
             jobs = session.query(CrawlJob).order_by(CrawlJob.created_at.desc()).all()
-            
+
             if not jobs:
                 console.print("No crawl jobs found.")
                 return
-            
+
             table = Table(title="Crawl Jobs")
             table.add_column("Name", style="cyan")
             table.add_column("Status", style="green")
             table.add_column("Snippets", justify="right")
             table.add_column("Pages", justify="right")
             table.add_column("Last Update")
-            
+
             for job in jobs:
                 table.add_row(
                     job.name,
@@ -113,9 +113,9 @@ def crawl_list():
                     str(job.processed_pages or 0),
                     job.updated_at.strftime('%Y-%m-%d %H:%M:%S') if job.updated_at else 'Never'
                 )
-            
+
             console.print(table)
-    
+
     asyncio.run(list_sources())
 
 
@@ -124,20 +124,20 @@ def crawl_list():
 @click.option('--source', help='Optional library/source name filter')
 @click.option('--lang', help='Filter by language')
 @click.option('--limit', default=10, help='Maximum results')
-def search(query: str, source: Optional[str], lang: Optional[str], limit: int):
+def search(query: str, source: str | None, lang: str | None, limit: int):
     """Search for code snippets."""
     async def run_search():
         tools = MCPTools()
-        
+
         with console.status("[bold green]Searching..."):
             results = await tools.get_content(
                 library_id=source or "",
                 query=query,
                 limit=limit
             )
-        
+
         console.print(results)
-    
+
     asyncio.run(run_search())
 
 
@@ -148,17 +148,17 @@ def crawl_status(job_id: str):
     async def check_status():
         tools = MCPTools()
         result = await tools.get_crawl_status(job_id)
-        
+
         if "error" in result:
             console.print(f"[red]Error:[/red] {result['error']}")
             return
-        
+
         console.print(f"[bold]Job:[/bold] {result['name']}")
         console.print(f"[bold]Status:[/bold] {result['status']}")
         console.print(f"[bold]Progress:[/bold] {result['progress']}")
         console.print(f"[bold]Pages:[/bold] {result['processed_pages']}/{result['total_pages']}")
         console.print(f"[bold]Snippets:[/bold] {result['snippets_extracted']}")
-    
+
     asyncio.run(check_status())
 
 
@@ -169,13 +169,13 @@ def crawl_cancel(job_id: str):
     async def cancel_job():
         tools = MCPTools()
         result = await tools.cancel_crawl(job_id)
-        
+
         if "error" in result:
             console.print(f"[red]Error:[/red] {result['error']}")
             return
-        
+
         console.print(f"[green]✓[/green] {result['message']}")
-    
+
     asyncio.run(cancel_job())
 
 
@@ -183,18 +183,19 @@ def crawl_cancel(job_id: str):
 @click.argument('file_path', type=click.Path(exists=True))
 @click.option('--source-url', help='Source URL for the content')
 @click.option('--name', help='Name for the uploaded content')
-def upload(file_path: str, source_url: Optional[str], name: Optional[str]):
+def upload(file_path: str, source_url: str | None, name: str | None):
     """Upload a markdown file for processing."""
     import os
-    from src.crawler import UploadProcessor, UploadConfig
-    
+
+    from src.crawler import UploadConfig, UploadProcessor
+
     async def run_upload():
-        with open(file_path, 'r', encoding='utf-8') as f:
+        with open(file_path, encoding='utf-8') as f:
             content = f.read()
-        
+
         final_source_url = source_url if source_url else f"file://{os.path.abspath(file_path)}"
         final_name = name if name else os.path.basename(file_path)
-        
+
         # Determine content type from extension
         content_type = 'markdown'
         if file_path.endswith('.rst'):
@@ -203,16 +204,16 @@ def upload(file_path: str, source_url: Optional[str], name: Optional[str]):
             content_type = 'asciidoc'
         elif file_path.endswith('.txt'):
             content_type = 'text'
-        
+
         processor = UploadProcessor()
-        
+
         with Progress(
             SpinnerColumn(),
             TextColumn("[progress.description]{task.description}"),
             console=console
         ) as progress:
             task = progress.add_task(f"Uploading '{final_name}'...", total=None)
-            
+
             config = UploadConfig(
                 name=final_name,
                 files=[{
@@ -225,29 +226,29 @@ def upload(file_path: str, source_url: Optional[str], name: Optional[str]):
                     'original_path': file_path
                 }
             )
-            
+
             job_id = await processor.process_upload(config)
-            
-            console.print(f"[green]✓[/green] Upload job started!")
+
+            console.print("[green]✓[/green] Upload job started!")
             console.print(f"Job ID: [cyan]{job_id}[/cyan]")
             console.print(f"File: {file_path}")
             console.print(f"Name: {name}")
-            
+
             # Wait for completion
             progress.update(task, description="Processing file...")
-            
+
             while True:
                 await asyncio.sleep(1)
                 status = processor.get_job_status(job_id)
                 if status and status['status'] in ['completed', 'failed']:
                     break
-            
+
             if status['status'] == 'completed':
-                console.print(f"[green]✓[/green] Processing completed!")
+                console.print("[green]✓[/green] Processing completed!")
                 console.print(f"Snippets extracted: {status.get('snippets_extracted', 0)}")
             else:
                 console.print(f"[red]✗[/red] Processing failed: {status.get('error_message', 'Unknown error')}")
-    
+
     asyncio.run(run_upload())
 
 
@@ -260,31 +261,31 @@ def upload(file_path: str, source_url: Optional[str], name: Optional[str]):
 @click.option('--unit', is_flag=True, help='Run unit tests only')
 @click.option('--integration', is_flag=True, help='Run integration tests only')
 @click.argument('pattern', required=False)
-def test(coverage: bool, verbose: bool, unit: bool, integration: bool, pattern: Optional[str]):
+def test(coverage: bool, verbose: bool, unit: bool, integration: bool, pattern: str | None):
     """Run the test suite."""
     import subprocess
-    
+
     cmd = ['pytest']
-    
+
     if coverage:
         cmd.extend(['--cov=src', '--cov-report=html', '--cov-report=term'])
         console.print("[bold green]Running tests with coverage...[/bold green]")
     else:
         console.print("[bold green]Running tests...[/bold green]")
-    
+
     if verbose:
         cmd.append('-vv')
-    
+
     if unit:
         cmd.extend(['-m', 'not integration'])
     elif integration:
         cmd.extend(['-m', 'integration'])
-    
+
     if pattern:
         cmd.extend(['-k', pattern])
-    
+
     cmd.append('tests/')
-    
+
     try:
         result = subprocess.run(cmd, check=True)
         if coverage:
@@ -302,13 +303,14 @@ def test(coverage: bool, verbose: bool, unit: bool, integration: bool, pattern: 
 @click.option('--mcp', is_flag=True, help='Start MCP stdio server only')
 def serve(api: bool, mcp: bool):
     """Start CodeDox services (default: API + Web UI)."""
-    import subprocess
     import concurrent.futures
-    import time
-    import signal
     import os
+    import signal
+    import subprocess
+    import time
+
     import uvicorn
-    
+
     # Handle MCP stdio server mode
     if mcp:
         from src.mcp_server import MCPServer
@@ -316,14 +318,14 @@ def serve(api: bool, mcp: bool):
         server = MCPServer()
         server.run()
         return
-    
+
     # Handle API-only mode
     if api:
         console.print("[bold green]Starting CodeDox API server...[/bold green]")
         console.print("API: http://0.0.0.0:8000")
         console.print("API Docs: http://0.0.0.0:8000/docs")
         console.print("MCP Tools: http://0.0.0.0:8000/mcp")
-        
+
         uvicorn.run(
             "src.api.main:app",
             host=settings.api.host,
@@ -331,14 +333,14 @@ def serve(api: bool, mcp: bool):
             reload=settings.debug
         )
         return
-    
+
     # Default: Start both API and Web UI
     console.print("[bold green]Starting CodeDox (API + Web UI)...[/bold green]")
     console.print("[dim]Press Ctrl+C to stop all services[/dim]\n")
 
     # Get API configuration to pass to frontend
     api_url = f"http://{settings.api.host}:{settings.api.port}"
-    
+
     # Store process references
     processes = []
 
@@ -355,18 +357,18 @@ def serve(api: bool, mcp: bool):
     def run_ui_server():
         """Run the UI development server."""
         frontend_dir = os.path.join(os.path.dirname(__file__), 'frontend')
-        
+
         # Check if node_modules exists
         if not os.path.exists(os.path.join(frontend_dir, 'node_modules')):
             console.print("[yellow]Installing frontend dependencies...[/yellow]")
             subprocess.run(['npm', 'install'], cwd=frontend_dir, check=True)
-        
+
         console.print("[blue]✓[/blue] Starting Web UI on http://0.0.0.0:5173")
-        
+
         # Set up environment variables for the UI
         process_env = os.environ.copy()
         process_env["VITE_API_PROXY_TARGET"] = api_url
-        
+
         process = subprocess.Popen(
             ['npm', 'run', 'dev'],
             cwd=frontend_dir,
@@ -394,17 +396,17 @@ def serve(api: bool, mcp: bool):
     with concurrent.futures.ThreadPoolExecutor(max_workers=2) as executor:
         # Start API server
         api_future = executor.submit(run_api_server)
-        
+
         # Give API a moment to start
         time.sleep(2)
-        
+
         # Start UI server
         ui_future = executor.submit(run_ui_server)
-        
+
         try:
             # Wait for any to finish (shouldn't happen unless there's an error)
             concurrent.futures.wait(
-                [api_future, ui_future], 
+                [api_future, ui_future],
                 return_when=concurrent.futures.FIRST_COMPLETED
             )
         except KeyboardInterrupt:

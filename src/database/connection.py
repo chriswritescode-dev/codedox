@@ -1,14 +1,14 @@
 """Database connection and session management."""
 
 import logging
+from collections.abc import Generator
 from contextlib import contextmanager
-from typing import Generator, Optional
 
 from sqlalchemy import create_engine, text
-from sqlalchemy.orm import sessionmaker, Session
+from sqlalchemy.orm import Session, sessionmaker
 
-from .models import Base
 from ..config import get_settings
+from .models import Base
 
 logger = logging.getLogger(__name__)
 
@@ -16,7 +16,7 @@ logger = logging.getLogger(__name__)
 class DatabaseManager:
     """Manages database connections and sessions."""
 
-    def __init__(self, database_url: Optional[str] = None):
+    def __init__(self, database_url: str | None = None):
         """Initialize database manager.
         
         Args:
@@ -67,7 +67,7 @@ class DatabaseManager:
                     AND table_name IN ('crawl_jobs', 'documents', 'code_snippets')
                 """))
                 table_count = result.scalar() or 0
-                
+
                 if table_count > 0 and not drop_existing:
                     logger.info(f"Database already initialized ({table_count} tables exist)")
                     return
@@ -75,7 +75,7 @@ class DatabaseManager:
             # Check if schema.sql exists
             import os
             schema_path = os.path.join(os.path.dirname(__file__), 'schema.sql')
-            
+
             if os.path.exists(schema_path):
                 if drop_existing:
                     logger.warning("Dropping existing tables...")
@@ -84,7 +84,7 @@ class DatabaseManager:
                         conn.execute(text("DROP TABLE IF EXISTS documents CASCADE"))
                         conn.execute(text("DROP TABLE IF EXISTS crawl_jobs CASCADE"))
                         conn.commit()
-                
+
                 logger.info("Using schema.sql for database initialization...")
                 self.execute_sql_file(schema_path)
             else:
@@ -126,7 +126,7 @@ class DatabaseManager:
         Args:
             filepath: Path to SQL file
         """
-        with open(filepath, 'r') as f:
+        with open(filepath) as f:
             sql_content = f.read()
 
         with self.engine.connect() as conn:
@@ -140,7 +140,7 @@ class DatabaseManager:
                 # Skip comments
                 if line.strip().startswith('--'):
                     continue
-                    
+
                 if 'CREATE OR REPLACE FUNCTION' in line or 'CREATE FUNCTION' in line:
                     in_function = True
                 elif 'GENERATED ALWAYS AS' in line:
@@ -188,7 +188,7 @@ class DatabaseManager:
 
 
 # Global database manager instance
-_db_manager: Optional[DatabaseManager] = None
+_db_manager: DatabaseManager | None = None
 
 
 def get_db_manager() -> DatabaseManager:

@@ -1,32 +1,38 @@
 """SQLAlchemy models for the code extraction database."""
 
 from datetime import datetime
-from typing import Dict, Any, List, TYPE_CHECKING
+from typing import Any
 from uuid import uuid4
+
 from sqlalchemy import (
-    Column, String, Integer, Text, DateTime, ForeignKey,
-    ARRAY, CheckConstraint, UniqueConstraint,
-    Index, func, Float
+    ARRAY,
+    CheckConstraint,
+    Column,
+    DateTime,
+    ForeignKey,
+    Index,
+    Integer,
+    String,
+    Text,
+    UniqueConstraint,
 )
-from sqlalchemy.dialects.postgresql import UUID, JSONB
-from sqlalchemy.orm import declarative_base
-from sqlalchemy.orm import relationship
-from sqlalchemy.sql import text
+from sqlalchemy.dialects.postgresql import JSONB, UUID
+from sqlalchemy.orm import declarative_base, relationship
 
 Base = declarative_base()
 
 
 class CrawlJob(Base):  # type: ignore[misc,valid-type]
     """Represents a crawling job with configuration and progress tracking."""
-    
+
     __tablename__ = 'crawl_jobs'
-    
+
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid4)
     name = Column(String, nullable=False)
     domain = Column(String, unique=True)
-    start_urls: Column[List[str]] = Column(ARRAY(Text), nullable=False)
+    start_urls: Column[list[str]] = Column(ARRAY(Text), nullable=False)
     max_depth = Column(Integer, default=1, nullable=False)
-    domain_restrictions: Column[List[str]] = Column(ARRAY(Text))
+    domain_restrictions: Column[list[str]] = Column(ARRAY(Text))
     status = Column(String(20), default='pending', nullable=False)
     total_pages = Column(Integer, default=0)
     processed_pages = Column(Integer, default=0)
@@ -38,7 +44,7 @@ class CrawlJob(Base):  # type: ignore[misc,valid-type]
     created_by = Column(String)
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
-    
+
     # New tracking fields for recovery
     last_heartbeat = Column(DateTime)
     crawl_phase = Column(String(20))  # 'crawling', 'finalizing'
@@ -46,11 +52,11 @@ class CrawlJob(Base):  # type: ignore[misc,valid-type]
     documents_crawled = Column(Integer, default=0)
     retry_count = Column(Integer, default=0)
     max_retries = Column(Integer, default=3)
-    
+
     # Relationships
     documents = relationship("Document", back_populates="crawl_job", cascade="all, delete-orphan")
     failed_pages = relationship("FailedPage", back_populates="crawl_job", cascade="all, delete-orphan")
-    
+
     __table_args__ = (
         CheckConstraint('max_depth >= 0 AND max_depth <= 5', name='check_max_depth'),
         CheckConstraint(
@@ -62,8 +68,8 @@ class CrawlJob(Base):  # type: ignore[misc,valid-type]
             name='check_crawl_phase'
         ),
     )
-    
-    def to_dict(self) -> Dict[str, Any]:
+
+    def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary for API responses."""
         return {
             'id': str(self.id),
@@ -85,9 +91,9 @@ class CrawlJob(Base):  # type: ignore[misc,valid-type]
 
 class UploadJob(Base):  # type: ignore[misc,valid-type]
     """Represents an upload job for user-provided documentation."""
-    
+
     __tablename__ = 'upload_jobs'
-    
+
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid4)
     name = Column(String, nullable=False)
     source_type = Column(String(20), default='upload', nullable=False)
@@ -102,10 +108,10 @@ class UploadJob(Base):  # type: ignore[misc,valid-type]
     created_by = Column(String)
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
-    
+
     # Relationships
     documents = relationship("Document", back_populates="upload_job", cascade="all, delete-orphan")
-    
+
     __table_args__ = (
         CheckConstraint(
             "source_type IN ('upload', 'file', 'api')",
@@ -116,8 +122,8 @@ class UploadJob(Base):  # type: ignore[misc,valid-type]
             name='check_upload_status'
         ),
     )
-    
-    def to_dict(self) -> Dict[str, Any]:
+
+    def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary for API responses."""
         return {
             'id': str(self.id),
@@ -139,9 +145,9 @@ class UploadJob(Base):  # type: ignore[misc,valid-type]
 
 class Document(Base):  # type: ignore[misc,valid-type]
     """Represents a crawled document/page."""
-    
+
     __tablename__ = 'documents'
-    
+
     id = Column(Integer, primary_key=True)
     url = Column(Text, unique=True, nullable=False, index=True)
     title = Column(Text)
@@ -156,12 +162,12 @@ class Document(Base):  # type: ignore[misc,valid-type]
     meta_data = Column(JSONB, default={})
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
-    
+
     # Relationships
     crawl_job = relationship("CrawlJob", back_populates="documents")
     upload_job = relationship("UploadJob", back_populates="documents")
     code_snippets = relationship("CodeSnippet", back_populates="document", cascade="all, delete-orphan")
-    
+
     __table_args__ = (
         Index('idx_documents_crawl_job_id', 'crawl_job_id'),
         Index('idx_documents_upload_job_id', 'upload_job_id'),
@@ -182,9 +188,9 @@ class Document(Base):  # type: ignore[misc,valid-type]
 
 class CodeSnippet(Base):  # type: ignore[misc,valid-type]
     """Represents an extracted code snippet with metadata."""
-    
+
     __tablename__ = 'code_snippets'
-    
+
     id = Column(Integer, primary_key=True)
     document_id = Column(Integer, ForeignKey('documents.id', ondelete='CASCADE'))
     title = Column(Text)
@@ -196,25 +202,25 @@ class CodeSnippet(Base):  # type: ignore[misc,valid-type]
     line_end = Column(Integer)
     context_before = Column(Text)
     context_after = Column(Text)
-    
+
     # Enhanced context fields
     section_title = Column(Text)
     section_content = Column(Text)  # Full section containing the code
-    
-    functions: Column[List[str]] = Column(ARRAY(Text))
-    imports: Column[List[str]] = Column(ARRAY(Text))
-    keywords: Column[List[str]] = Column(ARRAY(Text))
+
+    functions: Column[list[str]] = Column(ARRAY(Text))
+    imports: Column[list[str]] = Column(ARRAY(Text))
+    keywords: Column[list[str]] = Column(ARRAY(Text))
     snippet_type = Column(String(20), default='code')
     source_url = Column(Text, index=True)
     meta_data = Column(JSONB, default={})
     created_at = Column(DateTime, default=datetime.utcnow, index=True)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
-    
+
     # Note: search_vector is generated in PostgreSQL
-    
+
     # Relationships
     document = relationship("Document", back_populates="code_snippets")
-    
+
     # Snippet relationships with cascade delete
     outgoing_relationships = relationship(
         "SnippetRelationship",
@@ -228,7 +234,7 @@ class CodeSnippet(Base):  # type: ignore[misc,valid-type]
         cascade="all, delete-orphan",
         passive_deletes=True
     )
-    
+
     __table_args__ = (
         CheckConstraint(
             "snippet_type IN ('function', 'class', 'example', 'config', 'code')",
@@ -239,11 +245,11 @@ class CodeSnippet(Base):  # type: ignore[misc,valid-type]
         Index('idx_snippets_imports', 'imports', postgresql_using='gin'),
         Index('idx_snippets_snippet_type', 'snippet_type'),
     )
-    
-    def to_dict(self) -> Dict[str, Any]:
+
+    def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary for API responses."""
         return {
-            'id': self.id,
+            'id': str(self.id),
             'title': self.title,
             'description': self.description,
             'language': self.language,
@@ -258,7 +264,7 @@ class CodeSnippet(Base):  # type: ignore[misc,valid-type]
             'imports': self.imports or [],
             'created_at': self.created_at.isoformat()
         }
-    
+
     def format_output(self) -> str:
         """Format snippet for search output in the required format."""
         return f"""TITLE: {self.title or 'Untitled'}
@@ -278,18 +284,18 @@ CODE:
 
 class FailedPage(Base):  # type: ignore[misc,valid-type]
     """Represents a page that failed to be crawled after all retries."""
-    
+
     __tablename__ = 'failed_pages'
-    
+
     id = Column(Integer, primary_key=True)
     crawl_job_id = Column(UUID(as_uuid=True), ForeignKey('crawl_jobs.id', ondelete='CASCADE'))
     url = Column(Text, nullable=False)
     error_message = Column(Text)
     failed_at = Column(DateTime, default=datetime.utcnow)
-    
+
     # Relationships
     crawl_job = relationship("CrawlJob", back_populates="failed_pages")
-    
+
     __table_args__ = (
         UniqueConstraint('crawl_job_id', 'url', name='uq_failed_pages'),
         Index('idx_failed_pages_crawl_job_id', 'crawl_job_id'),
@@ -298,20 +304,20 @@ class FailedPage(Base):  # type: ignore[misc,valid-type]
 
 class SnippetRelationship(Base):  # type: ignore[misc,valid-type]
     """Represents relationships between code snippets."""
-    
+
     __tablename__ = 'snippet_relationships'
-    
+
     id = Column(Integer, primary_key=True)
     source_snippet_id = Column(Integer, ForeignKey('code_snippets.id', ondelete='CASCADE'), nullable=False)
     target_snippet_id = Column(Integer, ForeignKey('code_snippets.id', ondelete='CASCADE'), nullable=False)
     relationship_type = Column(String(50), nullable=False)
     description = Column(Text)
     created_at = Column(DateTime, default=datetime.utcnow)
-    
+
     # Relationships with proper cascade configuration
     source_snippet = relationship("CodeSnippet", foreign_keys=[source_snippet_id], overlaps="outgoing_relationships")
     target_snippet = relationship("CodeSnippet", foreign_keys=[target_snippet_id], overlaps="incoming_relationships")
-    
+
     __table_args__ = (
         UniqueConstraint('source_snippet_id', 'target_snippet_id', 'relationship_type', name='uq_snippet_relationships'),
         CheckConstraint(
