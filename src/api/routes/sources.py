@@ -762,6 +762,66 @@ async def count_filtered_sources(
     }
 
 
+@router.post("/sources/ids")
+async def get_filtered_source_ids(
+    request: DeleteFilteredRequest,
+    db: Session = Depends(get_db)
+) -> dict[str, Any]:
+    """Get IDs of all sources matching the filter criteria."""
+    matching_ids = []
+    
+    # Get all completed crawl jobs
+    crawl_sources = db.query(CrawlJob).filter_by(status='completed').all()
+    crawl_ids = [str(source.id) for source in crawl_sources]
+    crawl_snippet_counts = _get_snippet_counts_for_crawl_jobs(db, crawl_ids)
+    
+    for source in crawl_sources:
+        snippet_count = crawl_snippet_counts.get(str(source.id), 0)
+        
+        # Apply snippet filter
+        if request.min_snippets is not None and snippet_count < request.min_snippets:
+            continue
+        if request.max_snippets is not None and snippet_count > request.max_snippets:
+            continue
+            
+        # Apply query filter
+        if request.query:
+            query_lower = request.query.lower()
+            if not (query_lower in source.name.lower() or 
+                    (source.start_urls and any(query_lower in url.lower() for url in source.start_urls))):
+                continue
+                
+        matching_ids.append(str(source.id))
+    
+    # Get all upload jobs
+    upload_sources = db.query(UploadJob).all()
+    upload_ids = [str(source.id) for source in upload_sources]
+    upload_snippet_counts = _get_snippet_counts_for_upload_jobs(db, upload_ids)
+    
+    for source in upload_sources:
+        snippet_count = upload_snippet_counts.get(str(source.id), 0)
+        
+        # Apply snippet filter
+        if request.min_snippets is not None and snippet_count < request.min_snippets:
+            continue
+        if request.max_snippets is not None and snippet_count > request.max_snippets:
+            continue
+            
+        # Apply query filter
+        if request.query:
+            query_lower = request.query.lower()
+            if not (query_lower in source.name.lower() or 
+                    (source.source_url and query_lower in source.source_url.lower())):
+                continue
+                
+        matching_ids.append(str(source.id))
+    
+    return {
+        "ids": matching_ids,
+        "total": len(matching_ids)
+    }
+
+
 @router.patch("/sources/{source_id}")
 async def update_source_name(
     source_id: str,

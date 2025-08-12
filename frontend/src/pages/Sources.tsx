@@ -368,26 +368,14 @@ export default function Sources() {
   }, []);
 
   const handleBulkDelete = useCallback(async () => {
-    // Check if we have a filter active and all visible items are selected
+    // Check if all sources matching the filter are selected
     const hasFilter = snippetFilter !== 'all' || debouncedSearchQuery;
-    const allVisibleSelected = selectedSources.size === filteredSources.length && filteredSources.length > 0;
+    const allFilteredSelected = selectedSources.size === sources?.total && sources?.total > 0;
     
-    if (hasFilter && allVisibleSelected) {
-      // Get count of all sources matching the filter
-      const bounds = getSnippetBounds();
-      try {
-        const result = await api.countFilteredSources({
-          min_snippets: bounds.min,
-          max_snippets: bounds.max,
-          query: debouncedSearchQuery || undefined
-        });
-        setFilteredDeleteCount(result.count);
-        setIsFilteredDelete(true);
-      } catch (error) {
-        console.error('Failed to count filtered sources:', error);
-        setFilteredDeleteCount(null);
-        setIsFilteredDelete(false);
-      }
+    if (hasFilter && allFilteredSelected) {
+      // All filtered sources are selected - use filtered delete
+      setFilteredDeleteCount(selectedSources.size);
+      setIsFilteredDelete(true);
     } else {
       setIsFilteredDelete(false);
       setFilteredDeleteCount(null);
@@ -395,7 +383,7 @@ export default function Sources() {
     
     setIsBulkDelete(true);
     setDeleteModalOpen(true);
-  }, [snippetFilter, debouncedSearchQuery, selectedSources.size, filteredSources.length, getSnippetBounds]);
+  }, [snippetFilter, debouncedSearchQuery, selectedSources.size, sources?.total]);
 
   const confirmDelete = useCallback(() => {
     if (isBulkDelete) {
@@ -421,10 +409,21 @@ export default function Sources() {
     });
   }, []);
 
-  const selectAll = useCallback(() => {
-    const allIds = new Set(filteredSources.map((s) => s.id));
-    setSelectedSources(allIds as Set<string>);
-  }, [filteredSources]);
+  const selectAll = useCallback(async () => {
+    // Fetch ALL source IDs matching current filters
+    const bounds = getSnippetBounds();
+    try {
+      const result = await api.getFilteredSourceIds({
+        query: debouncedSearchQuery || undefined,
+        min_snippets: bounds.min,
+        max_snippets: bounds.max
+      });
+      setSelectedSources(new Set(result.ids));
+    } catch (error) {
+      console.error('Failed to fetch source IDs:', error);
+      toast.error('Failed to select sources');
+    }
+  }, [debouncedSearchQuery, getSnippetBounds, toast]);
 
   const deselectAll = useCallback(() => {
     setSelectedSources(new Set());
@@ -538,49 +537,35 @@ export default function Sources() {
             <div className="flex items-center gap-2">
               <div
                 onClick={() => {
-                  // In filtered mode, track if we mean "all on page" or "all matching filter"
-                  const hasFilter = snippetFilter !== 'all' || debouncedSearchQuery;
-                  const allVisibleSelected = selectedSources.size === filteredSources.length && filteredSources.length > 0;
-                  
-                  if (allVisibleSelected) {
+                  // Toggle between select all and deselect all
+                  if (selectedSources.size === sources?.total && sources?.total > 0) {
                     deselectAll();
                   } else {
                     selectAll();
                   }
                 }}
                 className="cursor-pointer"
-                title={
-                  (snippetFilter !== 'all' || debouncedSearchQuery) && selectedSources.size === filteredSources.length && filteredSources.length > 0
-                    ? `All ${sources?.total || 0} matching sources selected`
-                    : "Select all on this page"
-                }
+                title="Select all matching sources"
               >
                 <div
                   className={`w-5 h-5 rounded border-2 flex items-center justify-center ${
-                    selectedSources.size === filteredSources.length &&
-                    filteredSources.length > 0
+                    selectedSources.size === sources?.total && sources?.total > 0
                       ? "bg-primary border-primary"
-                      : selectedSources.size > 0 &&
-                        selectedSources.size < filteredSources.length
+                      : selectedSources.size > 0 && selectedSources.size < (sources?.total || 0)
                       ? "bg-primary/50 border-primary"
                       : "border-input bg-background hover:border-primary"
                   }`}
                 >
-                  {selectedSources.size === filteredSources.length &&
-                    filteredSources.length > 0 && (
-                      <Check className="h-3 w-3 text-primary-foreground" />
-                    )}
-                  {selectedSources.size > 0 &&
-                    selectedSources.size < filteredSources.length && (
-                      <div className="w-2 h-2 bg-primary-foreground rounded-sm" />
-                    )}
+                  {selectedSources.size === sources?.total && sources?.total > 0 && (
+                    <Check className="h-3 w-3 text-primary-foreground" />
+                  )}
+                  {selectedSources.size > 0 && selectedSources.size < (sources?.total || 0) && (
+                    <div className="w-2 h-2 bg-primary-foreground rounded-sm" />
+                  )}
                 </div>
               </div>
               <span className="text-sm font-medium whitespace-nowrap">
-                {selectedSources.size}/
-                {(snippetFilter !== 'all' || debouncedSearchQuery) && selectedSources.size === filteredSources.length && filteredSources.length > 0
-                  ? sources?.total || filteredSources.length
-                  : filteredSources.length}
+                {selectedSources.size}/{sources?.total || 0}
               </span>
             </div>
             
@@ -601,15 +586,9 @@ export default function Sources() {
                   ? "bg-destructive text-destructive-foreground hover:bg-destructive/90"
                   : "bg-secondary text-muted-foreground cursor-not-allowed"
               }`}
-              title={
-                (snippetFilter !== 'all' || debouncedSearchQuery) && selectedSources.size === filteredSources.length && filteredSources.length > 0
-                  ? "Delete all sources matching the current filter"
-                  : "Delete selected sources"
-              }
+              title="Delete selected sources"
             >
-              {(snippetFilter !== 'all' || debouncedSearchQuery) && selectedSources.size === filteredSources.length && filteredSources.length > 0
-                ? `Delete All Filtered`
-                : `Delete (${selectedSources.size})`}
+              Delete ({selectedSources.size})
             </button>
           </div>
         </div>

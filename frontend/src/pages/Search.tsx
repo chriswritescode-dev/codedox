@@ -33,7 +33,7 @@ export default function Search() {
   };
 
   return (
-    <div className="w-full">
+    <div className="w-full py-8">
       <div className="space-y-6 max-w-4xl mx-auto w-full">
         <div>
           <h1 className="text-3xl font-bold">Search Code Snippets</h1>
