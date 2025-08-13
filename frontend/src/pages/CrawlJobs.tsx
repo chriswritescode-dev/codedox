@@ -16,7 +16,6 @@ import {
   AlertCircle,
   PlayCircle,
 } from "lucide-react";
-import ProgressBar from "../components/ProgressBar";
 import { ConfirmationDialog } from "../components/ConfirmationDialog";
 import { NewCrawlDialog } from "../components/NewCrawlDialog";
 import { PaginationControls } from "../components/PaginationControls";
@@ -494,148 +493,128 @@ export default function CrawlJobs() {
                         </div>
                       </div>
                     </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">
-                  Name
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">
-                  Status
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">
-                  Progress
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">
-                  URLs
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">
-                  Snippets
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">
-                  Created
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">
-                  Actions
-                </th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">
+                      Name
+                    </th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">
+                      Status
+                    </th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">
+                      URLs
+                    </th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">
+                      Snippets
+                    </th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">
+                      Created
+                    </th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">
+                      Actions
+                    </th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-border">
-              {paginatedJobs.map((job) => {
-                const isDeletable = [
-                  "completed",
-                  "failed",
-                  "cancelled",
-                ].includes(job.status);
-                return (
-                  <tr key={job.id} className="hover:bg-secondary/80">
-                    <td className="w-12 px-6 py-4">
-                      <div
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          toggleSelectJob(job.id);
-                        }}
-                        className="cursor-pointer"
-                      >
-                        <div
-                          className={`w-5 h-5 rounded border-2 flex items-center justify-center ${
-                            selectedJobs.has(job.id)
-                              ? "bg-primary border-primary"
-                              : "border-input bg-background hover:border-primary"
-                          }`}
-                        >
-                          {selectedJobs.has(job.id) && (
-                            <Check className="h-3 w-3 text-primary-foreground" />
-                          )}
-                        </div>
-                      </div>
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      <Link
-                        to={`/crawl/${job.id}`}
-                        className="text-primary hover:underline font-medium"
-                      >
-                        {job.name}
-                      </Link>
-                      <p className="text-xs text-muted-foreground">
-                        {job.base_url}
-                      </p>
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      <div className="flex items-center gap-2">
-                        {getStatusIcon(job.status, job)}
-                        <span className="text-sm capitalize">
-                          {getStatusText(job.status, job)}
-                        </span>
-                        {job.status === "running" && !!job.last_heartbeat && (
-                          <span className="text-xs text-muted-foreground">
-                            ({getTimeSinceHeartbeat(job)})
-                          </span>
-                        )}
-                      </div>
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      {job.status === "running" ? (
-                        <div className="w-32">
-                          <ProgressBar
-                            current={job.crawl_progress || 0}
-                            total={100}
-                            showPercentage={false}
-                            height="h-1.5"
-                          />
-                          <div className="text-xs text-muted-foreground mt-0.5">
-                            {job.crawl_phase ? job.crawl_phase : "crawling"}
+                  {paginatedJobs.map((job) => {
+                    const isDeletable = [
+                      "completed",
+                      "failed",
+                      "cancelled",
+                    ].includes(job.status);
+                    return (
+                      <tr key={job.id} className="hover:bg-secondary/80">
+                        <td className="w-12 px-6 py-4">
+                          <div
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              toggleSelectJob(job.id);
+                            }}
+                            className="cursor-pointer"
+                          >
+                            <div
+                              className={`w-5 h-5 rounded border-2 flex items-center justify-center ${
+                                selectedJobs.has(job.id)
+                                  ? "bg-primary border-primary"
+                                  : "border-input bg-background hover:border-primary"
+                              }`}
+                            >
+                              {selectedJobs.has(job.id) && (
+                                <Check className="h-3 w-3 text-primary-foreground" />
+                              )}
+                            </div>
                           </div>
-                        </div>
-                      ) : (
-                        <span className="text-sm text-muted-foreground">-</span>
-                      )}
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm">
-                      {job.urls_crawled}
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm">
-                      {job.snippets_extracted}
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-muted-foreground">
-                      {new Date(job.created_at).toLocaleDateString()}
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm">
-                      <div className="flex items-center gap-2">
-                        {/* Show recrawl button for failed/stalled jobs */}
-                        {(job.status === "failed" || 
-                          (job.status === "running" && isJobStalled(job))) && (
-                          <button
-                            onClick={() => handleRecrawlClick(job)}
-                            className="text-primary hover:text-primary/80 flex items-center gap-1"
-                            title="Recrawl job"
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap">
+                          <Link
+                            to={`/crawl/${job.id}`}
+                            className="text-primary hover:underline font-medium"
                           >
-                            <PlayCircle className="h-4 w-4" />
-                            Recrawl
-                          </button>
-                        )}
-                        {(job.status === "running" && !isJobStalled(job)) && (
-                          <button
-                            onClick={() => handleCancelClick(job)}
-                            className="text-destructive hover:text-destructive/80 flex items-center gap-1"
-                            title="Cancel job"
-                          >
-                            <StopCircle className="h-4 w-4" />
-                            Cancel
-                          </button>
-                        )}
-                        {isDeletable && (
-                          <button
-                            onClick={(e) => handleDeleteClick(e, job)}
-                            className="text-muted-foreground hover:text-destructive flex items-center gap-1"
-                            title="Delete job"
-                          >
-                            <Trash2 className="h-4 w-4" />
-                            Delete
-                          </button>
-                        )}
-                      </div>
-                    </td>
-                  </tr>
-                );
-              })}
+                            {job.name}
+                          </Link>
+                          <p className="text-xs text-muted-foreground">
+                            {job.base_url}
+                          </p>
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap">
+                          <div className="flex items-center gap-2">
+                            {getStatusIcon(job.status, job)}
+                            <span className="text-sm capitalize">
+                              {getStatusText(job.status, job)}
+                            </span>
+                            {job.status === "running" && !!job.last_heartbeat && (
+                              <span className="text-xs text-muted-foreground">
+                                ({getTimeSinceHeartbeat(job)})
+                              </span>
+                            )}
+                          </div>
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm">
+                          {job.urls_crawled}
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm">
+                          {job.snippets_extracted}
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-muted-foreground">
+                          {new Date(job.created_at).toLocaleDateString()}
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm">
+                          <div className="flex items-center gap-2">
+                            {/* Show recrawl button for failed/stalled jobs */}
+                            {(job.status === "failed" || 
+                              (job.status === "running" && isJobStalled(job))) && (
+                              <button
+                                onClick={() => handleRecrawlClick(job)}
+                                className="text-primary hover:text-primary/80 flex items-center gap-1"
+                                title="Recrawl job"
+                              >
+                                <PlayCircle className="h-4 w-4" />
+                                Recrawl
+                              </button>
+                            )}
+                            {(job.status === "running" && !isJobStalled(job)) && (
+                              <button
+                                onClick={() => handleCancelClick(job)}
+                                className="text-destructive hover:text-destructive/80 flex items-center gap-1"
+                                title="Cancel job"
+                              >
+                                <StopCircle className="h-4 w-4" />
+                                Cancel
+                              </button>
+                            )}
+                            {isDeletable && (
+                              <button
+                                onClick={(e) => handleDeleteClick(e, job)}
+                                className="text-muted-foreground hover:text-destructive flex items-center gap-1"
+                                title="Delete job"
+                              >
+                                <Trash2 className="h-4 w-4" />
+                                Delete
+                              </button>
+                            )}
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })}
                 </tbody>
               </table>
             </div>
