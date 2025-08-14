@@ -100,8 +100,15 @@ WORKDIR /app
 # Install Playwright browsers as root with proper setup
 USER root
 ENV PLAYWRIGHT_BROWSERS_PATH=/opt/playwright-browsers
-RUN mkdir -p ${PLAYWRIGHT_BROWSERS_PATH} && \
-    python -m playwright install chromium --with-deps && \
+# Install Debian font packages before Playwright to avoid Ubuntu package errors
+RUN apt-get update && apt-get install -y \
+    fonts-liberation \
+    fonts-unifont \
+    fonts-dejavu-core \
+    fonts-noto-color-emoji \
+    && rm -rf /var/lib/apt/lists/* && \
+    mkdir -p ${PLAYWRIGHT_BROWSERS_PATH} && \
+    python -m playwright install chromium && \
     chmod -R 755 ${PLAYWRIGHT_BROWSERS_PATH}
 
 # Set environment for codedox user to find browsers and uv
