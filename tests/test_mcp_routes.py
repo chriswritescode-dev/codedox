@@ -25,11 +25,12 @@ class TestMCPToolsEndpoint:
         data = response.json()
         tools = data["tools"]
 
-        assert len(tools) == 3
+        assert len(tools) == 4  # init_crawl, search_libraries, get_content, get_page_markdown
         tool_names = [tool["name"] for tool in tools]
         assert "init_crawl" in tool_names
         assert "search_libraries" in tool_names
         assert "get_content" in tool_names
+        assert "get_page_markdown" in tool_names
 
         # Check tool structure
         for tool in tools:
@@ -173,7 +174,7 @@ class TestMCPStreamEndpoints:
         json_data = json.loads(content[6:].strip())  # Remove "data: " prefix
         assert "tools" in json_data
         assert isinstance(json_data["tools"], list)
-        assert len(json_data["tools"]) == 3  # init_crawl, search_libraries, get_content
+        assert len(json_data["tools"]) == 4  # init_crawl, search_libraries, get_content, get_page_markdown
 
     def test_stream_execute_tool(self, client, mock_mcp_tools):
         """Test streaming tool execution."""

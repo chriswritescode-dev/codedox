@@ -62,6 +62,7 @@ CREATE TABLE IF NOT EXISTS documents (
     title TEXT,
     content_type VARCHAR(50) DEFAULT 'markdown',
     content_hash VARCHAR(64),
+    markdown_content TEXT,
     crawl_job_id UUID REFERENCES crawl_jobs(id) ON DELETE CASCADE,
     upload_job_id UUID REFERENCES upload_jobs(id) ON DELETE CASCADE,
     source_type VARCHAR(20) DEFAULT 'crawl' CHECK (source_type IN ('crawl', 'upload')),
@@ -143,9 +144,15 @@ CREATE INDEX IF NOT EXISTS idx_snippets_imports ON code_snippets USING GIN(impor
 CREATE INDEX IF NOT EXISTS idx_snippets_snippet_type ON code_snippets(snippet_type);
 CREATE INDEX IF NOT EXISTS idx_snippets_created_at ON code_snippets(created_at DESC);
 
--- Trigram indexes for fuzzy search
+-- Trigram indexes for fuzzy search on code snippets
 CREATE INDEX IF NOT EXISTS idx_snippets_title_trgm ON code_snippets USING GIN(title gin_trgm_ops);
 CREATE INDEX IF NOT EXISTS idx_snippets_description_trgm ON code_snippets USING GIN(description gin_trgm_ops);
+
+-- Document search indexes
+CREATE INDEX IF NOT EXISTS idx_documents_title ON documents(title);
+-- Trigram indexes for fuzzy search on documents
+CREATE INDEX IF NOT EXISTS idx_documents_title_trgm ON documents USING GIN(title gin_trgm_ops);
+CREATE INDEX IF NOT EXISTS idx_documents_url_trgm ON documents USING GIN(url gin_trgm_ops);
 
 
 -- Update timestamp triggers

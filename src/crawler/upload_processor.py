@@ -14,6 +14,7 @@ from .extraction_models import SimpleCodeBlock
 from .html_code_extractor import HTMLCodeExtractor
 from .llm_retry import LLMDescriptionGenerator
 from .markdown_code_extractor import MarkdownCodeExtractor
+from .markdown_utils import remove_markdown_links
 from .progress_tracker import ProgressTracker
 from .result_processor import ResultProcessor
 
@@ -38,6 +39,7 @@ class UploadResult:
     title: str
     content_hash: str
     code_blocks: list[SimpleCodeBlock]
+    content: str | None = None
     error: str | None = None
     metadata: dict[str, Any] = field(default_factory=dict)
 
@@ -197,6 +199,7 @@ class UploadProcessor:
                 title=title,
                 content_hash=content_hash,
                 code_blocks=code_blocks,
+                content=content,
                 metadata={'content_type': content_type}
             )
 
@@ -207,6 +210,7 @@ class UploadProcessor:
                 title="Unknown",
                 content_hash="",
                 code_blocks=[],
+                content=None,
                 error=str(e)
             )
 
@@ -266,6 +270,7 @@ class UploadProcessor:
                 doc = existing_doc
                 doc.title = result.title
                 doc.content_hash = result.content_hash
+                doc.markdown_content = remove_markdown_links(result.content)
                 doc.upload_job_id = job_id
                 doc.last_crawled = datetime.utcnow()
             else:
@@ -274,6 +279,7 @@ class UploadProcessor:
                     url=result.source_url,
                     title=result.title,
                     content_hash=result.content_hash,
+                    markdown_content=remove_markdown_links(result.content),
                     upload_job_id=job_id,  # Link to upload job instead of crawl job
                     source_type='upload',  # Mark as upload source
                     crawl_depth=0,

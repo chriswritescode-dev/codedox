@@ -7,8 +7,10 @@ import {
   Menu,
   X,
   Upload,
+  FileSearch,
 } from "lucide-react";
-import { useState } from "react";
+import { useState, useEffect } from "react";
+import { DocumentSearchModal } from "./DocumentSearchModal";
 
 const navigation = [
   { name: "Dashboard", href: "/", icon: Home },
@@ -21,6 +23,20 @@ const navigation = [
 export default function Layout() {
   const location = useLocation();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [documentSearchOpen, setDocumentSearchOpen] = useState(false);
+
+  // Add keyboard shortcut for document search (Cmd/Ctrl + K)
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
+        e.preventDefault();
+        setDocumentSearchOpen(true);
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, []);
 
   return (
     <div className="min-h-screen bg-background">
@@ -44,6 +60,17 @@ export default function Layout() {
         }`}
       >
         <div className="flex h-full flex-col">
+          {/* Document Search Button */}
+          <div className="px-3 pt-4 pb-2">
+            <button
+              onClick={() => setDocumentSearchOpen(true)}
+              className="w-full flex items-center gap-2 px-3 py-2 text-sm bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700 rounded-lg transition-colors text-gray-600 dark:text-gray-400"
+            >
+              <FileSearch className="h-4 w-4" />
+              <span className="flex-1 text-left">Search Docs</span>
+              <kbd className="text-xs bg-gray-200 dark:bg-gray-700 px-1.5 py-0.5 rounded">⌘K</kbd>
+            </button>
+          </div>
           <nav className="flex-1 space-y-1 px-3 py-4">
             {navigation.map((item) => {
               const isActive = location.pathname === item.href;
@@ -83,6 +110,12 @@ export default function Layout() {
           onClick={() => setMobileMenuOpen(false)}
         />
       )}
+
+      {/* Document Search Modal */}
+      <DocumentSearchModal
+        isOpen={documentSearchOpen}
+        onClose={() => setDocumentSearchOpen(false)}
+      />
     </div>
   );
 }
