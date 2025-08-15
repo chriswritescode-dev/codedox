@@ -1,12 +1,12 @@
 """MCP tool implementations."""
 
 import logging
+from typing import Dict, Any, List, Optional
 from datetime import datetime
-from typing import Any
 
 from ..config import get_settings
-from ..crawler import CrawlConfig, CrawlManager
-from ..database import CodeSearcher, get_db_manager
+from ..database import get_db_manager, CodeSearcher
+from ..crawler import CrawlManager, CrawlConfig
 
 logger = logging.getLogger(__name__)
 settings = get_settings()
@@ -22,25 +22,26 @@ class MCPTools:
 
     async def init_crawl(
         self,
-        name: str | None,
-        start_urls: list[str],
+        name: Optional[str],
+        start_urls: List[str],
         max_depth: int = 1,
-        domain_filter: str | None = None,
-        url_patterns: list[str] | None = None,
-        metadata: dict[str, Any] | None = None,
+        domain_filter: Optional[str] = None,
+        url_patterns: Optional[List[str]] = None,
+        metadata: Optional[Dict[str, Any]] = None,
         max_concurrent_crawls: int | None = None
-    ) -> dict[str, Any]:
+    ) -> Dict[str, Any]:
         """Initialize a new crawl job.
-        
+
         Args:
             name: Library/framework name (auto-detected if not provided)
             start_urls: URLs to start crawling
             max_depth: Maximum crawl depth (0-3)
             domain_filter: Optional domain restriction
-            url_patterns: Optional list of URL patterns to filter (e.g., ["*docs*", "*guide*"]) will keep only URLs matching these patterns
+            url_patterns: Optional list of URL patterns to filter (e.g., ["*docs*", "*guide*"])
+                will keep only URLs matching these patterns
             metadata: Additional metadata
             max_concurrent_crawls: Maximum concurrent crawl sessions (default: from config)
-            
+
         Returns:
             Job initialization result
         """
@@ -113,7 +114,6 @@ class MCPTools:
                 "library_name": name
             }
 
-
     async def search_libraries(
         self,
         query: str = "",
@@ -121,12 +121,12 @@ class MCPTools:
         page: int = 1
     ) -> dict[str, Any]:
         """Search for available libraries by name or keyword, or list all libraries.
-        
+
         Args:
             query: Search query for library names (empty string returns all)
             limit: Maximum results per page (default: 20)
             page: Page number for paginated results (1-indexed)
-            
+
         Returns:
             Dictionary with libraries and search results
         """
@@ -262,13 +262,13 @@ class MCPTools:
         page: int = 1
     ) -> str:
         """Get content from a specific library, optionally filtered by search query.
-        
+
         Args:
             library_id: Library ID (UUID) or library name - can use either format
             query: Optional search query to filter results
             limit: Maximum results per page (default: 20)
             page: Page number for paginated results (1-indexed)
-            
+
         Returns:
             Formatted search results as string
         """
@@ -349,16 +349,7 @@ class MCPTools:
                             for i, lib in enumerate(libraries[:5]):
                                 score = lib.get('similarity_score', 0)
                                 snippets = lib.get('snippet_count', 0)
-                                # Add emoji indicators for clarity
-                                if i == 0:
-                                    emoji = "🥇"
-                                elif i == 1:
-                                    emoji = "🥈"
-                                elif i == 2:
-                                    emoji = "🥉"
-                                else:
-                                    emoji = "  "
-                                suggestions.append(f"{emoji} {lib['name']} (match: {score:.0%}, snippets: {snippets})")
+                                suggestions.append(f"{lib['name']} (match: {score:.0%}, snippets: {snippets})")
 
                             return (f"🤔 Multiple libraries match '{library_id}'. Please be more specific:\n\n" +
                                    "\n".join(suggestions) + "\n\n"
@@ -401,12 +392,12 @@ class MCPTools:
                 header += "\n\n"
 
                 return header + formatted_results
-
+                
         except Exception as e:
             logger.error(f"Failed to search content: {e}")
             return f"Error searching content: {str(e)}"
-
-    async def get_crawl_status(self, job_id: str) -> dict[str, Any]:
+    
+    async def get_crawl_status(self, job_id: str) -> Dict[str, Any]:
         """Get status of a specific crawl job.
         
         Args:
@@ -417,18 +408,18 @@ class MCPTools:
         """
         try:
             status = self.crawl_manager.get_job_status(job_id)
-
+            
             if not status:
                 return {
                     "error": "Job not found",
                     "job_id": job_id
                 }
-
+            
             # Calculate progress percentage
             progress = 0
             if status['total_pages'] > 0:
                 progress = int((status['processed_pages'] / status['total_pages']) * 100)
-
+            
             result = {
                 "job_id": job_id,
                 "name": status['name'],
@@ -440,21 +431,21 @@ class MCPTools:
                 "started_at": status['started_at'],
                 "completed_at": status['completed_at']
             }
-
+            
             # Add error message if present
             if status.get('error_message'):
                 result['error_message'] = status['error_message']
-
+            
             return result
-
+            
         except Exception as e:
             logger.error(f"Failed to get crawl status: {e}")
             return {
                 "error": str(e),
                 "job_id": job_id
             }
-
-    async def cancel_crawl(self, job_id: str) -> dict[str, Any]:
+    
+    async def cancel_crawl(self, job_id: str) -> Dict[str, Any]:
         """Cancel a running crawl job.
         
         Args:
@@ -465,7 +456,7 @@ class MCPTools:
         """
         try:
             success = await self.crawl_manager.cancel_job(job_id)
-
+            
             if success:
                 return {
                     "status": "cancelled",
@@ -478,10 +469,82 @@ class MCPTools:
                     "job_id": job_id,
                     "message": "Job may have already completed or does not exist"
                 }
-
+                
         except Exception as e:
             logger.error(f"Failed to cancel crawl: {e}")
             return {
                 "error": str(e),
                 "job_id": job_id
+            }
+
+    async def get_page_markdown(self, url: str) -> Dict[str, Any]:
+        """Get the full markdown content of a documentation page by URL.
+
+        This tool retrieves the complete markdown content stored for a specific
+        documentation page. Use this when you need the full context of a page,
+        not just code snippets.
+
+        Args:
+            url: The URL of the documentation page
+
+        Returns:
+            Dictionary containing markdown content and metadata
+        """
+        try:
+            with self.db_manager.session_scope() as session:
+                from ..database.models import Document, CrawlJob, UploadJob
+                
+                doc = session.query(Document).filter(Document.url == url).first()
+                
+                if not doc:
+                    return {
+                        "status": "not_found",
+                        "error": f"No document found with URL: {url}",
+                        "suggestion": "Check the URL is correct or that the page has been crawled"
+                    }
+                
+                # Check if markdown content exists
+                if not doc.markdown_content:
+                    return {
+                        "status": "no_content",
+                        "error": f"Document exists but has no markdown content",
+                        "url": url,
+                        "title": doc.title,
+                        "note": "This document may have been crawled before markdown storage was enabled"
+                    }
+                
+                # Get library name from associated job
+                library_name = None
+                if doc.crawl_job_id:
+                    crawl_job = session.query(CrawlJob).filter(CrawlJob.id == doc.crawl_job_id).first()
+                    if crawl_job:
+                        library_name = crawl_job.name
+                elif doc.upload_job_id:
+                    upload_job = session.query(UploadJob).filter(UploadJob.id == doc.upload_job_id).first()
+                    if upload_job:
+                        library_name = upload_job.name
+                
+                # Prepare response with markdown and metadata
+                response = {
+                    "status": "success",
+                    "url": url,
+                    "title": doc.title or "Untitled",
+                    "library_name": library_name or "Unknown",
+                    "content_length": len(doc.markdown_content),
+                    "last_crawled": doc.last_crawled.isoformat() if doc.last_crawled else None,
+                    "markdown_content": doc.markdown_content
+                }
+                
+                # Add metadata if available
+                if doc.meta_data:
+                    response["metadata"] = doc.meta_data
+                
+                return response
+                
+        except Exception as e:
+            logger.error(f"Failed to get page markdown for URL {url}: {e}")
+            return {
+                "status": "error",
+                "error": str(e),
+                "url": url
             }

@@ -57,7 +57,7 @@ def crawl_start(name: str, urls: tuple, depth: int, domain: str | None, url_patt
             TextColumn("[progress.description]{task.description}"),
             console=console
         ) as progress:
-            task = progress.add_task(f"Starting crawl job '{name}'...", total=None)
+            progress.add_task(f"Starting crawl job '{name}'...", total=None)
 
             result = await tools.init_crawl(
                 name=name,
@@ -384,7 +384,7 @@ def serve(api: bool, mcp: bool):
             try:
                 p.terminate()
                 p.wait(timeout=5)
-            except:
+            except Exception:
                 p.kill()
         sys.exit(0)
 

@@ -50,7 +50,7 @@ class MigrationRunner:
 
         # Early migrations
         ('002_remove_page_links', 'src/database/migrations/002_remove_page_links.sql'),
-        ('003_remove_markdown_content', 'src/database/migrations/003_remove_markdown_content.sql'),
+        ('003_add_markdown_content', 'src/database/migrations/003_add_markdown_content.sql'),
 
         # Feature additions
         ('004_add_snippet_relationships', 'src/database/migrations/add_snippet_relationships.sql'),

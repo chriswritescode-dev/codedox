@@ -149,9 +149,10 @@ body {
         blocks = self.extractor.extract_code_blocks(html, "https://test.com")
 
         assert len(blocks) >= 1
-        # Context extraction may not be implemented yet, just check the structure
+        # Check that context_before is extracted
         assert hasattr(blocks[0], 'context_before')
-        assert hasattr(blocks[0], 'context_after')
+        # context_after was removed - we only collect context before code blocks
+        assert not hasattr(blocks[0], 'context_after')
 
     def test_stats_tracking(self):
         """Test that statistics are properly tracked."""

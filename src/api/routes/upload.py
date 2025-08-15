@@ -98,6 +98,7 @@ async def upload_markdown(
             title=request.title or request.name,
             content_type="markdown",
             content_hash=content_hash,
+            markdown_content=request.content,
             crawl_job_id=job.id,
         )
         db.add(doc)
@@ -306,6 +307,7 @@ async def upload_files(
                     title=title or file.filename,
                     content_type="markdown",
                     content_hash=content_hash,
+                    markdown_content=content_str,
                     crawl_job_id=crawl_job.id,
                     crawl_depth=0,
                     created_at=datetime.utcnow(),
