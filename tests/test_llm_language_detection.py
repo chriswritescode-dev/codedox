@@ -19,14 +19,12 @@ class TestLLMLanguageDetection:
             SimpleCodeBlock(
                 code='export default { plugins: { "@tailwindcss/postcss": {} } }',
                 language='css',  # Wrong - should be javascript
-                context_before=['PostCSS configuration'],
-                context_after=['This configures PostCSS plugins']
+                context_before=['PostCSS configuration', 'This configures PostCSS plugins']
             ),
             SimpleCodeBlock(
                 code='<div class="container"><h1>Title</h1></div>',
                 language='ruby',  # Wrong - should be html
-                context_before=['HTML template example'],
-                context_after=['Basic HTML structure']
+                context_before=['HTML template example', 'Basic HTML structure']
             )
         ]
 
@@ -73,8 +71,7 @@ DESCRIPTION: Exports PostCSS configuration object with Tailwind CSS plugin
         test_block = SimpleCodeBlock(
             code='def hello():\n    print("Hello, World!")',
             language='python',  # Correct
-            context_before=['Python function example'],
-            context_after=['Simple greeting function']
+            context_before=['Python function example', 'Simple greeting function']
         )
 
         with patch('src.crawler.llm_retry.openai.AsyncOpenAI') as mock_openai:

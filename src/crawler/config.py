@@ -6,8 +6,11 @@ from crawl4ai import (
     CacheMode,
     CrawlerRunConfig,
 )
+from crawl4ai.content_filter_strategy import PruningContentFilter
 from crawl4ai.deep_crawling import BFSDeepCrawlStrategy
 from crawl4ai.deep_crawling.filters import DomainFilter, FilterChain, URLPatternFilter
+from crawl4ai.markdown_generation_strategy import DefaultMarkdownGenerator
+
 
 
 def create_browser_config(
@@ -50,14 +53,19 @@ def create_crawler_config(
     Returns:
         Configured CrawlerRunConfig instance
     """
+    
+    
     config_dict = {
-
         "wait_until": "networkidle",
         "page_timeout": 60000,
         "cache_mode": CacheMode.BYPASS,
         "stream": True,
         "verbose": True,
         "exclude_external_links": True,
+        "markdown_generator": DefaultMarkdownGenerator(
+            content_source="raw_html",
+            options={"ignore_links": False}
+        )
     }
 
     # Add custom user agent if provided

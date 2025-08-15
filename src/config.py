@@ -104,6 +104,10 @@ class CodeExtractionConfig(BaseSettings):
     min_code_lines: int = 2
 
     # LLM extraction configuration
+    enable_llm_extraction: bool = Field(
+        default=True,
+        description="Enable LLM for title/description extraction (when false, uses page title and context)"
+    )
     llm_api_key: SecretStr = Field(
         default=SecretStr(""),
         description="API key for LLM extraction (OpenAI-compatible)"

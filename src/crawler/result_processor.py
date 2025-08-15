@@ -12,6 +12,7 @@ from sqlalchemy.orm import Session
 from ..config import get_settings
 from ..database import CodeSnippet, Document, get_db_manager
 from .code_formatter import CodeFormatter
+from .markdown_utils import remove_markdown_links
 
 logger = logging.getLogger(__name__)
 
@@ -321,6 +322,7 @@ class ResultProcessor:
             doc = existing_doc
             doc.title = result.title
             doc.content_hash = result.content_hash
+            doc.markdown_content = remove_markdown_links(result.content)
             doc.crawl_job_id = job_id
             doc.last_crawled = datetime.utcnow()
         else:
@@ -329,6 +331,7 @@ class ResultProcessor:
                 url=result.url,
                 title=result.title,
                 content_hash=result.content_hash,
+                markdown_content=remove_markdown_links(result.content),
                 crawl_job_id=job_id,
                 crawl_depth=depth,
                 metadata=result.metadata,
