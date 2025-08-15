@@ -153,6 +153,7 @@ class Document(Base):  # type: ignore[misc,valid-type]
     title = Column(Text)
     content_type = Column(String(50), default='html')
     content_hash = Column(String(64), index=True)
+    markdown_content = Column(Text)
     crawl_job_id = Column(UUID(as_uuid=True), ForeignKey('crawl_jobs.id', ondelete='CASCADE'))
     upload_job_id = Column(UUID(as_uuid=True), ForeignKey('upload_jobs.id', ondelete='CASCADE'))
     source_type = Column(String(20), default='crawl')

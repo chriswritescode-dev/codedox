@@ -20,6 +20,7 @@ from .extraction_models import SimpleCodeBlock
 from .failed_page_utils import record_failed_page
 from .html_code_extractor import HTMLCodeExtractor
 from .llm_retry import LLMDescriptionGenerator
+from .markdown_utils import remove_markdown_links
 
 logger = logging.getLogger(__name__)
 
@@ -610,8 +611,7 @@ class PageCrawler:
         markdown_content = self._extract_markdown_content(result)
         if not markdown_content:
             markdown_content = markdown_for_hash  # Fall back to raw if no fit_markdown
-
-        # Extract title and metadata
+            
         title = ""
         page_metadata = {}
         if hasattr(result, "metadata") and result.metadata:
@@ -690,7 +690,6 @@ class PageCrawler:
                     language=block.language,
                     container_type=block.container_type,
                     context_before=block.context_before,
-                    context_after=block.context_after,
                     source_url=result.url
                 )
                 html_blocks.append(simple_block)
@@ -718,9 +717,70 @@ class PageCrawler:
                 }
             )
 
-        # Generate LLM descriptions for code blocks
+        # Check if LLM extraction is enabled
+        settings = get_settings()
+        enable_llm = settings.code_extraction.enable_llm_extraction
+        
+        # Override with job config if specified
+        if job_config and isinstance(job_config, dict):
+            metadata = job_config.get('metadata', {})
+            # Allow job-level override
+            if 'enable_llm_extraction' in metadata:
+                enable_llm = metadata['enable_llm_extraction']
+
+        processed_blocks = []
+        
+        if not enable_llm:
+            # Non-LLM extraction: use page title and context
+            logger.info(f"LLM extraction disabled, using fallback extraction for {len(html_blocks)} blocks from {result.url}")
+            
+            for i, block in enumerate(html_blocks, 1):
+                # Generate title from page title and block index
+                block_title = f"{title} - Code Block {i}" if title else f"Code Block {i}"
+                
+                # Generate description from context_before
+                block_description = ""
+                if block.context_before:
+                    # Join ALL context elements from the parent container with newlines
+                    # This gives us the full description/explanation that appears before the code
+                    context_text = "\n".join(block.context_before).strip()
+                    
+                    if context_text:
+                        # Use full context text for description (database column can hold text)
+                        block_description = context_text
+                
+                if not block_description:
+                    block_description = f"Code snippet from {title if title else 'documentation'}"
+                
+                processed_blocks.append({
+                    'code': block.code,
+                    'language': block.language or 'text',
+                    'title': block_title,
+                    'description': block_description,
+                    'source_url': block.source_url,
+                    'metadata': {
+                        'container_type': block.container_type,
+                        'extraction_method': 'html_only'
+                    }
+                })
+            
+            return CrawlResult(
+                url=result.url,
+                title=title,
+                content=markdown_content,
+                content_hash=content_hash,
+                code_blocks=processed_blocks,
+                metadata={
+                    "depth": page_depth,
+                    "extraction_method": "html_only",
+                    "blocks_found": len(processed_blocks),
+                    **page_metadata
+                }
+            )
+        
+        # LLM extraction enabled - proceed with original logic
         if logger.isEnabledFor(logging.DEBUG):
-            logger.debug(f"Generating descriptions for {len(html_blocks)} code blocks from {result.url}")
+            logger.debug(f"Generating LLM descriptions for {len(html_blocks)} code blocks from {result.url}")
 
         # Keep phase as crawling during LLM work (it's part of the crawl process)
         # No phase update needed here - we stay in 'crawling' phase
@@ -763,7 +823,6 @@ class PageCrawler:
             )
 
             # Convert to the format expected by result processor
-            processed_blocks = []
             for block in blocks_with_descriptions:
                 # Fallback: generate title from description if LLM didn't provide one
                 if not block.title and block.description:

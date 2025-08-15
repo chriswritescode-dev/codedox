@@ -68,14 +68,12 @@ class LLMDescriptionGenerator:
         Returns:
             List of code blocks with titles and descriptions added
         """
-        # Use provided semaphore or create one
+
         if semaphore is None:
-            # Use environment variable if max_concurrent not provided
             if max_concurrent is None:
                 max_concurrent = int(os.getenv('CODE_LLM_NUM_PARALLEL', '5'))
                 logger.info(f"Using CODE_LLM_NUM_PARALLEL={max_concurrent} for batch title/description generation")
 
-            # Create semaphore for concurrency control
             semaphore = asyncio.Semaphore(max_concurrent)
 
         async def generate_with_semaphore(block: SimpleCodeBlock) -> SimpleCodeBlock:
@@ -86,12 +84,10 @@ class LLMDescriptionGenerator:
                     block.description = f"Code block in {block.language or 'unknown'} language"
                     return block
 
-                # Build context from before/after context
+                # Build context from before context only
                 context_parts = []
                 if block.context_before:
                     context_parts.extend(block.context_before)
-                if block.context_after:
-                    context_parts.extend(block.context_after)
 
                 context = " ".join(context_parts) if context_parts else "No additional context available"
 

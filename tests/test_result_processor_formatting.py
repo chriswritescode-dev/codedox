@@ -15,6 +15,9 @@ class TestResultProcessorFormatting:
     async def test_formatting_improves_code(self):
         """Test that improved formatted code is saved."""
         processor = ResultProcessor()
+        
+        # Mock settings to ensure formatting is enabled
+        processor.settings.code_extraction.disable_formatting = False
 
         # Mock database session
         mock_session = Mock()
@@ -36,17 +39,26 @@ class TestResultProcessorFormatting:
         mock_session.flush = Mock()
         mock_session.commit = Mock()
 
-        # Process code blocks
-        with patch.object(processor, 'code_formatter') as mock_formatter:
-            # Mock formatter to return improved code
-            mock_formatter.format.return_value = 'const x = 5;\nconst y = 10;'
+        # Process code blocks with mocked formatting
+        with patch.object(processor, '_format_blocks_concurrently') as mock_format:
+            # Mock the concurrent formatting to return formatted blocks
+            mock_format.return_value = [{
+                'index': 0,
+                'content': 'const x=5;const y=10;',
+                'formatted_content': 'const x = 5;\nconst y = 10;',  # Formatted version
+                'language': 'javascript',
+                'title': 'Variable declarations',
+                'description': 'Declares two constants',
+                'metadata': {},
+                'filename': None
+            }]
 
             snippet_count = await processor._process_code_blocks(
                 mock_session, mock_doc, code_blocks, 'https://example.com/test'
             )
 
-        # Verify formatting was called with correct language
-        mock_formatter.format.assert_called_once_with('const x=5;const y=10;', 'javascript')
+        # Verify formatting method was called
+        mock_format.assert_called_once()
 
         # Verify the formatted code was saved
         saved_snippet = mock_session.add.call_args[0][0]

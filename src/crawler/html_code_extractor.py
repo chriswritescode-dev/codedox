@@ -17,7 +17,6 @@ class ExtractedCodeBlock:
     language: str | None = None
     container_hierarchy: list[dict[str, Any]] = field(default_factory=list)
     context_before: list[str] = field(default_factory=list)
-    context_after: list[str] = field(default_factory=list)
     container_type: str | None = None  # example, api-method, tutorial-step,
     # etc.
     title: str | None = None
@@ -134,7 +133,6 @@ class HTMLCodeExtractor:
             language=language,
             container_hierarchy=context['hierarchy'],
             context_before=context['before'],
-            context_after=context['after'],
             container_type=container_type,
             title=context.get('title'),
             description=context.get('description')
@@ -224,7 +222,6 @@ class HTMLCodeExtractor:
             language=language,
             container_hierarchy=context['hierarchy'],
             context_before=context['before'],
-            context_after=context['after'],
             container_type=container_type,
             title=context.get('title'),
             description=context.get('description')
@@ -370,7 +367,6 @@ class HTMLCodeExtractor:
         """Extract surrounding context for a code block."""
         context: dict[str, Any] = {
             'before': [],
-            'after': [],
             'hierarchy': [],
             'title': None,
             'description': None,
@@ -396,29 +392,45 @@ class HTMLCodeExtractor:
             }
             context['hierarchy'].append(hierarchy_info)
 
-            # Look for title in this container
+            # Look for title in this container - only before the code element
             if not context['title']:
-                title_elem = parent.find(['h1', 'h2', 'h3', 'h4', 'h5', 'h6'])
-                if title_elem:
-                    title_text = title_elem.get_text(separator=' ', strip=True)
-                    if title_text:
-                        context['title'] = title_text
+                # Check if code_element is descendant of current
+                code_is_descendant = code_element in (current.descendants if hasattr(current, 'descendants') else [])
+                
+                for elem in parent.children:
+                    # Stop when we reach the current element or its container
+                    if elem == current or (code_is_descendant and elem == code_element):
+                        break
+                    # Skip navigation elements
+                    if hasattr(elem, 'name') and elem.name in ['button', 'nav', 'a']:
+                        continue
+                    if hasattr(elem, 'name') and elem.name in ['h1', 'h2', 'h3', 'h4', 'h5', 'h6']:
+                        title_text = elem.get_text(separator=' ', strip=True)
+                        if title_text:
+                            context['title'] = title_text
+                            break
 
-            # Look for filename in this container
+            # Look for filename in this container - only before the code element
             if not context['filename']:
                 # Check for common filename indicators
                 filename_elem = None
+                code_is_descendant = code_element in (current.descendants if hasattr(current, 'descendants') else [])
 
                 # Check for elements with filename-related classes
-                for elem in parent.find_all(['div', 'span', 'code']):
-                    if hasattr(elem, 'get'):
-                        elem_classes = elem.get('class', None) or []
-                    else:
-                        elem_classes = []
-                    if any('filename' in cls.lower() or 'file-name' in cls.lower()
-                           or 'code-title' in cls.lower() for cls in elem_classes):
-                        filename_elem = elem
+                for elem in parent.children:
+                    # Stop when we reach the current element or its container
+                    if elem == current or (code_is_descendant and elem == code_element):
                         break
+                    
+                    if hasattr(elem, 'name') and elem.name in ['div', 'span', 'code']:
+                        if hasattr(elem, 'get'):
+                            elem_classes = elem.get('class', None) or []
+                        else:
+                            elem_classes = []
+                        if any('filename' in cls.lower() or 'file-name' in cls.lower()
+                               or 'code-title' in cls.lower() for cls in elem_classes):
+                            filename_elem = elem
+                            break
 
                 # Check for data attributes
                 if not filename_elem and parent.get('data-filename'):
@@ -431,32 +443,42 @@ class HTMLCodeExtractor:
                     if filename_text and ('.' in filename_text or filename_text in ['Dockerfile', 'Makefile']):
                         context['filename'] = filename_text
 
-            # Get context from siblings at this level
-            # Previous siblings (context before)
-            for sibling in list(current.previous_siblings)[:3]:  # Limit to 3 siblings
-                if isinstance(sibling, NavigableString):
-                    continue
-                if hasattr(sibling, 'name') and sibling.name in self.CONTEXT_ELEMENTS:
-                    # Check if sibling contains code blocks
-                    if hasattr(sibling, 'find_all') and sibling.find_all(['pre', 'code']):
-                        # Skip elements that contain code blocks
-                        continue
-                    text = sibling.get_text(separator=' ', strip=True)
-                    if text and len(text) > 10:
-                        context['before'].insert(0, text)  # Insert at beginning to maintain order
-
-            # Next siblings (context after)
-            for sibling in list(current.next_siblings)[:2]:  # Limit to 2 siblings after
-                if isinstance(sibling, NavigableString):
-                    continue
-                if hasattr(sibling, 'name') and sibling.name in self.CONTEXT_ELEMENTS:
-                    # Check if sibling contains code blocks
-                    if hasattr(sibling, 'find_all') and sibling.find_all(['pre', 'code']):
-                        # Skip elements that contain code blocks
-                        continue
-                    text = sibling.get_text(separator=' ', strip=True)
-                    if text and len(text) > 10:
-                        context['after'].append(text)
+            # Look for content elements in the parent container that appear before the code block
+            if parent and hasattr(parent, 'children'):
+                children_list = list(parent.children)
+                
+                # Find where the current element is in the parent's children
+                for idx, child in enumerate(children_list):
+                    if child == current:
+                        # We found the code block, now get content before it
+                        # but stop if we hit another code block
+                        for i in range(idx - 1, -1, -1):  # Work backwards from current element
+                            prev_child = children_list[i]
+                            if hasattr(prev_child, 'name'):
+                                # Stop if we hit another code block
+                                if prev_child.name in ['pre', 'code']:
+                                    break
+                                # Also check if this element contains a code block
+                                if prev_child.name == 'div' and prev_child.find(['pre', 'code']):
+                                    break
+                                    
+                                # Collect content elements
+                                if prev_child.name in ['p', 'span', 'h2', 'h3', 'h4']:
+                                    text = prev_child.get_text(separator=' ', strip=True)
+                                    if text and len(text) > 10:
+                                        # Insert at beginning since we're going backwards
+                                        context['before'].insert(0, text)
+                                elif prev_child.name == 'ul':
+                                    # Get text from list items
+                                    list_items = []
+                                    for li in prev_child.find_all('li'):
+                                        text = li.get_text(separator=' ', strip=True)
+                                        if text and len(text) > 10:
+                                            list_items.append(text)
+                                    # Insert all list items at beginning
+                                    for item in reversed(list_items):
+                                        context['before'].insert(0, item)
+                        break  # Stop once we've processed elements before the code block
 
             current = parent
             levels_up += 1
@@ -557,11 +579,6 @@ class HTMLCodeExtractor:
                 code_preview += "\n... (truncated)"
             output.append(code_preview)
             output.append("-" * 40)
-
-            if block.context_after:
-                output.append("\nContext After:")
-                for ctx in block.context_after[:2]:  # First 2 items
-                    output.append(f"  - {ctx[:100]}...")
 
         output.append(f"\n\nTotal blocks found: {len(blocks)}")
         if self.stats['languages_found']:

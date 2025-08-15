@@ -5,8 +5,11 @@ A powerful system for crawling documentation websites, extracting code snippets,
 ## Features
 
 - **Controlled Web Crawling**: Manual crawling with configurable depth (0-3 levels)
-- **Smart Code Extraction**: HTML-based extraction with LLM language detection
-- **LLM Descriptions**: AI-generated concise descriptions for extracted code
+- **Smart Code Extraction**: HTML-based extraction with optional LLM enhancement
+- **Flexible Extraction Modes**: 
+  - **With LLM** : AI-generated titles and descriptions for better quality
+  - **Without LLM** (dafault mode): Uses page title and context for basic extraction (no API keys required)
+- **LLM Descriptions**: AI-generated concise descriptions for extracted code (when enabled)
 - **Fast Search**: PostgreSQL full-text search 
 - **MCP Integration**: Expose tools to AI assistants via Model Context Protocol
 - **Modern Web UI**: React-based dashboard for managing crawls, searching code, and monitoring system activity
@@ -73,22 +76,31 @@ graph TB
     style WEB fill:#6b7280,color:#fff
 ```
 
-### Two-Step Code Extraction Process
+### Code Extraction Process
 
-CodeDox uses a sophisticated two-step approach for code extraction:
+CodeDox offers two extraction modes:
 
+#### With LLM Summarization
 1. **HTML-Based Extraction**: Uses BeautifulSoup to extract code blocks from HTML with high accuracy
    - Identifies code blocks using multiple CSS selectors (pre, code, syntax highlighters)
    - Extracts surrounding context (titles, descriptions, container types)
-   - Detects language using LLM analysis with source URL context
    - Extracts filename hints from HTML attributes and context
    - Removes UI elements and clutter from code blocks
 
-2. **LLM Description Generation**: Uses AI to generate concise descriptions
-   - Analyzes each code block with its context
-   - Generates 10-30 word descriptions focusing on the code's purpose
-   - Uses context to understand the code's role in documentation
-   - Only requires LLM for descriptions, not extraction
+2. **LLM Enhancement**: Uses AI to generate accurate titles and descriptions
+   - Detects programming language using context and syntax analysis
+   - Generates meaningful titles describing what the code does
+   - Creates 20-60 word descriptions explaining the code's purpose
+   - Provides high-quality metadata for better search results
+
+#### Without LLM (No API Keys Required - Default)
+When `CODE_ENABLE_LLM_EXTRACTION=false`:
+- **Basic Extraction**: Uses HTML extraction without AI enhancement
+   - Titles are generated from page title and block index
+   - Descriptions use the surrounding context text
+   - Language detection from HTML class attributes
+   - Perfect for testing or when API costs are a concern
+   - Still provides functional code search and retrieval
 
 ## Quick Start
 
@@ -182,7 +194,10 @@ python cli.py serve
 The system uses environment variables for configuration. Key settings in `.env`:
 
 ```bash
-# Required: LLM API Configuration
+# Code Extraction Configuration
+CODE_ENABLE_LLM_EXTRACTION=true  # Set to false to disable LLM (no API key required)
+
+# Required only if LLM extraction is enabled:
 CODE_LLM_API_KEY=your-api-key-here
 CODE_LLM_EXTRACTION_MODEL=gpt-4o-mini  # or gpt-4, claude-3, etc.
 
@@ -574,7 +589,6 @@ python test_hash_optimization.py
 - Ensure CODE_LLM_API_KEY is set in .env
 - Check LLM API connectivity and credits
 
-For detailed troubleshooting, see the [documentation wiki](https://github.com/chriswritescode-dev/codedox/wiki).
 
 
 ## Upgrading
@@ -587,8 +601,6 @@ pg_dump -U postgres -d codedox > backup.sql
 # Apply migrations
 psql -U postgres -d codedox -f src/database/migrations/001_upgrade_to_latest.sql
 
-# Remove markdown_content column (saves storage)
-psql -U postgres -d codedox -f src/database/migrations/003_remove_markdown_content.sql
 ```
 
 ## Contributing

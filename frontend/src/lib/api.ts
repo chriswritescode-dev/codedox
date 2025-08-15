@@ -248,6 +248,56 @@ class APIClient {
     return this.fetch(`/documents/${documentId}/snippets?${queryParams}`)
   }
 
+  async getPageMarkdown(url: string): Promise<{
+    status: string
+    document?: {
+      id: number
+      url: string
+      title: string
+      last_crawled: string | null
+      content_length?: number
+    }
+    source?: {
+      id: string
+      name: string
+      type: string
+    } | null
+    markdown_content?: string
+    metadata?: Record<string, any>
+    message?: string
+    note?: string
+  }> {
+    const queryParams = new URLSearchParams({ url })
+    return this.fetch(`/documents/markdown?${queryParams}`)
+  }
+
+  async searchDocuments(
+    query: string,
+    params: { limit?: number; offset?: number } = {}
+  ): Promise<{
+    results: Array<{
+      id: number
+      url: string
+      title: string
+      source_name: string | null
+      has_markdown: boolean
+      last_crawled: string | null
+    }>
+    pagination: {
+      total: number
+      limit: number
+      offset: number
+      has_more: boolean
+    }
+    query: string
+  }> {
+    const queryParams = new URLSearchParams({ query })
+    if (params.limit !== undefined) queryParams.append('limit', String(params.limit))
+    if (params.offset !== undefined) queryParams.append('offset', String(params.offset))
+    
+    return this.fetch(`/documents/search?${queryParams}`)
+  }
+
   async deleteSource(id: string): Promise<{ message: string }> {
     return this.fetch<{ message: string }>(`/sources/${id}`, {
       method: 'DELETE',

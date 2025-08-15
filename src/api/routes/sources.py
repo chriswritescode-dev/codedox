@@ -619,6 +619,136 @@ async def delete_sources_bulk(source_ids: list[str], db: Session = Depends(get_d
     }
 
 
+@router.get("/documents/markdown")
+async def get_page_markdown(
+    url: str = Query(..., description="The URL of the document to get markdown for"),
+    db: Session = Depends(get_db)
+) -> dict[str, Any]:
+    """Get the full markdown content of a documentation page by URL."""
+    # Query for the document by URL
+    document = db.query(Document).filter(Document.url == url).first()
+    
+    if not document:
+        raise HTTPException(
+            status_code=404, 
+            detail=f"No document found with URL: {url}"
+        )
+    
+    # Check if markdown content exists
+    if not document.markdown_content:
+        return {
+            "status": "no_content",
+            "message": "Document exists but has no markdown content",
+            "document": {
+                "id": document.id,
+                "url": document.url,
+                "title": document.title,
+                "last_crawled": document.last_crawled.isoformat() if document.last_crawled else None,
+            },
+            "note": "This document may have been crawled before markdown storage was enabled"
+        }
+    
+    # Get library/source info
+    source_info = None
+    if document.crawl_job_id:
+        source = db.query(CrawlJob).filter_by(id=document.crawl_job_id).first()
+        if source:
+            source_info = {
+                "id": str(source.id),
+                "name": source.name,
+                "type": "crawl"
+            }
+    elif document.upload_job_id:
+        source = db.query(UploadJob).filter_by(id=document.upload_job_id).first()
+        if source:
+            source_info = {
+                "id": str(source.id),
+                "name": source.name,
+                "type": "upload"
+            }
+    
+    return {
+        "status": "success",
+        "document": {
+            "id": document.id,
+            "url": document.url,
+            "title": document.title or "Untitled",
+            "last_crawled": document.last_crawled.isoformat() if document.last_crawled else None,
+            "content_length": len(document.markdown_content),
+        },
+        "source": source_info,
+        "markdown_content": document.markdown_content,
+        "metadata": document.meta_data if document.meta_data else {}
+    }
+
+
+@router.get("/documents/search")
+async def search_documents(
+    query: str = Query(..., description="Search query for document title or URL"),
+    limit: int = Query(20, le=100),
+    offset: int = Query(0, ge=0),
+    db: Session = Depends(get_db)
+) -> dict[str, Any]:
+    """Search for documents by title or URL with fuzzy matching."""
+    from sqlalchemy import case
+    
+    # Build the search query
+    search_query = db.query(Document).filter(
+        or_(
+            Document.title.ilike(f"%{query}%"),
+            Document.url.ilike(f"%{query}%")
+        )
+    )
+    
+    # Get total count
+    total = search_query.count()
+    
+    # Get paginated results
+    documents = search_query.order_by(
+        case(
+            # Prioritize exact matches
+            (Document.title.ilike(query), 0),
+            (Document.url.ilike(f"%/{query}%"), 1),
+            else_=2
+        ),
+        Document.title
+    ).offset(offset).limit(limit).all()
+    
+    # Format results
+    results = []
+    for doc in documents:
+        # Get source info
+        source_name = None
+        if doc.crawl_job_id:
+            source = db.query(CrawlJob).filter_by(id=doc.crawl_job_id).first()
+            if source:
+                source_name = source.name
+        elif doc.upload_job_id:
+            source = db.query(UploadJob).filter_by(id=doc.upload_job_id).first()
+            if source:
+                source_name = source.name
+        
+        results.append({
+            "id": doc.id,
+            "url": doc.url,
+            "title": doc.title or "Untitled",
+            "source_name": source_name,
+            "has_markdown": doc.markdown_content is not None,
+            "last_crawled": doc.last_crawled.isoformat() if doc.last_crawled else None,
+        })
+    
+    return {
+        "results": results,
+        "pagination": {
+            "total": total,
+            "limit": limit,
+            "offset": offset,
+            "has_more": (offset + limit) < total,
+        },
+        "query": query
+    }
+
+
 class DeleteFilteredRequest(BaseModel):
     """Request model for deleting filtered sources."""
     min_snippets: int | None = Field(None, ge=0, description="Minimum snippet count")

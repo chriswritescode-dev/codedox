@@ -7,7 +7,7 @@ CREATE TABLE IF NOT EXISTS upload_jobs (
     name TEXT NOT NULL,
     source_type VARCHAR(20) DEFAULT 'upload' CHECK (source_type IN ('upload', 'file', 'api')),
     file_count INTEGER DEFAULT 0,
-    status VARCHAR(20) DEFAULT 'pending' CHECK (status IN ('pending', 'running', 'completed', 'failed', 'cancelled')),
+    status VARCHAR(20) DEFAULT 'running' CHECK (status IN ('running', 'completed')),
     processed_files INTEGER DEFAULT 0,
     snippets_extracted INTEGER DEFAULT 0,
     started_at TIMESTAMP,

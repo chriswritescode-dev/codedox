@@ -61,11 +61,16 @@ class MCPServer:
                 limit=arguments.get("limit", 20),
                 page=arguments.get("page", 1),
             )
+        elif name == "get_page_markdown":
+            return await self.tools.get_page_markdown(
+                url=arguments.get("url")
+            )
         else:
             available_tools = [
                 "init_crawl",
                 "search_libraries",
                 "get_content",
+                "get_page_markdown",
             ]
             logger.error(f"Unknown tool requested: '{name}'. Available tools: {available_tools}")
             raise ValueError(f"Unknown tool: '{name}'. Available tools: {', '.join(available_tools)}")
@@ -212,6 +217,20 @@ class MCPServer:
                         },
                     },
                     "required": ["library_id"],
+                },
+            ),
+            Tool(
+                name="get_page_markdown",
+                description="Get the full markdown content of a documentation page by URL. Use this when you need complete page content for context, not just code snippets. The URL is typically provided in code snippet results.",
+                inputSchema={
+                    "type": "object",
+                    "properties": {
+                        "url": {
+                            "type": "string",
+                            "description": "The URL of the documentation page to retrieve markdown content for",
+                        },
+                    },
+                    "required": ["url"],
                 },
             ),
         ]
