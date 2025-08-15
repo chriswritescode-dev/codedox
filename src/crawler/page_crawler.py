@@ -533,30 +533,20 @@ class PageCrawler:
         while True:
             result = await processed_results.get()
 
-            if result is None:  # Shutdown signal
+            if result is None:
                 break
 
             results.append(result)
             crawl_progress['processed_count'] += 1
 
-            # Track snippet counts
             if result.code_blocks:
                 crawl_progress['snippets_extracted'] += len(result.code_blocks)
             elif result.metadata.get('existing_snippet_count'):
-                # For pages with unchanged content, add existing snippet count
                 crawl_progress['snippets_extracted'] += result.metadata.get('existing_snippet_count', 0)
 
-            # Track skipped pages for logging
             if result.metadata.get('content_unchanged'):
                 crawl_progress['skipped_count'] = crawl_progress.get('skipped_count', 0) + 1
 
-            # Periodically clear results to avoid memory accumulation
-            if len(results) >= 100:
-                logger.info(f"Clearing {len(results)} processed results from memory to prevent accumulation")
-                # Keep only the last 10 results for debugging if needed
-                results[:] = results[-10:]
-
-            # Send progress update with snippet count
             if progress_tracker:
                 should_update = crawl_progress['processed_count'] - crawl_progress['last_ws_count'] >= 3
                 if should_update:
