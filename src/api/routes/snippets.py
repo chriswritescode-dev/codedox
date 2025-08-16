@@ -5,10 +5,10 @@ from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload
 
 from ...database import get_db
-from ...database.models import CodeSnippet, CrawlJob, Document
+from ...database.models import CodeSnippet, CrawlJob, Document, UploadJob
 
 logger = logging.getLogger(__name__)
 
@@ -19,29 +19,26 @@ router = APIRouter(prefix="/snippets", tags=["snippets"])
 async def get_snippet(snippet_id: int, db: Session = Depends(get_db)) -> dict[str, Any]:
     """Get details of a specific code snippet."""
     try:
-        # Get snippet with document and source relationships
-        snippet = db.query(CodeSnippet).filter_by(id=snippet_id).first()
+        snippet = db.query(CodeSnippet)\
+            .options(
+                joinedload(CodeSnippet.document).joinedload(Document.crawl_job),
+                joinedload(CodeSnippet.document).joinedload(Document.upload_job)
+            )\
+            .filter_by(id=snippet_id)\
+            .first()
 
         if not snippet:
             raise HTTPException(status_code=404, detail="Snippet not found")
 
         result = snippet.to_dict()
 
-        # Get source information through document relationship
-        if snippet.document_id:
-            document = db.query(Document).filter_by(id=snippet.document_id).first()
-            if document:
-                if document.crawl_job_id:
-                    crawl_job = db.query(CrawlJob).filter_by(id=document.crawl_job_id).first()
-                    if crawl_job:
-                        result['source_id'] = str(crawl_job.id)
-                        result['source_name'] = crawl_job.name
-                elif document.upload_job_id:
-                    from ...database.models import UploadJob
-                    upload_job = db.query(UploadJob).filter_by(id=document.upload_job_id).first()
-                    if upload_job:
-                        result['source_id'] = str(upload_job.id)
-                        result['source_name'] = upload_job.name
+        if snippet.document:
+            if snippet.document.crawl_job:
+                result['source_id'] = str(snippet.document.crawl_job.id)
+                result['source_name'] = snippet.document.crawl_job.name
+            elif snippet.document.upload_job:
+                result['source_id'] = str(snippet.document.upload_job.id)
+                result['source_name'] = snippet.document.upload_job.name
 
         return result
 
