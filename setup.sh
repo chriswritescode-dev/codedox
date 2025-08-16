@@ -60,7 +60,7 @@ echo ""
 echo "🌐 Installing Playwright browsers..."
 crawl4ai-setup
 
-# Install frontend dependencies (including Prettier for code formatting)
+# Install frontend dependencies
 if [ -d "frontend" ]; then
     echo ""
     echo "📦 Installing frontend dependencies..."

@@ -1,7 +1,6 @@
-import { Search, Trash2, X, Wand2 } from "lucide-react";
+import { Search, Trash2, X } from "lucide-react";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { SnippetList } from "./SnippetList";
-import { Spinner } from "./Spinner";
 
 interface SourceSnippetsTabProps {
   snippets: any;
@@ -16,7 +15,6 @@ interface SourceSnippetsTabProps {
   setSnippetsPage: (page: number) => void;
   setSelectedLanguage: (lang: string) => void;
   setSnippetsSearch: (search: string) => void;
-  formatPreviewMutation: any;
   setDeleteMatchesModalOpen: (open: boolean) => void;
 }
 
@@ -30,7 +28,6 @@ export function SourceSnippetsTab({
   setSnippetsPage,
   setSelectedLanguage,
   setSnippetsSearch,
-  formatPreviewMutation,
   setDeleteMatchesModalOpen,
   hideSearch = false,
 }: SourceSnippetsTabProps & { hideSearch?: boolean }) {
@@ -95,23 +92,6 @@ export function SourceSnippetsTab({
         >
           <Trash2 className="h-4 w-4" />
           Delete Matches
-        </button>
-        <button
-          onClick={() => formatPreviewMutation.mutate()}
-          disabled={formatPreviewMutation.isPending || snippetsLoading || !snippets || snippets.total === 0}
-          className="flex items-center gap-2 px-4 py-2 text-sm bg-secondary text-secondary-foreground rounded-md hover:bg-secondary/80 disabled:opacity-50 disabled:cursor-not-allowed min-w-[120px] justify-center h-10 cursor-pointer"
-        >
-          {formatPreviewMutation.isPending ? (
-            <>
-              <Spinner size="sm" className="text-secondary-foreground" />
-              Analyzing...
-            </>
-          ) : (
-            <>
-              <Wand2 className="h-4 w-4" />
-              Format All
-            </>
-          )}
         </button>
       </div>
       )}

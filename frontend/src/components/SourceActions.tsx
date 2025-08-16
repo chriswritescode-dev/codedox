@@ -1,21 +1,14 @@
 import { Trash2 } from 'lucide-react';
 import { ConfirmationDialog } from './ConfirmationDialog';
-import { FormatSourceDialog } from './FormatSourceDialog';
 
 interface SourceActionsProps {
   source: any;
   deleteModalOpen: boolean;
   deleteMatchesModalOpen: boolean;
-  formatDialogOpen: boolean;
-  formatPreview: any;
   deleteMutation: any;
   deleteMatchesMutation: any;
-  formatSourceMutation: any;
-  handleConfirmFormat: () => void;
   setDeleteModalOpen: (open: boolean) => void;
   setDeleteMatchesModalOpen: (open: boolean) => void;
-  setFormatDialogOpen: (open: boolean) => void;
-  setFormatPreview: (preview: any) => void;
   handleConfirmDelete: () => void;
 }
 
@@ -23,16 +16,10 @@ export function SourceActions({
   source,
   deleteModalOpen,
   deleteMatchesModalOpen,
-  formatDialogOpen,
-  formatPreview,
   deleteMutation,
   deleteMatchesMutation,
-  formatSourceMutation,
-  handleConfirmFormat,
   setDeleteModalOpen,
   setDeleteMatchesModalOpen,
-  setFormatDialogOpen,
-  setFormatPreview,
   handleConfirmDelete,
 }: SourceActionsProps) {
   return (
@@ -69,21 +56,6 @@ export function SourceActions({
         onCancel={() => setDeleteMatchesModalOpen(false)}
       />
 
-      {formatPreview && (
-        <FormatSourceDialog
-          isOpen={formatDialogOpen}
-          sourceName={source.name}
-          totalSnippets={formatPreview.total_snippets}
-          changedSnippets={formatPreview.changed_snippets}
-          preview={formatPreview.preview}
-          isFormatting={formatSourceMutation.isPending}
-          onConfirm={handleConfirmFormat}
-          onCancel={() => {
-            setFormatDialogOpen(false);
-            setFormatPreview(null);
-          }}
-        />
-      )}
     </>
   );
 }

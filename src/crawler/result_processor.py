@@ -2,8 +2,6 @@
 
 import asyncio
 import logging
-import os
-from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime
 from typing import Any
 
@@ -11,7 +9,6 @@ from sqlalchemy.orm import Session
 
 from ..config import get_settings
 from ..database import CodeSnippet, Document, get_db_manager
-from .code_formatter import CodeFormatter
 from .markdown_utils import remove_markdown_links
 
 logger = logging.getLogger(__name__)
@@ -24,27 +21,10 @@ class ResultProcessor:
         """Initialize result processor."""
         self.db_manager = get_db_manager()
         self.settings = get_settings()
-        self.code_formatter = CodeFormatter()
-        # Thread pool for concurrent formatting with bounded queue
-        max_workers = min(
-            self.settings.crawling.format_thread_pool_size,
-            (os.cpu_count() or 1) * 2
-        )
-        self.format_thread_pool = ThreadPoolExecutor(
-            max_workers=max_workers,
-            thread_name_prefix="code-formatter"
-        )
-        # Note: Semaphore is now created locally in _format_blocks_concurrently
-        # to avoid deadlock issues with the previous global semaphore pattern
-        logger.info(f"ResultProcessor thread pool initialized with {max_workers} workers")
 
     def cleanup(self):
-        """Cleanup resources including thread pool."""
-        try:
-            self.format_thread_pool.shutdown(wait=True, cancel_futures=False)
-            logger.info("Thread pool shut down successfully")
-        except Exception as e:
-            logger.error(f"Error shutting down thread pool: {e}")
+        """Cleanup resources."""
+        pass
 
     def __enter__(self):
         """Context manager entry."""
@@ -96,7 +76,7 @@ class ResultProcessor:
                 if is_retry_job:
                     logger.info(f"[RETRY EFFICIENCY] Content unchanged for {result.url}, returning {existing_snippet_count} existing snippets (avoiding redundant LLM calls)")
                 else:
-                    logger.info(f"[SNIPPET_COUNT] Content unchanged for {result.url}, returning {existing_snippet_count} existing snippets")
+                    logger.debug(f"Content unchanged for {result.url}, returning {existing_snippet_count} existing snippets")
                 return int(existing_doc.id), existing_snippet_count
 
             # Create or update document
@@ -185,7 +165,7 @@ class ResultProcessor:
                 if is_retry_job:
                     logger.info(f"[RETRY EFFICIENCY] Content unchanged for {result.url}, returning {existing_snippet_count} existing snippets (avoiding redundant LLM calls)")
                 else:
-                    logger.info(f"[SNIPPET_COUNT] Content unchanged for {result.url}, returning {existing_snippet_count} existing snippets")
+                    logger.debug(f"Content unchanged for {result.url}, returning {existing_snippet_count} existing snippets")
                 return int(existing_doc.id), existing_snippet_count
 
             # Log when ignoring hash
@@ -488,110 +468,8 @@ If you cannot determine the name, respond with "UNKNOWN"."""
 
         return None
 
-    async def _format_blocks_concurrently(self, blocks_to_format: list[dict[str, Any]]) -> list[dict[str, Any]]:
-        """Format multiple code blocks concurrently using thread pool.
-        
-        Args:
-            blocks_to_format: List of block data dictionaries
-            
-        Returns:
-            List of formatted block data dictionaries
-        """
-        loop = asyncio.get_event_loop()
 
-        # Log the formatting task
-        logger.info(f"Starting concurrent formatting of {len(blocks_to_format)} code blocks")
-
-        # Submit all formatting tasks to thread pool
-        # Use a more reasonable semaphore limit based on thread pool size
-        max_concurrent = min(self.settings.crawling.format_thread_pool_size * 2, len(blocks_to_format))
-        submission_semaphore = asyncio.Semaphore(max_concurrent)
-
-        async def submit_with_semaphore(block_data):
-            async with submission_semaphore:
-                return await loop.run_in_executor(
-                    self.format_thread_pool,
-                    self._format_single_block,
-                    block_data
-                )
-
-        # Create tasks for all blocks
-        tasks = [asyncio.create_task(submit_with_semaphore(block)) for block in blocks_to_format]
-
-        # Wait for all tasks with a more reasonable timeout
-        # 36 blocks * 5 seconds per block = 180 seconds, so use 300 for safety
-        timeout = max(300, len(blocks_to_format) * 10)  # 10 seconds per block or 5 minutes min
-
-        formatted_blocks = []
-        try:
-            # Use asyncio.gather with return_exceptions to handle individual failures
-            results = await asyncio.wait_for(
-                asyncio.gather(*tasks, return_exceptions=True),
-                timeout=timeout
-            )
-
-            # Process results
-            for i, result in enumerate(results):
-                if isinstance(result, Exception):
-                    # On error, keep original block data
-                    original_block = blocks_to_format[i]
-                    logger.warning(f"Formatting failed for '{original_block.get('title', 'unknown')}': {result}")
-                    original_block['formatted_content'] = original_block['content']
-                    formatted_blocks.append(original_block)
-                else:
-                    formatted_blocks.append(result)
-
-            logger.info(f"Completed formatting {len(formatted_blocks)} code blocks")
-
-        except asyncio.TimeoutError:
-            logger.error(f"Overall formatting timeout reached after {timeout}s for {len(blocks_to_format)} blocks")
-            # Cancel remaining tasks
-            for i, task in enumerate(tasks):
-                if not task.done():
-                    task.cancel()
-                    # Use original content for timed out blocks
-                    original_block = blocks_to_format[i]
-                    original_block['formatted_content'] = original_block['content']
-                    formatted_blocks.append(original_block)
-                elif i < len(blocks_to_format):
-                    # Task completed, get its result
-                    try:
-                        result = await task
-                        formatted_blocks.append(result)
-                    except Exception:
-                        # Fallback to original
-                        original_block = blocks_to_format[i]
-                        original_block['formatted_content'] = original_block['content']
-                        formatted_blocks.append(original_block)
-
-        return formatted_blocks
-
-    def _format_single_block(self, block_data: dict[str, Any]) -> dict[str, Any]:
-        """Format a single code block (runs in thread pool).
-        
-        Args:
-            block_data: Block data dictionary
-            
-        Returns:
-            Block data with formatted_content added
-        """
-        content = block_data['content']
-        language = block_data['language']
-        title = block_data['title']
-
-        try:
-            formatted_code = self.code_formatter.format(content, language)
-            if formatted_code and formatted_code != content:
-                logger.info(f"Formatting improved code for snippet '{title}' (language: {language})")
-                block_data['formatted_content'] = formatted_code
-            else:
-                logger.debug(f"Keeping original format for snippet '{title}' (language: {language})")
-                block_data['formatted_content'] = content
-        except Exception as e:
-            logger.warning(f"Failed to format code for snippet '{title}': {e}")
-            block_data['formatted_content'] = content
-
-        return block_data
+# Improved _process_code_blocks method with better deduplication tracking
 
     async def _process_code_blocks(
         self, session: Session, doc: Document, code_blocks: list[Any], source_url: str
@@ -605,9 +483,12 @@ If you cannot determine the name, respond with "UNKNOWN"."""
             source_url: Source URL
 
         Returns:
-            Number of snippets created
+            Number of NEW unique snippets created (not including duplicates)
         """
-        snippet_count = 0
+        new_snippet_count = 0
+        duplicate_count = 0
+        updated_count = 0
+        skipped_count = 0
 
         logger.info(f"Processing {len(code_blocks)} code blocks for document {doc.url}")
 
@@ -639,6 +520,7 @@ If you cannot determine the name, respond with "UNKNOWN"."""
             # Skip empty code blocks
             if not content:
                 logger.warning(f"Skipping empty code block {i} with title: {title}")
+                skipped_count += 1
                 continue
 
             # Add to blocks to format
@@ -652,32 +534,14 @@ If you cannot determine the name, respond with "UNKNOWN"."""
                 'filename': filename
             })
 
-        # Format all blocks concurrently
-        if blocks_to_format:
-            # Check if formatting is disabled
-            if self.settings.code_extraction.disable_formatting:
-                logger.info("Code formatting disabled - preserving original code")
-                # Skip formatting, just copy content as-is
-                for block in blocks_to_format:
-                    block['formatted_content'] = block['content']
-                formatted_blocks = blocks_to_format
-            # Add safety check for excessive blocks
-            elif len(blocks_to_format) > 100:
-                logger.warning(f"Skipping formatting for {len(blocks_to_format)} blocks (exceeds safety limit of 100)")
-                # Skip formatting, just copy content as-is
-                for block in blocks_to_format:
-                    block['formatted_content'] = block['content']
-                formatted_blocks = blocks_to_format
-            else:
-                formatted_blocks = await self._format_blocks_concurrently(blocks_to_format)
-        else:
-            formatted_blocks = []
+        # No formatting - use original content
+        processed_blocks = blocks_to_format
 
         # Now process all formatted blocks
         import hashlib
 
-        for block_data in formatted_blocks:
-            content = block_data['formatted_content']
+        for block_data in processed_blocks:
+            content = block_data['content']
             title = block_data['title']
             description = block_data['description']
             language = block_data['language']
@@ -728,26 +592,35 @@ If you cannot determine the name, respond with "UNKNOWN"."""
                 metadata=full_metadata,
             )
 
-            # Check for duplicate
+            # Check for duplicate across entire database
             existing = session.query(CodeSnippet).filter_by(code_hash=snippet.code_hash).first()
 
             if not existing:
                 session.add(snippet)
                 session.flush()  # Flush to get the ID
-                snippet_count += 1
-                logger.info(f"Added new snippet: {title} (language: {language})")
+                new_snippet_count += 1
+                logger.debug(f"Added unique snippet: {title} (language: {language})")
             else:
-                # Update existing with new data
-                self._update_snippet(existing, snippet)
-                logger.info(f"Updated existing snippet: {title}")
+                # Check if it's from the same document or different
+                if existing.document_id == doc.id:
+                    # Same document - this shouldn't happen normally
+                    duplicate_count += 1
+                    logger.debug(f"Found duplicate in same document: {title}")
+                else:
+                    # Different document - update metadata
+                    self._update_snippet(existing, snippet)
+                    updated_count += 1
+                    from_doc = session.query(Document).filter_by(id=existing.document_id).first()
+                    logger.debug(f"Updated existing snippet: {title}")
 
         # Commit snippets
         session.commit()
 
-        logger.info(f"[SNIPPET_COUNT] Processed {snippet_count} new snippets for document {doc.id}")
+        # Log comprehensive statistics
+        total_processed = len(processed_blocks)
+        logger.debug(f"Processed {len(code_blocks)} blocks for document {doc.id}: {new_snippet_count} new, {updated_count} updated, {duplicate_count} duplicates")
 
-        return snippet_count
-
+        return new_snippet_count
 
 
     def _update_snippet(self, existing: CodeSnippet, new: CodeSnippet) -> None:
