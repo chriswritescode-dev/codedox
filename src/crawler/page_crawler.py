@@ -666,18 +666,22 @@ class PageCrawler:
 
         html_blocks = []
         try:
-            if logger.isEnabledFor(logging.DEBUG):
-                logger.debug(f"HTML content found, extracting code blocks for {result.url}")
-            extracted_blocks = await self.html_extractor.extract_code_blocks_async(
-                html_content,
-                result.url
-            )
-
-            # Convert to SimpleCodeBlock format
+            # Use HTML extraction
+            logger.info(f"Using HTML extraction for {result.url}")
+            
+            # Extract code blocks from HTML content
+            extracted_blocks = self.html_extractor.extract_code_blocks(html_content, result.url)
+            
+            # Convert to SimpleCodeBlock format, preserving all extracted fields
             for block in extracted_blocks:
+                # Debug logging
+                logger.info(f"ExtractedCodeBlock - title: {block.title}, description: {block.description}, context_before: {len(block.context_before) if block.context_before else 0} items")
+                
                 simple_block = SimpleCodeBlock(
                     code=block.code,
                     language=block.language,
+                    title=block.title,  # Preserve extracted title
+                    description=block.description,  # Preserve extracted description
                     container_type=block.container_type,
                     context_before=block.context_before,
                     source_url=result.url
@@ -725,12 +729,14 @@ class PageCrawler:
             logger.info(f"LLM extraction disabled, using fallback extraction for {len(html_blocks)} blocks from {result.url}")
             
             for i, block in enumerate(html_blocks, 1):
-                # Generate title from page title and block index
-                block_title = f"{title} - Code Block {i}" if title else f"Code Block {i}"
+                # Use title from HTML extractor if available, otherwise generate from page title
+                block_title = block.title if block.title else f"{title} - Code Block {i}" if title else f"Code Block {i}"
                 
-                # Generate description from context_before
-                block_description = ""
-                if block.context_before:
+                # Use the description already extracted by HTML extractor first
+                block_description = block.description if block.description else ""
+                
+                # Fallback to context_before if no description
+                if not block_description and block.context_before:
                     # Join ALL context elements from the parent container with newlines
                     # This gives us the full description/explanation that appears before the code
                     context_text = "\n".join(block.context_before).strip()
@@ -739,6 +745,7 @@ class PageCrawler:
                         # Use full context text for description (database column can hold text)
                         block_description = context_text
                 
+                # Only use generic description as last resort
                 if not block_description:
                     block_description = f"Code snippet from {title if title else 'documentation'}"
                 

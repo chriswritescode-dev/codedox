@@ -13,7 +13,6 @@ from ..database import CodeSnippet, Document, UploadJob, get_db_manager
 from .extraction_models import SimpleCodeBlock
 from .html_code_extractor import HTMLCodeExtractor
 from .llm_retry import LLMDescriptionGenerator
-from .markdown_code_extractor import MarkdownCodeExtractor
 from .markdown_utils import remove_markdown_links
 from .progress_tracker import ProgressTracker
 from .result_processor import ResultProcessor
@@ -51,7 +50,6 @@ class UploadProcessor:
         """Initialize the upload processor."""
         self.settings = settings
         self.db_manager = get_db_manager()
-        self.markdown_extractor = MarkdownCodeExtractor()
         self.html_extractor = HTMLCodeExtractor()
         self.result_processor = ResultProcessor()
         self.progress_tracker = ProgressTracker(self)
@@ -169,10 +167,8 @@ class UploadProcessor:
 
             # Extract code blocks based on content type
             if content_type == 'html':
-                # Convert HTML to BeautifulSoup and extract
-                from bs4 import BeautifulSoup
-                soup = BeautifulSoup(content, 'html.parser')
-                extracted_blocks = self.html_extractor.extract_code_blocks(soup, source_url)
+                # Pass HTML content directly to extractor (it creates soup internally)
+                extracted_blocks = self.html_extractor.extract_code_blocks(content, source_url)
 
                 # Convert to SimpleCodeBlock format
                 code_blocks = []
@@ -183,16 +179,12 @@ class UploadProcessor:
                         title=block.title,
                         description=block.description,
                         context_before=block.context_before,
-                        context_after=block.context_after,
                         metadata={
                             'container_type': block.container_type,
                             'extraction_method': 'html'
                         }
                     )
                     code_blocks.append(simple_block)
-            else:
-                # Default to markdown extraction
-                code_blocks = self.markdown_extractor.extract_code_blocks(content, source_url)
 
             return UploadResult(
                 source_url=source_url,
