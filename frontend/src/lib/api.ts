@@ -462,47 +462,6 @@ class APIClient {
     return this.fetch<CodeSnippet>(`/snippets/${id}`)
   }
 
-  async formatSnippet(
-    id: string,
-    save: boolean = false
-  ): Promise<{
-    original: string
-    formatted: string
-    language: string
-    changed: boolean
-    saved: boolean
-    detected_language?: string
-    formatter_used?: string
-  }> {
-    return this.fetch(`/snippets/${id}/format`, {
-      method: 'POST',
-      body: JSON.stringify({ save })
-    })
-  }
-
-  async formatSource(
-    id: string,
-    save: boolean = false,
-    dryRun: boolean = true
-  ): Promise<{
-    source_id: string
-    source_name: string
-    total_snippets: number
-    changed_snippets: number
-    saved_snippets: number
-    preview: Array<{
-      snippet_id: number
-      title: string
-      language: string
-      original_preview: string
-      formatted_preview: string
-    }>
-  }> {
-    return this.fetch(`/snippets/sources/${id}/format`, {
-      method: 'POST',
-      body: JSON.stringify({ save, dry_run: dryRun })
-    })
-  }
 
   // Upload
   async uploadMarkdown(data: {

@@ -212,7 +212,6 @@ class PageCrawler:
                                     processed_pages=crawl_progress['processed_count'],
                                     total_pages=crawled_count,
                                     documents_crawled=crawl_progress['processed_count'],
-                                    snippets_extracted=crawl_progress['base_snippet_count'] + crawl_progress['snippets_extracted'],
                                     send_notification=True
                                 )
                     else:
@@ -248,7 +247,6 @@ class PageCrawler:
                                     processed_pages=crawl_progress['processed_count'],
                                     total_pages=crawled_count,
                                     documents_crawled=crawl_progress['processed_count'],
-                                    snippets_extracted=crawl_progress['base_snippet_count'] + crawl_progress['snippets_extracted'],
                                     send_notification=True
                                 )
 
@@ -427,7 +425,6 @@ class PageCrawler:
                                 processed_pages=crawl_progress['processed_count'],
                                 total_pages=crawl_progress['crawled_count'],
                                 documents_crawled=crawl_progress['processed_count'],
-                                snippets_extracted=crawl_progress['base_snippet_count'] + crawl_progress['snippets_extracted'],
                                 send_notification=True
                             )
 
@@ -539,9 +536,7 @@ class PageCrawler:
             results.append(result)
             crawl_progress['processed_count'] += 1
 
-            if result.code_blocks:
-                crawl_progress['snippets_extracted'] += len(result.code_blocks)
-            elif result.metadata.get('existing_snippet_count'):
+            if result.metadata.get('existing_snippet_count'):
                 crawl_progress['snippets_extracted'] += result.metadata.get('existing_snippet_count', 0)
 
             if result.metadata.get('content_unchanged'):
@@ -556,7 +551,6 @@ class PageCrawler:
                         processed_pages=crawl_progress['processed_count'],
                         total_pages=crawl_progress['crawled_count'],
                         documents_crawled=crawl_progress['processed_count'],
-                        snippets_extracted=crawl_progress['base_snippet_count'] + crawl_progress['snippets_extracted'],
                         send_notification=True
                     )
 
@@ -617,7 +611,6 @@ class PageCrawler:
 
         # Check if we should ignore hash (for regeneration)
         ignore_hash = False
-        logger.debug(f"DEBUG: job_config = {job_config}")
         if job_config and isinstance(job_config, dict):
             job_metadata = job_config.get('metadata', {})
             ignore_hash = job_metadata.get('ignore_hash', False)
@@ -675,7 +668,6 @@ class PageCrawler:
             # Convert to SimpleCodeBlock format, preserving all extracted fields
             for block in extracted_blocks:
                 # Debug logging
-                logger.info(f"ExtractedCodeBlock - title: {block.title}, description: {block.description}, context_before: {len(block.context_before) if block.context_before else 0} items")
                 
                 simple_block = SimpleCodeBlock(
                     code=block.code,

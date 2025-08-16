@@ -9,10 +9,8 @@ import {
   Search,
   X,
   Trash2,
-  Wand2,
 } from "lucide-react";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Spinner } from "../components/Spinner";
 import { SourceOverview } from "../components/SourceOverview";
 import { SourceDocumentsTab } from "../components/SourceDocumentsTab";
 import { SourceSnippetsTab } from "../components/SourceSnippetsTab";
@@ -104,16 +102,10 @@ export default function SourceDetail() {
               source={state.source}
               deleteModalOpen={state.deleteModalOpen}
               deleteMatchesModalOpen={state.deleteMatchesModalOpen}
-              formatDialogOpen={state.formatDialogOpen}
-              formatPreview={state.formatPreview}
               deleteMutation={state.deleteMutation}
               deleteMatchesMutation={state.deleteMatchesMutation}
-              formatSourceMutation={state.formatSourceMutation}
-              handleConfirmFormat={() => state.formatSourceMutation.mutate()}
               setDeleteModalOpen={state.setDeleteModalOpen}
               setDeleteMatchesModalOpen={state.setDeleteMatchesModalOpen}
-              setFormatDialogOpen={state.setFormatDialogOpen}
-              setFormatPreview={state.setFormatPreview}
               handleConfirmDelete={handleConfirmDelete}
             />
           </div>
@@ -212,23 +204,6 @@ export default function SourceDetail() {
                 <Trash2 className="h-4 w-4" />
                 Delete Matches
               </button>
-              <button
-                onClick={() => state.formatPreviewMutation.mutate()}
-                disabled={state.formatPreviewMutation.isPending || state.snippetsLoading || !state.snippets || state.snippets.total === 0}
-                className="flex items-center gap-2 px-4 py-2 text-sm bg-secondary text-secondary-foreground rounded-md hover:bg-secondary/80 disabled:opacity-50 disabled:cursor-not-allowed min-w-[120px] justify-center h-10 cursor-pointer"
-              >
-                {state.formatPreviewMutation.isPending ? (
-                  <>
-                    <Spinner size="sm" className="text-secondary-foreground" />
-                    Analyzing...
-                  </>
-                ) : (
-                  <>
-                    <Wand2 className="h-4 w-4" />
-                    Format All
-                  </>
-                )}
-              </button>
             </div>
           </div>
         )}
@@ -262,7 +237,6 @@ export default function SourceDetail() {
               setSnippetsPage={state.setSnippetsPage}
               setSelectedLanguage={state.setSelectedLanguage}
               setSnippetsSearch={state.setSnippetsSearch}
-              formatPreviewMutation={state.formatPreviewMutation}
               setDeleteMatchesModalOpen={state.setDeleteMatchesModalOpen}
               hideSearch={true}
             />

@@ -1,4 +1,4 @@
-"""Tests for result processor with formatting integration."""
+"""Tests for result processor code block handling."""
 
 from unittest.mock import Mock, patch
 
@@ -9,24 +9,21 @@ from src.crawler.result_processor import ResultProcessor
 
 
 class TestResultProcessorFormatting:
-    """Test formatting integration in result processor."""
+    """Test code block processing in result processor."""
 
     @pytest.mark.asyncio
-    async def test_formatting_improves_code(self):
-        """Test that improved formatted code is saved."""
+    async def test_code_blocks_are_saved_correctly(self):
+        """Test that code blocks are saved to database."""
         processor = ResultProcessor()
-        
-        # Mock settings to ensure formatting is enabled
-        processor.settings.code_extraction.disable_formatting = False
 
         # Mock database session
         mock_session = Mock()
         mock_doc = Mock(id=1, url='https://example.com/test')
 
-        # Create test code blocks with poorly formatted code
+        # Create test code blocks
         code_blocks = [
             SimpleCodeBlock(
-                code='const x=5;const y=10;',  # Poorly formatted JS
+                code='const x = 5;\nconst y = 10;',
                 language='javascript',
                 title='Variable declarations',
                 description='Declares two constants'
@@ -39,36 +36,19 @@ class TestResultProcessorFormatting:
         mock_session.flush = Mock()
         mock_session.commit = Mock()
 
-        # Process code blocks with mocked formatting
-        with patch.object(processor, '_format_blocks_concurrently') as mock_format:
-            # Mock the concurrent formatting to return formatted blocks
-            mock_format.return_value = [{
-                'index': 0,
-                'content': 'const x=5;const y=10;',
-                'formatted_content': 'const x = 5;\nconst y = 10;',  # Formatted version
-                'language': 'javascript',
-                'title': 'Variable declarations',
-                'description': 'Declares two constants',
-                'metadata': {},
-                'filename': None
-            }]
+        snippet_count = await processor._process_code_blocks(
+            mock_session, mock_doc, code_blocks, 'https://example.com/test'
+        )
 
-            snippet_count = await processor._process_code_blocks(
-                mock_session, mock_doc, code_blocks, 'https://example.com/test'
-            )
-
-        # Verify formatting method was called
-        mock_format.assert_called_once()
-
-        # Verify the formatted code was saved
+        # Verify the code was saved
         saved_snippet = mock_session.add.call_args[0][0]
         assert saved_snippet.code_content == 'const x = 5;\nconst y = 10;'
         assert saved_snippet.language == 'javascript'
         assert snippet_count == 1
 
     @pytest.mark.asyncio
-    async def test_formatting_preserves_original_on_error(self):
-        """Test that original code is preserved when formatting fails."""
+    async def test_duplicate_detection(self):
+        """Test that duplicate code blocks are detected."""
         processor = ResultProcessor()
 
         # Mock database session
@@ -76,54 +56,67 @@ class TestResultProcessorFormatting:
         mock_doc = Mock(id=1, url='https://example.com/test')
 
         # Create test code block
+        test_code = 'function test() { return 42; }'
         code_blocks = [
             SimpleCodeBlock(
-                code='function test() { return 42; }',
+                code=test_code,
                 language='javascript',
                 title='Test function',
                 description='Returns 42'
             )
         ]
 
-        # Mock database queries
-        mock_session.query.return_value.filter_by.return_value.first.return_value = None
+        # Calculate expected hash (MD5 is used in the actual code)
+        import hashlib
+        expected_hash = hashlib.md5(test_code.encode()).hexdigest()
+
+        # Mock existing snippet with same hash
+        existing_snippet = Mock(
+            code_hash=expected_hash,
+            code_content=test_code
+        )
+        
+        # Setup mock to return existing snippet when checking for duplicates
+        mock_query = Mock()
+        mock_filter_by = Mock()
+        mock_filter_by.first.return_value = existing_snippet
+        mock_query.filter_by.return_value = mock_filter_by
+        mock_session.query.return_value = mock_query
+        
         mock_session.add = Mock()
         mock_session.flush = Mock()
         mock_session.commit = Mock()
 
-        # Process with formatter that throws error
-        with patch.object(processor, 'code_formatter') as mock_formatter:
-            mock_formatter.format.side_effect = Exception('Formatting failed')
+        snippet_count = await processor._process_code_blocks(
+            mock_session, mock_doc, code_blocks, 'https://example.com/test'
+        )
 
-            snippet_count = await processor._process_code_blocks(
-                mock_session, mock_doc, code_blocks, 'https://example.com/test'
-            )
-
-        # Verify original code was saved
-        saved_snippet = mock_session.add.call_args[0][0]
-        assert saved_snippet.code_content == 'function test() { return 42; }'
-        assert snippet_count == 1
+        # Should not add duplicate
+        assert snippet_count == 0
+        # Verify that add was not called since it's a duplicate
+        mock_session.add.assert_not_called()
 
     @pytest.mark.asyncio
-    async def test_formatting_preserves_already_formatted(self):
-        """Test that well-formatted code is not changed."""
+    async def test_multiple_code_blocks(self):
+        """Test processing multiple code blocks."""
         processor = ResultProcessor()
 
         # Mock database session
         mock_session = Mock()
         mock_doc = Mock(id=1, url='https://example.com/test')
 
-        # Create test code block that's already well formatted
-        well_formatted = '''function greet(name) {
-  console.log(`Hello, ${name}!`);
-}'''
-
         code_blocks = [
             SimpleCodeBlock(
-                code=well_formatted,
+                code='function greet(name) {\n  console.log(`Hello, ${name}!`);\n}',
                 language='javascript',
                 title='Greeting function',
                 description='Greets a person by name'
+            ),
+            SimpleCodeBlock(
+                code='def greet(name):\n    print(f"Hello, {name}!")',
+                language='python',
+                title='Python greeting',
+                description='Python version'
             )
         ]
 
@@ -133,16 +126,10 @@ class TestResultProcessorFormatting:
         mock_session.flush = Mock()
         mock_session.commit = Mock()
 
-        # Process with real formatter (or mock that returns same)
-        with patch.object(processor, 'code_formatter') as mock_formatter:
-            # Formatter returns the same code (no improvement needed)
-            mock_formatter.format.return_value = well_formatted
+        snippet_count = await processor._process_code_blocks(
+            mock_session, mock_doc, code_blocks, 'https://example.com/test'
+        )
 
-            snippet_count = await processor._process_code_blocks(
-                mock_session, mock_doc, code_blocks, 'https://example.com/test'
-            )
-
-        # Verify original code was kept
-        saved_snippet = mock_session.add.call_args[0][0]
-        assert saved_snippet.code_content == well_formatted
-        assert snippet_count == 1
+        # Verify both snippets were saved
+        assert snippet_count == 2
+        assert mock_session.add.call_count == 2
