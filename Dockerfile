@@ -84,12 +84,12 @@ RUN mkdir -p logs && chown codedox:codedox logs
 COPY --chown=root:root docker-entrypoint.sh /usr/local/bin/
 RUN chmod +x /usr/local/bin/docker-entrypoint.sh
 
-# Install Node.js and npm for frontend dependencies (including Prettier)
+# Install Node.js and npm for frontend dependencies
 RUN curl -fsSL https://deb.nodesource.com/setup_18.x | bash - && \
     apt-get install -y nodejs && \
     rm -rf /var/lib/apt/lists/*
 
-# Install frontend dependencies (including Prettier for code formatting)
+# Install frontend dependencies
 WORKDIR /app/frontend
 COPY --chown=codedox:codedox frontend/package*.json ./
 RUN npm install && \
