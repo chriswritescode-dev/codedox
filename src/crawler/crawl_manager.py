@@ -28,10 +28,6 @@ class CrawlConfig:
     exclude_patterns: list[str] = field(default_factory=list)
     max_pages: int | None = None
     max_concurrent_crawls: int = 5
-    respect_robots_txt: bool = False
-    content_types: list[str] = field(default_factory=lambda: ["text/markdown", "text/plain"])
-    min_content_length: int = 100
-    extract_code_only: bool = False
     metadata: dict[str, Any] = field(default_factory=dict)
 
 
