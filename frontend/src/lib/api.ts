@@ -518,7 +518,7 @@ class APIClient {
     files.forEach(file => {
       formData.append('files', file)
     })
-    if (name) formData.append('name', name)
+    formData.append('name', name) // Always append name to ensure consistent source
     if (title) formData.append('title', title)
 
     return this.fetch('/upload/files', {
