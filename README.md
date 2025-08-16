@@ -19,14 +19,24 @@ A powerful system for crawling documentation websites, extracting code snippets,
 ## Screenshots
 
 ### Dashboard
-<img src="screenshots/WebUI-Dashboard.png" alt="CodeDox Dashboard" width="800">
+<img src="screenshots/WebUI-Dashboard.webp" alt="CodeDox Dashboard" width="800">
 
 *The dashboard provides an overview of your documentation sources, crawl jobs, and system statistics.*
 
 ### Source Detail View
-<img src="screenshots/WebUI-Source-Detail.png" alt="CodeDox Source Detail" width="800">
+<img src="screenshots/WebUI-Source-Detail.webp" alt="CodeDox Source Detail" width="800">
 
 *View detailed information about each documentation source, including extracted code snippets and search capabilities.*
+
+### Full Content View
+<img src="screenshots/WebUI-Full-Content-View.webp" alt="CodeDox Full Content View" width="800">
+
+*View complete extracted content with detailed information and full code snippets.*
+
+### Fuzzy Page Search
+<img src="screenshots/WebUI-Fuzzy-Page-Search.webp" alt="CodeDox Fuzzy Page Search" width="800">
+
+*Advanced search functionality with fuzzy matching and filtering capabilities.*
 
 
 ## Architecture
