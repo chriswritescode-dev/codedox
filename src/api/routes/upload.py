@@ -20,6 +20,10 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/upload", tags=["upload"])
 
+# Upload limits
+MAX_TOTAL_SIZE = 500 * 1024 * 1024  # 500MB total size limit
+MAX_FILE_SIZE = 10 * 1024 * 1024  # 10MB per file limit
+
 
 class UploadMarkdownRequest(BaseModel):
     """Request model for uploading markdown content."""
@@ -53,11 +57,10 @@ def extract_code_blocks_with_context(content: str, url: str) -> list[SimpleCodeB
                 if j < len(lines) and lines[j].strip():
                     context_before.append(lines[j].strip())
 
-            # Extract context after (up to 3 lines)
-            context_after = []
+            # Extract context after (up to 3 lines) and add to context_before
             for j in range(end_line + 1, min(len(lines), end_line + 4)):
                 if j < len(lines) and lines[j].strip():
-                    context_after.append(lines[j].strip())
+                    context_before.append(lines[j].strip())
 
             # Create SimpleCodeBlock for LLM processing
             block = SimpleCodeBlock(
@@ -65,7 +68,6 @@ def extract_code_blocks_with_context(content: str, url: str) -> list[SimpleCodeB
                 language=language,
                 source_url=url,
                 context_before=context_before,
-                context_after=context_after,
             )
             code_blocks.append(block)
 
@@ -195,6 +197,13 @@ async def upload_file(
                 status_code=400,
                 detail="Only markdown (.md, .markdown) or text (.txt) files are supported",
             )
+        
+        # Check file size
+        if file.size and file.size > MAX_FILE_SIZE:
+            raise HTTPException(
+                status_code=400,
+                detail=f"File size exceeds {MAX_FILE_SIZE / (1024*1024):.0f}MB limit"
+            )
 
         # Read file content
         content = await file.read()
@@ -229,6 +238,23 @@ async def upload_files(
     try:
         if not files:
             raise HTTPException(status_code=400, detail="No files provided")
+        
+        # Check total size and individual file sizes
+        total_size = 0
+        for file in files:
+            if file.size and file.size > MAX_FILE_SIZE:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"File '{file.filename}' exceeds {MAX_FILE_SIZE / (1024*1024):.0f}MB limit"
+                )
+            if file.size:
+                total_size += file.size
+        
+        if total_size > MAX_TOTAL_SIZE:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Total file size ({total_size / (1024*1024):.1f}MB) exceeds {MAX_TOTAL_SIZE / (1024*1024):.0f}MB limit"
+            )
 
         # Create a source for all files
         source_name = name or title or f"Upload {datetime.utcnow().strftime('%Y-%m-%d')}"
@@ -266,6 +292,7 @@ async def upload_files(
 
         total_snippets = 0
         processed_files = 0
+        batch_snippets = {}  # Track snippets in this batch to avoid duplicates
 
         for file in files:
             try:
@@ -337,13 +364,17 @@ async def upload_files(
                     # Calculate code hash
                     code_hash = hashlib.md5(block.code.encode()).hexdigest()
 
-                    # Check if snippet already exists
+                    # Check if snippet already exists in database or current batch
+                    if code_hash in batch_snippets:
+                        logger.info(f"Skipping duplicate within batch: {code_hash}")
+                        continue
+                        
                     existing_snippet = (
                         db.query(CodeSnippet).filter(CodeSnippet.code_hash == code_hash).first()
                     )
 
                     if existing_snippet:
-                        logger.info(f"Skipping duplicate code snippet with hash {code_hash}")
+                        logger.info(f"Skipping existing code snippet with hash {code_hash}")
                         continue
 
                     snippet = CodeSnippet(
@@ -358,18 +389,31 @@ async def upload_files(
                         updated_at=datetime.utcnow(),
                     )
                     db.add(snippet)
+                    batch_snippets[code_hash] = snippet  # Track in batch
                     total_snippets += 1
 
                 processed_files += 1
+                
+                # Flush periodically to avoid memory issues with large batches
+                if processed_files % 10 == 0:
+                    db.flush()
 
             except Exception as e:
                 logger.error(f"Failed to process file {file.filename}: {e}")
+                db.rollback()  # Rollback this file's changes
                 continue
 
-        # Update crawl job stats
-        crawl_job.total_pages = processed_files
-        crawl_job.processed_pages = processed_files
-        crawl_job.snippets_extracted = total_snippets
+        # Update crawl job stats (accumulate if existing job)
+        if existing_job:
+            # Add to existing stats for subsequent batches
+            crawl_job.total_pages = (crawl_job.total_pages or 0) + processed_files
+            crawl_job.processed_pages = (crawl_job.processed_pages or 0) + processed_files
+            crawl_job.snippets_extracted = (crawl_job.snippets_extracted or 0) + total_snippets
+        else:
+            # First batch, set initial stats
+            crawl_job.total_pages = processed_files
+            crawl_job.processed_pages = processed_files
+            crawl_job.snippets_extracted = total_snippets
         crawl_job.updated_at = datetime.utcnow()
 
         db.commit()
