@@ -16,21 +16,6 @@ interface SourceDetailState {
   selectedLanguage: string;
   deleteModalOpen: boolean;
   deleteMatchesModalOpen: boolean;
-  formatDialogOpen: boolean;
-  formatPreview: {
-    source_id: string;
-    source_name: string;
-    total_snippets: number;
-    changed_snippets: number;
-    saved_snippets: number;
-    preview: Array<{
-      snippet_id: number;
-      title: string;
-      language: string;
-      original_preview: string;
-      formatted_preview: string;
-    }>;
-  } | null;
   debouncedSnippetsSearch: string;
   
   // Computed values
@@ -47,15 +32,11 @@ interface SourceDetailState {
   setSelectedLanguage: (lang: string) => void;
   setDeleteModalOpen: (open: boolean) => void;
   setDeleteMatchesModalOpen: (open: boolean) => void;
-  setFormatDialogOpen: (open: boolean) => void;
-  setFormatPreview: (preview: SourceDetailState["formatPreview"]) => void;
   
   // Mutations
   deleteMutation: UseMutationResult<{ message: string }, Error, void, unknown>;
   deleteMatchesMutation: UseMutationResult<{ deleted_count: number; source_id: string; source_name: string }, Error, void, unknown>;
   updateSourceNameMutation: UseMutationResult<Source, Error, { name: string }, unknown>;
-  formatPreviewMutation: UseMutationResult<SourceDetailState["formatPreview"], Error, void, unknown>;
-  formatSourceMutation: UseMutationResult<SourceDetailState["formatPreview"], Error, void, unknown>;
   
   // Query data
   source: Source | undefined;
@@ -80,9 +61,7 @@ export function useSourceDetail(id: string): SourceDetailState {
   const [snippetsSearch, setSnippetsSearch] = useState(searchParams.get("search") || "");
   const [selectedLanguage, setSelectedLanguage] = useState(searchParams.get("language") || "");
   const [deleteModalOpen, setDeleteModalOpen] = useState(false);
-  const [formatDialogOpen, setFormatDialogOpen] = useState(false);
   const [deleteMatchesModalOpen, setDeleteMatchesModalOpen] = useState(false);
-  const [formatPreview, setFormatPreview] = useState<SourceDetailState["formatPreview"]>(null);
 
   // Tab management
   const tabFromUrl = searchParams.get("tab") as TabType | null;
@@ -236,30 +215,6 @@ export function useSourceDetail(id: string): SourceDetailState {
     },
   });
 
-  const formatPreviewMutation = useMutation({
-    mutationFn: () => api.formatSource(id!, false, true),
-    onSuccess: (data) => {
-      setFormatPreview(data);
-      setFormatDialogOpen(true);
-    },
-    onError: (error) => {
-      console.error('Failed to get format preview:', error);
-      toast.error('Failed to get format preview');
-    }
-  });
-
-  const formatSourceMutation = useMutation({
-    mutationFn: () => api.formatSource(id!, true, false),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['source-snippets', id] });
-      setFormatDialogOpen(false);
-      setFormatPreview(null);
-    },
-    onError: (error) => {
-      console.error('Failed to format source:', error);
-      toast.error('Failed to format source');
-    }
-  });
 
   // Computed values
   const snippetsTotalPages = useMemo(
@@ -281,8 +236,6 @@ export function useSourceDetail(id: string): SourceDetailState {
     selectedLanguage,
     deleteModalOpen,
     deleteMatchesModalOpen,
-    formatDialogOpen,
-    formatPreview,
     debouncedSnippetsSearch,
     snippetsPerPage,
     docsPerPage,
@@ -295,13 +248,9 @@ export function useSourceDetail(id: string): SourceDetailState {
     setSelectedLanguage,
     setDeleteModalOpen,
     setDeleteMatchesModalOpen,
-    setFormatDialogOpen,
-    setFormatPreview,
     deleteMutation,
     deleteMatchesMutation,
     updateSourceNameMutation,
-    formatPreviewMutation,
-    formatSourceMutation,
     source,
     documents,
     snippets,

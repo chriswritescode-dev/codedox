@@ -197,7 +197,7 @@ class CrawlManager:
             final_snippet_count = final_status.get("snippets_extracted", 0) if final_status else 0
             base_count = final_status.get("config", {}).get("base_snippet_count", 0) if final_status else 0
 
-            logger.info(f"[SNIPPET_COUNT] Job {job_id} completion - Base: {base_count}, Final: {final_snippet_count}, New: {final_snippet_count - base_count}")
+            logger.info(f"Job {job_id} completed - Snippets: {final_snippet_count} (added {final_snippet_count - base_count})")
 
             # Complete job immediately after crawl
             self.job_manager.complete_job(job_id, success=True)
@@ -242,7 +242,7 @@ class CrawlManager:
 
         # Initialize tracking
         base_snippet_count, total_snippets = self._initialize_crawl_tracking(job_id)
-        logger.info(f"[SNIPPET_COUNT] Starting deep crawl for job {job_id} with base count: {base_snippet_count}")
+        logger.info(f"Starting deep crawl for job {job_id}")
 
         # Build fresh config for this crawl - don't merge with old config
         job_config = {
@@ -281,7 +281,7 @@ class CrawlManager:
                 total_snippets += snippets
                 visited_urls.update(r.url for r in results)
 
-                logger.info(f"[SNIPPET_COUNT] Deep crawl batch - New snippets: {snippets}, Total: {total_snippets} (base: {base_snippet_count})")
+                logger.debug(f"Deep crawl batch processed: {snippets} new snippets")
 
                 # Update progress
                 last_ws_count = await self._update_crawl_progress(
@@ -296,7 +296,7 @@ class CrawlManager:
 
         # Initialize tracking
         base_snippet_count, total_snippets = self._initialize_crawl_tracking(job_id)
-        logger.info(f"[SNIPPET_COUNT] Starting single crawl for job {job_id} with base count: {base_snippet_count}")
+        logger.info(f"Starting single crawl for job {job_id}")
 
         # Build fresh config for this crawl - don't merge with old config
         job_config = {
@@ -356,8 +356,6 @@ class CrawlManager:
                 visited_urls.add(url)
 
                 # Crawl single page
-                logger.debug(f"DEBUG: About to call crawl_page for single page {url}")
-                logger.debug(f"DEBUG: job_config before crawl_page = {job_config}")
                 results = await self.page_crawler.crawl_page(
                     url, job_id, 0, 0, job_config, self.progress_tracker
                 )

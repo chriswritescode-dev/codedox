@@ -119,24 +119,33 @@ class JobManager:
                 existing_job.documents_crawled = 0
                 existing_job.processed_pages = 0
                 existing_job.total_pages = 0
-                # Don't reset snippets_extracted - preserve existing count
-                # Count existing snippets for this job
-                from ..database.models import CodeSnippet, Document
-                existing_snippets = session.query(CodeSnippet).join(Document).filter(
-                    Document.crawl_job_id == existing_job.id
-                ).count()
-                logger.info(f"[SNIPPET_COUNT] Reusing job {existing_job.id} with {existing_snippets} existing snippets")
-                existing_job.snippets_extracted = existing_snippets
+                # Check if this is a recrawl vs a resume
+                is_recrawl = config.get('metadata', {}).get('is_recrawl', False)
+
+                if is_recrawl:
+                    # For recrawls, start counting from 0
+                    existing_job.snippets_extracted = 0
+                    base_snippet_count = 0
+                    logger.debug(f"Recrawl for job {existing_job.id}, starting count from 0")
+                else:
+                    # For resume operations, preserve existing count
+                    from ..database.models import CodeSnippet, Document
+                    existing_snippets = session.query(CodeSnippet).join(Document).filter(
+                        Document.crawl_job_id == existing_job.id
+                    ).count()
+                    existing_job.snippets_extracted = existing_snippets
+                    base_snippet_count = existing_snippets
+                    logger.info(f"Resuming job {existing_job.id} with {existing_snippets} existing snippets")
 
                 # Store base snippet count in config for tracking
                 if not existing_job.config:
                     existing_job.config = {}
                 existing_job.config.update(config)
-                existing_job.config['base_snippet_count'] = existing_snippets
+                existing_job.config['base_snippet_count'] = base_snippet_count
                 # Flag the config column as modified for SQLAlchemy
                 from sqlalchemy.orm.attributes import flag_modified
                 flag_modified(existing_job, 'config')
-                logger.info(f"[SNIPPET_COUNT] Set base_snippet_count to {existing_snippets} for job {existing_job.id}")
+                logger.debug(f"Set base_snippet_count to {base_snippet_count} for job {existing_job.id}")
 
                 session.commit()
                 return str(existing_job.id)
@@ -221,7 +230,7 @@ class JobManager:
             if snippets_extracted is not None:
                 old_count = job.snippets_extracted
                 job.snippets_extracted = snippets_extracted
-                logger.info(f"[SNIPPET_COUNT] Job {job_id} snippets updated: {old_count} -> {snippets_extracted}")
+                logger.debug(f"Job {job_id} snippets updated: {old_count} -> {snippets_extracted}")
             if documents_crawled is not None:
                 job.documents_crawled = documents_crawled
 
