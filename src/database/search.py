@@ -359,15 +359,15 @@ class CodeSearcher:
         ) AS all_sources
         """
 
+        safe_query = query.replace('%', r'\%').replace('_', r'\_')
         params = {
             'query': query,
-            'pattern': f'%{query}%',
+            'pattern': f'%{safe_query}%',
             'limit': limit,
             'offset': offset
         }
 
-        # Get total count
-        total_count = self.session.execute(text(count_query), {'query': query, 'pattern': f'%{query}%'}).scalar() or 0
+        total_count = self.session.execute(text(count_query), {'query': query, 'pattern': f'%{safe_query}%'}).scalar() or 0
 
         # Get paginated results
         result = self.session.execute(text(sql_query), params)
