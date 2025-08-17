@@ -85,7 +85,6 @@ export const DocumentSearchModal: React.FC<DocumentSearchModalProps> = ({
     <>
       <div className="fixed inset-0 z-40 flex items-start justify-center bg-black/50 backdrop-blur-sm pt-20">
         <div className="bg-white dark:bg-gray-900 rounded-lg shadow-xl w-full max-w-2xl mx-4">
-          {/* Search Header */}
           <div className="flex items-center gap-3 p-4 border-b dark:border-gray-700">
             <Search className="h-5 w-5 text-gray-400" />
             <input
@@ -94,7 +93,7 @@ export const DocumentSearchModal: React.FC<DocumentSearchModalProps> = ({
               value={query}
               onChange={(e) => setQuery(e.target.value)}
               onKeyDown={handleKeyDown}
-              placeholder="Search documentation pages..."
+              placeholder="Search markdown pages..."
               className="flex-1 bg-transparent outline-none text-gray-900 dark:text-gray-100 placeholder-gray-500"
               autoFocus
             />
@@ -109,7 +108,6 @@ export const DocumentSearchModal: React.FC<DocumentSearchModalProps> = ({
             </button>
           </div>
 
-          {/* Results */}
           <div className="max-h-96 overflow-y-auto">
             {results.length > 0 ? (
               <div className="p-2">
@@ -152,7 +150,7 @@ export const DocumentSearchModal: React.FC<DocumentSearchModalProps> = ({
               </div>
             ) : !query ? (
               <div className="p-8 text-center text-gray-500 dark:text-gray-400">
-                Start typing to search documentation pages
+                Start typing to search markdown pages
               </div>
             ) : null}
           </div>
@@ -173,6 +171,11 @@ export const DocumentSearchModal: React.FC<DocumentSearchModalProps> = ({
           onClose={() => {
             setFullPageModalOpen(false);
             setSelectedUrl(null);
+          }}
+          onNavigateToSnippets={() => {
+            setFullPageModalOpen(false);
+            setSelectedUrl(null);
+            onClose();
           }}
         />
       )}
