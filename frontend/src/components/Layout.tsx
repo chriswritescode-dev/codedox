@@ -53,22 +53,22 @@ export default function Layout() {
         </div>
       </div>
 
-      {/* Sidebar */}
       <div
         className={`fixed inset-y-0 left-0 z-40 w-48 bg-secondary transform transition-transform lg:translate-x-0 lg:w-64 border-r border-border ${
           mobileMenuOpen ? "translate-x-0" : "-translate-x-full"
         }`}
       >
         <div className="flex h-full flex-col">
-          {/* Document Search Button */}
           <div className="px-3 pt-4 pb-2">
             <button
               onClick={() => setDocumentSearchOpen(true)}
               className="w-full flex items-center gap-2 px-3 py-2 text-sm bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700 rounded-lg transition-colors text-gray-600 dark:text-gray-400"
             >
               <FileSearch className="h-4 w-4" />
-              <span className="flex-1 text-left">Search Docs</span>
-              <kbd className="text-xs bg-gray-200 dark:bg-gray-700 px-1.5 py-0.5 rounded">⌘K</kbd>
+              <span className="flex-1 text-left">Markdown Pages</span>
+              <kbd className="text-xs bg-gray-200 dark:bg-gray-700 px-1.5 py-0.5 rounded">
+                ⌘K
+              </kbd>
             </button>
           </div>
           <nav className="flex-1 space-y-1 px-3 py-4">
@@ -94,7 +94,6 @@ export default function Layout() {
         </div>
       </div>
 
-      {/* Main content */}
       <div className="lg:pl-64 flex-1 flex flex-col h-screen">
         <main className="flex-1  p-4 flex min-h-0">
           <div className="w-full flex flex-col">
@@ -103,7 +102,6 @@ export default function Layout() {
         </main>
       </div>
 
-      {/* Mobile menu overlay */}
       {mobileMenuOpen && (
         <div
           className="fixed inset-0 z-30 bg-black/50 lg:hidden"
@@ -111,7 +109,6 @@ export default function Layout() {
         />
       )}
 
-      {/* Document Search Modal */}
       <DocumentSearchModal
         isOpen={documentSearchOpen}
         onClose={() => setDocumentSearchOpen(false)}
