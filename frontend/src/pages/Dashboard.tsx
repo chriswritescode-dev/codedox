@@ -174,8 +174,7 @@ export default function Dashboard() {
                     <div>
                       <p className="font-medium">{crawl.name}</p>
                       <p className="text-sm text-muted-foreground">
-                        {crawl.urls_crawled} URLs • {crawl.snippets_extracted}{" "}
-                        snippets
+                        {crawl.snippets_extracted} snippets
                       </p>
                     </div>
                     <div className="flex items-center text-sm text-muted-foreground">
