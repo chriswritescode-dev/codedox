@@ -58,6 +58,7 @@ See the [full installation guide](https://chriswritescode-dev.github.io/codedox/
 - [Architecture Overview](https://chriswritescode-dev.github.io/codedox/development/architecture/)
 
 ## Contributing
+  
 
 See our [Contributing Guide](https://chriswritescode-dev.github.io/codedox/development/contributing/) for details on how to contribute to CodeDox.
 
