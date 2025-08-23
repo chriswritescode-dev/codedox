@@ -1,0 +1,71 @@
+/* Dark theme customizations to match CodeDox UI */
+
+[data-md-color-scheme="slate"] {
+  --md-primary-fg-color: #546e7a;
+  --md-primary-fg-color--light: #607d8b;
+  --md-primary-fg-color--dark: #455a64;
+  --md-accent-fg-color: #00bcd4;
+  
+  --md-default-bg-color: #0f172a;
+  --md-default-bg-color--light: #1e293b;
+  --md-default-bg-color--lighter: #334155;
+  --md-default-bg-color--lightest: #475569;
+  
+  --md-code-bg-color: #1e293b;
+  --md-code-hl-color: #2d3f52;
+  
+  --md-footer-bg-color: #0f172a;
+  --md-footer-bg-color--dark: #0a0f1f;
+}
+
+/* Smooth transitions */
+* {
+  transition: background-color 0.25s, color 0.25s;
+}
+
+/* Code blocks styling */
+.highlight pre {
+  background-color: #1e293b !important;
+  border: 1px solid #334155;
+  border-radius: 8px;
+}
+
+/* Navigation styling */
+.md-nav__item--active > .md-nav__link {
+  color: var(--md-accent-fg-color);
+  font-weight: 600;
+}
+
+/* Search styling */
+.md-search__input {
+  background-color: var(--md-default-bg-color--light);
+  border: 1px solid var(--md-default-bg-color--lighter);
+}
+
+.md-search__input:focus {
+  border-color: var(--md-accent-fg-color);
+}
+
+/* Cards and containers */
+.md-typeset .admonition,
+.md-typeset details {
+  border-radius: 8px;
+  border-left-width: 4px;
+}
+
+/* Header styling */
+.md-header {
+  background-color: #0f172a;
+  border-bottom: 1px solid #1e293b;
+}
+
+/* Tabs styling */
+.md-tabs {
+  background-color: #0a0f1f;
+  border-bottom: 1px solid #1e293b;
+}
+
+.md-tabs__link--active {
+  color: var(--md-accent-fg-color);
+  border-bottom: 2px solid var(--md-accent-fg-color);
+}

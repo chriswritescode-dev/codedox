@@ -36,7 +36,6 @@ def create_crawler_config(
     max_depth: int = 0,
     domain_restrictions: list[str] | None = None,
     include_patterns: list[str] | None = None,
-    exclude_patterns: list[str] | None = None,
     user_agent: str | None = None,
     max_pages: int | None = None,
 ) -> CrawlerRunConfig:
@@ -46,7 +45,6 @@ def create_crawler_config(
         max_depth: Maximum crawl depth (0 for single page)
         domain_restrictions: List of allowed domains
         include_patterns: URL patterns to include
-        exclude_patterns: URL patterns to exclude
         user_agent: Custom user agent string for HTTP requests
         max_pages: Maximum number of pages to crawl
     
@@ -86,15 +84,6 @@ def create_crawler_config(
                     patterns=include_patterns,
                     use_glob=True,
                     reverse=False
-                )
-            )
-
-        if exclude_patterns:
-            filters.append(
-                URLPatternFilter(
-                    patterns=exclude_patterns,
-                    use_glob=True,
-                    reverse=True
                 )
             )
 

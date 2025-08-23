@@ -1,21 +1,25 @@
-# CodeDox - Documentation Code Extraction & Search
+# CodeDox - AI-Powered Documentation Search & Code Extraction
 
-A powerful system for crawling documentation websites, extracting code snippets, and providing fast search capabilities via MCP (Model Context Protocol) integration.
+**Transform any documentation site into a searchable code database** - CodeDox crawls documentation websites, intelligently extracts code snippets with context, and provides lightning-fast search via PostgreSQL full-text search and MCP (Model Context Protocol) integration for AI assistants.
 
-## Features
+## Key Features
 
-- **Controlled Web Crawling**: Manual crawling with configurable depth (0-3 levels)
-- **Smart Code Extraction**: HTML-based extraction with optional LLM enhancement
-- **Flexible Extraction Modes**: 
-  - **With LLM** : AI-generated titles and descriptions for better quality
-  - **Without LLM** (dafault mode): Uses page title and context for basic extraction (no API keys required)
-- **LLM Descriptions**: AI-generated concise descriptions for extracted code (when enabled)
-- **Fast Search**: PostgreSQL full-text search 
-- **MCP Integration**: Expose tools to AI assistants via Model Context Protocol
-- **Modern Web UI**: React-based dashboard for managing crawls, searching code, and monitoring system activity
-- **Auto Site Content Deduplication**: Only updates or adds content that has changed
-- **Flexible Recrawl**: Choose to skip unchanged content or force regenerate all descriptions and titles
-- **Directory Upload Support**: Upload entire documentation directories with batch processing for large file collections
+### Core Capabilities
+- **Intelligent Web Crawling**: Depth-controlled crawling (0-3 levels) with URL pattern filtering and domain restrictions
+- **Smart Code Extraction**: Dual-mode extraction system:
+  - **AI-Enhanced Mode**: LLM-powered titles, descriptions, and language detection for superior search quality
+  - **Standalone Mode** (default): Works without API keys using HTML context extraction
+- **Lightning-Fast Search**: PostgreSQL full-text search with fuzzy matching - sub-100ms response times
+- **MCP Integration**: Native Model Context Protocol support for AI assistants (Claude, GPT, etc.)
+- **Modern Web Dashboard**: React + TypeScript UI for visual management and search
+
+### Advanced Features
+- **Smart Deduplication**: Content hash-based change detection saves API costs on re-crawls
+- **Batch Upload**: Process entire documentation directories with markdown support
+- **Incremental Updates**: Only re-process changed content during recrawls
+- **Authentication**: Token-based security for remote MCP deployments
+- **Real-time Monitoring**: Live crawl progress, statistics, and health monitoring
+- **Multi-Language Support**: Automatic language detection for 50+ programming languages
 
 ## Screenshots
 
@@ -87,35 +91,33 @@ graph TB
     style WEB fill:#6b7280,color:#fff
 ```
 
-### Code Extraction Process
+### How Code Extraction Works
 
-CodeDox offers two extraction modes:
+#### Two-Phase Extraction Pipeline
 
-#### With LLM Summarization
-1. **HTML-Based Extraction**: Uses BeautifulSoup to extract code blocks from HTML with high accuracy
-   - Identifies code blocks using multiple CSS selectors (pre, code, syntax highlighters)
-   - Extracts surrounding context (titles, descriptions, container types)
-   - Extracts filename hints from HTML attributes and context
-   - Removes UI elements and clutter from code blocks
+**Phase 1: HTML Analysis** (Always runs, no API needed)
+- Detects code blocks using 20+ CSS selector patterns
+- Extracts surrounding context and documentation
+- Captures filename hints from HTML attributes
+- Removes UI elements, line numbers, and artifacts
+- Handles all major documentation frameworks (Docusaurus, VitePress, MkDocs, etc.)
 
-2. **LLM Enhancement**: Uses AI to generate accurate titles and descriptions
-   - Detects programming language using context and syntax analysis
-   - Generates meaningful titles describing what the code does
-   - Creates 20-60 word descriptions explaining the code's purpose
-   - Provides high-quality metadata for better search results
+**Phase 2: AI Enhancement** (Optional, configurable)
+- **Language Detection**: Intelligent language identification using code syntax and context
+- **Smart Titles**: Generates descriptive titles explaining what the code does
+- **Contextual Descriptions**: Creates 20-60 word summaries of code purpose and usage
+- **Relationship Mapping**: Identifies dependencies and related code blocks
 
-#### Without LLM (No API Keys Required - Default)
-When `CODE_ENABLE_LLM_EXTRACTION=false`:
-- **Basic Extraction**: Uses HTML extraction without AI enhancement
-   - Titles are generated from page title and block index
-   - Descriptions use the surrounding context text
-   - Language detection from HTML class attributes
-   - Perfect for testing or when API costs are a concern
-   - Still provides functional code search and retrieval
+#### Extraction Modes
+
+| Mode | API Key Required | Quality | Use Case |
+|------|-----------------|---------|----------|
+| **AI-Enhanced** | Yes | Excellent | Production deployments with high-quality search |
+| **Standalone** | No | Good | Testing, development, or cost-conscious deployments |
 
 ## Quick Start
 
-### 🐳 Docker Setup (Recommended - Easiest!)
+### Docker Setup (Recommended - Easiest!)
 
 Docker is the **preferred and easiest** way to get CodeDox running. Everything is automatically configured and managed for you - no manual database setup, no dependency issues, just one command to get started.
 
@@ -151,7 +153,7 @@ The setup script automatically:
 
 ### Alternative: Manual Installation
 
-⚠️ **Note:** Manual installation requires more setup and configuration. We strongly recommend using Docker above for a smoother experience.
+**Note:** Manual installation requires more setup and configuration. We strongly recommend using Docker above for a smoother experience.
 
 #### Prerequisites
 
@@ -212,7 +214,7 @@ CODE_ENABLE_LLM_EXTRACTION=true  # Set to false to disable LLM (no API key requi
 CODE_LLM_API_KEY=your-api-key-here
 CODE_LLM_EXTRACTION_MODEL=gpt-4o-mini  # or gpt-4, claude-3, etc.
 
-# Optional: For local LLMs (Jan, Ollama, etc.)
+# Optional: For local LLMs (VLLM, LM Studio ,Ollama, etc.)
 CODE_LLM_BASE_URL=http://localhost:8001/v1
 
 # Database (defaults work for local development)
@@ -425,22 +427,23 @@ Access the web interface at `http://localhost:5173` for:
 
 Built with React, TypeScript, and Tailwind CSS.
 
-## Code Extraction & Description Generation
+## Advanced Extraction Features
 
-CodeDox uses a powerful two-phase approach to extract and understand code:
+### Intelligent Code Understanding
 
-### Phase 1: HTML-Based Code Extraction
-- **Smart Detection**: Identifies code blocks using 20+ CSS selector patterns
-- **Language Detection**: Uses LLM for intelligent language detection with context
-- **Filename Hints**: Extracts filenames from HTML to provide context to LLM
-- **Context Extraction**: Captures surrounding documentation for better understanding
-- **Clean Output**: Removes UI elements, line numbers, and other artifacts
+**HTML-Based Extraction Engine**
+- Identifies code blocks using 20+ CSS selector patterns
+- Extracts surrounding context and documentation
+- Captures filename hints from HTML attributes
+- Removes UI elements, line numbers, and artifacts
+- Preserves code formatting and syntax highlighting
 
-### Phase 2: LLM Description Generation
-- **Concise Descriptions**: Generates 10-30 word summaries of code purpose
-- **Context-Aware**: Uses extracted context to understand code's role
-- **Minimal LLM Usage**: Only uses AI for descriptions, not extraction
-- **Fast & Efficient**: Processes hundreds of code blocks per minute
+**AI-Powered Enhancement**
+- Generates concise 10-30 word summaries of code purpose
+- Uses extracted context to understand code's role in documentation
+- Intelligent language detection with syntax analysis
+- Minimal LLM usage - only for descriptions, not extraction
+- Processes hundreds of code blocks per minute
 
 ### Configuration
 
