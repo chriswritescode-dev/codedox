@@ -174,7 +174,6 @@ class PageCrawler:
                         max_depth=max_depth,
                         domain_restrictions=job_config.get("domain_restrictions") if job_config else None,
                         include_patterns=job_config.get("include_patterns") if job_config else None,
-                        exclude_patterns=job_config.get("exclude_patterns") if job_config else None,
                         user_agent=user_agent,
                         max_pages=job_config.get("max_pages") if job_config else None,
                     )
@@ -344,7 +343,6 @@ class PageCrawler:
                     max_depth=0,
                     domain_restrictions=job_config.get("domain_restrictions") if job_config else None,
                     include_patterns=job_config.get("include_patterns") if job_config else None,
-                    exclude_patterns=job_config.get("exclude_patterns") if job_config else None,
                     user_agent=user_agent,
                     max_pages=job_config.get("max_pages") if job_config else None,
                 )

@@ -75,10 +75,11 @@ class TestCrawlJobDomainUniqueness:
     """Test crawl job domain uniqueness constraints."""
 
     def test_crawl_job_domain_constraint(self, db):
-        """Test that database enforces domain uniqueness."""
+        """Test that same name-version combination cannot be duplicated."""
         # Create first crawl job
         job1 = CrawlJob(
             name="Test Job 1",
+            version="v1.0",
             domain="nextjs.org",
             start_urls=["https://nextjs.org/docs"],
             max_depth=1
@@ -86,16 +87,17 @@ class TestCrawlJobDomainUniqueness:
         db.add(job1)
         db.commit()
 
-        # Try to create second job with same domain
+        # Try to create second job with same name and version
         job2 = CrawlJob(
-            name="Test Job 2",
-            domain="nextjs.org",
-            start_urls=["https://nextjs.org/guide"],
+            name="Test Job 1",
+            version="v1.0",
+            domain="react.dev",
+            start_urls=["https://react.dev/guide"],
             max_depth=2
         )
         db.add(job2)
 
-        # Should raise IntegrityError due to unique constraint
+        # Should raise IntegrityError due to unique constraint on (name, version)
         with pytest.raises(IntegrityError):
             db.commit()
 
@@ -209,21 +211,21 @@ class TestCrawlManagerDomainReuse:
         # Start new crawl with same domain
         job_id = await crawl_manager.start_crawl(sample_config)
 
-        # Should return same job ID
-        assert job_id == existing_job_id
+        # Should create a new job since the name is different
+        assert job_id != existing_job_id
 
-        # Verify job was updated, not created
+        # Verify new job was created
         with db_manager.session_scope() as session:
             job = session.query(CrawlJob).filter_by(id=job_id).first()
-            assert job.name == "Test Crawl"  # Updated name
-            assert job.start_urls == ["https://nextjs.org/docs"]  # Updated URLs
-            assert job.max_depth == 1  # Updated depth
-            assert job.status == "running"  # Reset status
-            assert job.domain == "nextjs.org"  # Same domain
+            assert job.name == "Test Crawl"  # New job with different name
+            assert job.start_urls == ["https://nextjs.org/docs"]
+            assert job.max_depth == 1
+            assert job.status == "running"
+            assert job.domain == "nextjs.org"
 
-            # Verify only one job exists for this domain
+            # Multiple jobs can exist for same domain now
             jobs_count = session.query(CrawlJob).filter_by(domain="nextjs.org").count()
-            assert jobs_count == 1
+            assert jobs_count == 2  # Both old and new job exist
 
         # Verify async tasks were started (one for periodic cleanup, one for crawl)
         assert mock_create_task.call_count == 2
@@ -292,7 +294,7 @@ class TestDomainUniquenessEndToEnd:
 
     @patch('src.crawler.crawl_manager.CrawlManager._execute_crawl')
     def test_create_multiple_crawls_same_domain_via_api(self, mock_execute_crawl, client):
-        """Test creating multiple crawls for same domain via API reuses job."""
+        """Test creating multiple crawls for same domain creates separate jobs."""
         # Mock the crawl execution to prevent actual crawling
         mock_execute_crawl.return_value = None
 
@@ -306,7 +308,7 @@ class TestDomainUniquenessEndToEnd:
         job1_data = response1.json()
         job1_id = job1_data["id"]
 
-        # Create second crawl job with same domain
+        # Create second crawl job with same domain but different name
         response2 = client.post("/api/crawl-jobs", json={
             "name": "NextJS Guide",
             "base_url": "https://nextjs.org/guide",
@@ -316,13 +318,13 @@ class TestDomainUniquenessEndToEnd:
         job2_data = response2.json()
         job2_id = job2_data["id"]
 
-        # Should return same job ID (reused existing job)
-        assert job1_id == job2_id
+        # Should create different jobs since names are different
+        assert job1_id != job2_id
 
-        # Verify the second response shows updated configuration
-        assert job2_data["library_name"] == "NextJS Guide"  # Updated to latest name
-        assert job2_data["max_depth"] == 2  # Updated to latest depth
-        assert job2_data["start_urls"] == ["https://nextjs.org/guide"]  # Updated URLs
+        # Verify the second job has its own configuration
+        assert job2_data["library_name"] == "NextJS Guide"
+        assert job2_data["max_depth"] == 2
+        assert job2_data["start_urls"] == ["https://nextjs.org/guide"]
 
     @patch('src.crawler.crawl_manager.CrawlManager._execute_crawl')
     def test_create_crawls_different_domains_via_api(self, mock_execute_crawl, client):

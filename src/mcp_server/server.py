@@ -63,7 +63,10 @@ class MCPServer:
             )
         elif name == "get_page_markdown":
             return await self.tools.get_page_markdown(
-                url=arguments.get("url")
+                url=arguments.get("url"),
+                max_tokens=arguments.get("max_tokens"),
+                chunk_index=arguments.get("chunk_index"),
+                chunk_size=arguments.get("chunk_size", 4000)
             )
         else:
             available_tools = [
@@ -221,13 +224,40 @@ class MCPServer:
             ),
             Tool(
                 name="get_page_markdown",
-                description="Get the full markdown content of a documentation page by URL. Use this when you need complete page content for context, not just code snippets. The URL is typically provided in code snippet results.",
+                description="Get the markdown content of a documentation page by URL with optional chunking.\n\n"
+                "**Features:**\n"
+                "- Retrieve full or partial page content\n"
+                "- Token count estimation for context management\n"
+                "- Smart chunking with overlap for continuity\n"
+                "- Supports pagination through large documents\n\n"
+                "**Use cases:**\n"
+                "- Get full page: `url` only\n"
+                "- Get first N tokens: `url` + `max_tokens`\n"
+                "- Get specific chunk: `url` + `chunk_index`\n\n"
+                "The URL is typically provided in code snippet results.",
                 inputSchema={
                     "type": "object",
                     "properties": {
                         "url": {
                             "type": "string",
                             "description": "The URL of the documentation page to retrieve markdown content for",
+                        },
+                        "max_tokens": {
+                            "type": "integer",
+                            "description": "Maximum tokens to return (overrides chunk_index if set)",
+                            "minimum": 100,
+                        },
+                        "chunk_index": {
+                            "type": "integer",
+                            "description": "Chunk number for paginated content (0-based)",
+                            "minimum": 0,
+                        },
+                        "chunk_size": {
+                            "type": "integer",
+                            "description": "Size of each chunk in tokens (default: 4000)",
+                            "default": 4000,
+                            "minimum": 500,
+                            "maximum": 10000,
                         },
                     },
                     "required": ["url"],

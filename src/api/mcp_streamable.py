@@ -11,6 +11,8 @@ from mcp.server import Server
 from mcp.shared.exceptions import McpError
 from mcp.types import ErrorData
 
+from ..constants import __version__, __mcp_server_name__
+
 # Use FastAPI's StreamingResponse for SSE instead of MCP's EventSourceResponse
 # to avoid the asyncio event loop issues in tests
 from pydantic import BaseModel
@@ -179,8 +181,8 @@ class StreamableTransport:
                                 "tools": {}
                             },
                             "serverInfo": {
-                                "name": "codedox-mcp",
-                                "version": "0.2.2"
+                                "name": __mcp_server_name__,
+                                "version": __version__
                             }
                         }
                     }

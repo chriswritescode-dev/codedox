@@ -30,6 +30,9 @@ psutil>=6.0.0  # For system monitoring
 jinja2==3.1.5
 websockets==14.1
 
+# Token counting
+tiktoken==0.8.0
+
 # Development
 pytest==8.3.4
 pytest-asyncio==0.25.2

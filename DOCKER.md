@@ -78,7 +78,7 @@ DB_HOST=localhost
 
 # Required for code extraction
 CODE_LLM_API_KEY=your-api-key
-CODE_LLM_EXTRACTION_MODEL=gpt-4o-mini  # or Jan, claude-3, etc.
+CODE_LLM_EXTRACTION_MODEL=gpt-4o-mini 
 # CODE_LLM_BASE_URL=http://localhost:8001/v1  # For local LLMs
 ```
 
