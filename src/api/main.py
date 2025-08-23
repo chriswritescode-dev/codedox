@@ -10,6 +10,7 @@ from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from ..config import get_settings
+from ..constants import __version__, __app_name__
 from ..database import get_db
 from .mcp_routes import router as mcp_router
 from .mcp_streamable import router as mcp_streamable_router
@@ -75,9 +76,9 @@ async def lifespan(app: FastAPI):
 
 # Create FastAPI app
 app = FastAPI(
-    title="CodeDox API",
+    title=f"{__app_name__} API",
     description="API for code documentation extraction and search",
-    version="0.2.2",
+    version=__version__,
     lifespan=lifespan
 )
 
@@ -110,8 +111,8 @@ async def websocket_route(websocket: WebSocket, client_id: str):
 async def root():
     """API root endpoint with basic information."""
     return {
-        "message": "CodeDox API Server",
-        "version": "0.2.2",
+        "message": f"{__app_name__} API Server",
+        "version": __version__,
         "environment": settings.environment,
         "docs": "/docs"
     }

@@ -24,7 +24,6 @@ class TestCrawlerConfig:
             max_depth=2,
             domain_restrictions=["example.com"],
             include_patterns=["*docs*"],
-            exclude_patterns=["*api*"],
         )
 
         assert config is not None

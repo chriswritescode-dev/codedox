@@ -7,8 +7,10 @@ interface NewCrawlDialogProps {
   onClose: () => void;
   onSubmit: (data: {
     name?: string;
+    version?: string;
     base_url: string;
     max_depth: number;
+    max_pages?: number;
     domain_filter?: string;
     url_patterns?: string[];
     max_concurrent_crawls?: number;
@@ -25,8 +27,10 @@ export const NewCrawlDialog: React.FC<NewCrawlDialogProps> = ({
   const toast = useToast();
   const [formData, setFormData] = useState({
     name: '',
+    version: '',
     base_url: '',
     max_depth: 1,
+    max_pages: undefined as number | undefined,
     domain_filter: '',
     url_patterns: '',
     max_concurrent_crawls: 5,
@@ -49,6 +53,8 @@ export const NewCrawlDialog: React.FC<NewCrawlDialogProps> = ({
     const submitData = {
       ...formData,
       name: formData.name || undefined, // Allow empty name for auto-detection
+      version: formData.version || undefined,
+      max_pages: formData.max_pages || undefined,
       domain_filter: formData.domain_filter || undefined,
       url_patterns: formData.max_depth > 0 && formData.url_patterns 
         ? formData.url_patterns.split(',').map(p => p.trim()).filter(p => p)
@@ -59,15 +65,15 @@ export const NewCrawlDialog: React.FC<NewCrawlDialogProps> = ({
   };
 
   const handleClose = () => {
-    setFormData({ name: '', base_url: '', max_depth: 1, domain_filter: '', url_patterns: '', max_concurrent_crawls: 5 });
+    setFormData({ name: '', version: '', base_url: '', max_pages: undefined, max_depth: 1, domain_filter: '', url_patterns: '', max_concurrent_crawls: 5 });
     setMaxConcurrentInput('5');
     onClose();
   };
 
   return (
     <div className="fixed inset-0 bg-slate-600/50 backdrop-blur-sm flex items-center justify-center z-50">
-      <div className="bg-card border-2 border-border rounded-lg p-6 w-full max-w-md shadow-2xl animate-slide-up">
-        <div className="flex items-center justify-between mb-4">
+      <div className="bg-card border-2 border-border rounded-lg w-full max-w-md max-h-[90vh] shadow-2xl animate-slide-up flex flex-col">
+        <div className="flex items-center justify-between p-6 pb-4 border-b border-border">
           <h2 className="text-xl font-semibold">Create New Crawl</h2>
           <button
             onClick={handleClose}
@@ -77,7 +83,8 @@ export const NewCrawlDialog: React.FC<NewCrawlDialogProps> = ({
           </button>
         </div>
 
-        <form onSubmit={handleSubmit} className="space-y-4">
+        <form onSubmit={handleSubmit} className="flex flex-col flex-1 min-h-0">
+          <div className="flex-1 overflow-y-auto px-6 py-4 space-y-4">
           <div>
             <label htmlFor="name" className="block text-sm font-medium mb-1">
               Name <span className="text-xs text-muted-foreground">(optional - auto-detected if empty)</span>
@@ -90,6 +97,23 @@ export const NewCrawlDialog: React.FC<NewCrawlDialogProps> = ({
               className="w-full px-3 py-2 border border-input rounded-md bg-background focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent transition-all"
               placeholder="Will be auto-detected from site (e.g., Next.js Documentation)"
             />
+          </div>
+
+          <div>
+            <label htmlFor="version" className="block text-sm font-medium mb-1">
+              Version <span className="text-xs text-muted-foreground">(optional - e.g., v14, v15, 2.0)</span>
+            </label>
+            <input
+              id="version"
+              type="text"
+              value={formData.version}
+              onChange={(e) => setFormData({ ...formData, version: e.target.value })}
+              className="w-full px-3 py-2 border border-input rounded-md bg-background focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent transition-all"
+              placeholder="e.g., v14, v15, 2.0"
+            />
+            <p className="text-xs text-muted-foreground mt-1">
+              Specify a version to differentiate multiple versions of the same library
+            </p>
           </div>
 
           <div>
@@ -195,6 +219,24 @@ export const NewCrawlDialog: React.FC<NewCrawlDialogProps> = ({
           </div>
 
           <div>
+            <label htmlFor="max_pages" className="block text-sm font-medium mb-1">
+              Max Pages <span className="text-xs text-muted-foreground">(optional)</span>
+            </label>
+            <input
+              id="max_pages"
+              type="number"
+              value={formData.max_pages || ''}
+              onChange={(e) => setFormData({ ...formData, max_pages: e.target.value ? parseInt(e.target.value) : undefined })}
+              className="w-full px-3 py-2 border border-input rounded-md bg-background focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent transition-all"
+              placeholder="No limit"
+              min="1"
+            />
+            <p className="text-xs text-muted-foreground mt-1">
+              Maximum number of pages to crawl. Leave empty for no limit.
+            </p>
+          </div>
+
+          <div>
             <label htmlFor="max_concurrent_crawls" className="block text-sm font-medium mb-1">
               Max Concurrent Crawls
             </label>
@@ -243,8 +285,9 @@ export const NewCrawlDialog: React.FC<NewCrawlDialogProps> = ({
               Maximum number of concurrent page crawls (1-100). Higher values are faster but use more resources.
             </p>
           </div>
+          </div>
 
-          <div className="flex gap-3 pt-4">
+          <div className="flex gap-3 p-6 pt-4 border-t border-border">
             <button
               type="button"
               onClick={handleClose}

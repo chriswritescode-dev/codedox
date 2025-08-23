@@ -26,6 +26,7 @@ class JobManager:
         max_depth: int,
         domain_restrictions: list[str],
         config: dict[str, Any],
+        version: str | None = None,
     ) -> str:
         """Create a new crawl job.
 
@@ -35,6 +36,7 @@ class JobManager:
             max_depth: Maximum crawl depth
             domain_restrictions: Domain restrictions
             config: Additional configuration
+            version: Optional version identifier
 
         Returns:
             Job ID
@@ -46,6 +48,7 @@ class JobManager:
         with self.db_manager.session_scope() as session:
             job = CrawlJob(
                 name=name,
+                version=version,
                 domain=domain,
                 start_urls=start_urls,
                 max_depth=max_depth,
@@ -67,8 +70,9 @@ class JobManager:
         max_depth: int,
         domain_restrictions: list[str],
         config: dict[str, Any],
+        version: str | None = None,
     ) -> str:
-        """Get existing job for domain or create new one.
+        """Get existing job for name+version or create new one.
 
         Args:
             name: Job name
@@ -76,6 +80,7 @@ class JobManager:
             max_depth: Maximum crawl depth
             domain_restrictions: Domain restrictions
             config: Additional configuration
+            version: Optional version identifier
 
         Returns:
             Job ID
@@ -85,8 +90,8 @@ class JobManager:
             raise ValueError("No valid domain found in start URLs")
 
         with self.db_manager.session_scope() as session:
-            # Check for existing job with same domain
-            existing_job = session.query(CrawlJob).filter_by(domain=domain).first()
+            # Check for existing job with same name and version
+            existing_job = session.query(CrawlJob).filter_by(name=name, version=version).first()
 
             if existing_job:
                 # Reuse existing job - update it with new configuration
@@ -152,7 +157,7 @@ class JobManager:
             else:
                 # Create new job
                 return self.create_job(
-                    name, start_urls, max_depth, domain_restrictions, config
+                    name, start_urls, max_depth, domain_restrictions, config, version
                 )
 
     def update_job_status(

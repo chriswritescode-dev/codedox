@@ -281,6 +281,7 @@ class CodeSearcher:
             SELECT 
                 cj.id,
                 cj.name,
+                cj.version,
                 cj.domain,
                 'crawl' as source_type,
                 COALESCE(cj.config->>'description', '') as description,
@@ -301,13 +302,14 @@ class CodeSearcher:
                 OR similarity(LOWER(cj.name), LOWER(:query)) > 0.1
                 OR (cj.domain IS NOT NULL AND similarity(LOWER(SPLIT_PART(cj.domain, '.', 1)), LOWER(:query)) > 0.1)
             )
-            GROUP BY cj.id, cj.name, cj.domain, cj.config
+            GROUP BY cj.id, cj.name, cj.version, cj.domain, cj.config
             
             UNION ALL
             
             SELECT 
                 uj.id,
                 uj.name,
+                uj.version,
                 NULL as domain,
                 'upload' as source_type,
                 COALESCE(uj.config->>'description', '') as description,
@@ -322,7 +324,7 @@ class CodeSearcher:
                 LOWER(uj.name) LIKE LOWER(:pattern)
                 OR similarity(LOWER(uj.name), LOWER(:query)) > 0.1
             )
-            GROUP BY uj.id, uj.name, uj.config
+            GROUP BY uj.id, uj.name, uj.version, uj.config
         )
         SELECT * FROM all_sources
         ORDER BY 
@@ -377,6 +379,7 @@ class CodeSearcher:
             library = {
                 'library_id': str(row.id),
                 'name': row.name,
+                'version': row.version,
                 'source_type': row.source_type,
                 'description': row.description or 'No description available',
                 'snippet_count': row.snippet_count,

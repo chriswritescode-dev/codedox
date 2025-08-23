@@ -55,6 +55,7 @@ class MigrationRunner:
         # Feature additions
         ('004_add_snippet_relationships', 'src/database/migrations/add_snippet_relationships.sql'),
         ('005_add_upload_support', 'migrations/add_upload_support.sql'),
+        ('006_add_version_support', 'src/database/migrations/006_add_version_support.sql'),
     ]
 
     def __init__(self):

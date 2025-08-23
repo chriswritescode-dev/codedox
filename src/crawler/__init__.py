@@ -8,7 +8,6 @@ from .page_crawler import CrawlResult, PageCrawler
 from .progress_tracker import ProgressTracker
 from .result_processor import ResultProcessor
 from .upload_processor import UploadConfig, UploadProcessor
-from .utils import is_allowed_domain, matches_patterns, should_crawl_url
 
 __all__ = [
     # Main classes
@@ -28,8 +27,4 @@ __all__ = [
     # Config factory functions
     "create_crawler_config",
     "create_browser_config",
-    # Utility functions
-    "is_allowed_domain",
-    "matches_patterns",
-    "should_crawl_url",
 ]
