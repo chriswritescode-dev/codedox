@@ -23,9 +23,9 @@ class CrawlConfig:
     name: str
     start_urls: list[str]
     max_depth: int = 0
+    version: str | None = None
     domain_restrictions: list[str] = field(default_factory=list)
     include_patterns: list[str] = field(default_factory=list)
-    exclude_patterns: list[str] = field(default_factory=list)
     max_pages: int | None = None
     max_concurrent_crawls: int = 5
     metadata: dict[str, Any] = field(default_factory=dict)
@@ -95,7 +95,6 @@ class CrawlManager:
         # Create or reuse job
         job_config = {
             "include_patterns": config.include_patterns,
-            "exclude_patterns": config.exclude_patterns,
             "max_pages": config.max_pages,
             "metadata": config.metadata,
             "max_concurrent_crawls": config.max_concurrent_crawls,
@@ -107,6 +106,7 @@ class CrawlManager:
             config.max_depth,
             config.domain_restrictions,
             job_config,
+            config.version,
         )
 
         # Start cleanup task if not already running
@@ -248,7 +248,6 @@ class CrawlManager:
         job_config = {
             "domain_restrictions": config.domain_restrictions,
             "include_patterns": config.include_patterns,
-            "exclude_patterns": config.exclude_patterns,
             "max_pages": config.max_pages,
             "metadata": config.metadata,
             "max_concurrent_crawls": config.max_concurrent_crawls,
@@ -302,7 +301,6 @@ class CrawlManager:
         job_config = {
             "domain_restrictions": config.domain_restrictions,
             "include_patterns": config.include_patterns,
-            "exclude_patterns": config.exclude_patterns,
             "max_pages": config.max_pages,
             "metadata": config.metadata,
             "max_concurrent_crawls": config.max_concurrent_crawls,
@@ -531,7 +529,6 @@ class CrawlManager:
             max_depth=crawl_depth,  # Use 0 for specific URLs, original depth for full recrawl
             domain_restrictions=job_dict.get("domain_restrictions", []),
             include_patterns=original_config.get("include_patterns", []),
-            exclude_patterns=original_config.get("exclude_patterns", []),
             max_pages=original_config.get("max_pages", None) if not specific_urls else len(specific_urls),  # Limit max_pages for specific URLs
             max_concurrent_crawls=original_config.get("max_concurrent_crawls", self.settings.crawling.max_concurrent_crawls),
             metadata=retry_metadata,
@@ -556,7 +553,6 @@ class CrawlManager:
             max_depth=job_dict["max_depth"],
             domain_restrictions=job_dict.get("domain_restrictions", []),
             include_patterns=config_data.get("include_patterns", []),
-            exclude_patterns=config_data.get("exclude_patterns", []),
             max_pages=config_data.get("max_pages", None),
             max_concurrent_crawls=config_data.get("max_concurrent_crawls", self.settings.crawling.max_concurrent_crawls),
             metadata=config_data.get("metadata", {}),

@@ -25,6 +25,8 @@ class MCPTools:
         name: Optional[str],
         start_urls: List[str],
         max_depth: int = 1,
+        version: Optional[str] = None,
+        max_pages: Optional[int] = None,
         domain_filter: Optional[str] = None,
         url_patterns: Optional[List[str]] = None,
         metadata: Optional[Dict[str, Any]] = None,
@@ -36,8 +38,9 @@ class MCPTools:
             name: Library/framework name (auto-detected if not provided)
             start_urls: URLs to start crawling
             max_depth: Maximum crawl depth (0-3)
+            version: Optional version identifier (e.g., "v14", "v15", "2.0")
             domain_filter: Optional domain restriction
-            url_patterns: Optional list of URL patterns to filter (e.g., ["*docs*", "*guide*"])
+            url_patterns: Optional list of URL patterns to include (e.g., ["*docs*", "*guide*"])
                 will keep only URLs matching these patterns
             metadata: Additional metadata
             max_concurrent_crawls: Maximum concurrent crawl sessions (default: from config)
@@ -60,6 +63,7 @@ class MCPTools:
 
             metadata.update({
                 'library_name': name,
+                'version': version,
                 'initiated_via': 'mcp',
                 'initiated_at': datetime.now().isoformat()
             })
@@ -85,8 +89,10 @@ class MCPTools:
                 name=name,
                 start_urls=start_urls,
                 max_depth=max_depth,
+                version=version,
                 domain_restrictions=domain_restrictions,
                 include_patterns=url_patterns or [],
+                max_pages=max_pages,
                 metadata=metadata,
                 max_concurrent_crawls=max_concurrent_crawls or settings.crawling.max_concurrent_crawls
             )
@@ -98,6 +104,7 @@ class MCPTools:
                 "job_id": job_id,
                 "status": "started",
                 "library_name": name,
+                "version": version,
                 "message": f"Crawl job initiated with {len(start_urls)} URLs at depth {max_depth}",
                 "start_urls": start_urls,
                 "max_depth": max_depth,
@@ -173,6 +180,7 @@ class MCPTools:
                             {
                                 "library_id": lib['library_id'],
                                 "name": lib['name'],
+                                "version": lib.get('version'),
                                 "description": lib['description'],
                                 "snippet_count": lib['snippet_count']
                             }
@@ -198,6 +206,7 @@ class MCPTools:
                     "selected_library": {
                         "library_id": best_match['library_id'],
                         "name": best_match['name'],
+                        "version": best_match.get('version'),
                         "description": best_match['description'],
                         "snippet_count": best_match['snippet_count']
                     }
@@ -225,6 +234,7 @@ class MCPTools:
                         {
                             "library_id": lib['library_id'],
                             "name": lib['name'],
+                            "version": lib.get('version'),
                             "snippet_count": lib['snippet_count']
                         }
                         for lib in other_matches
@@ -283,6 +293,7 @@ class MCPTools:
 
                 actual_library_id = library_id
                 library_name = library_id  # Default to the input for display
+                library_version = None  # Initialize version
 
                 # If not a UUID, treat as library name and search for it
                 if not is_uuid:
@@ -327,11 +338,13 @@ class MCPTools:
                         # Use exact match
                         actual_library_id = exact_match['library_id']
                         library_name = exact_match['name']
+                        library_version = exact_match.get('version')
                         logger.info(f"Exact match found: '{library_name}' for query '{library_id}'")
                     elif len(libraries) == 1:
                         # Single match, use it
                         actual_library_id = libraries[0]['library_id']
                         library_name = libraries[0]['name']
+                        library_version = libraries[0].get('version')
                         logger.info(f"Single match found: '{library_name}' for query '{library_id}'")
                     elif len(libraries) > 1:
                         # Check if we have a clear winner
@@ -342,6 +355,7 @@ class MCPTools:
                         if first_score > settings.search.library_auto_select_threshold and (first_score - second_score) > settings.search.library_auto_select_gap:
                             actual_library_id = libraries[0]['library_id']
                             library_name = libraries[0]['name']
+                            library_version = libraries[0].get('version')
                             logger.info(f"Auto-selected best match: '{library_name}' (score: {first_score:.2f}) for query '{library_id}'")
                         else:
                             # Multiple close matches, ask user to be more specific
@@ -386,9 +400,15 @@ class MCPTools:
                 if total_pages > 1:
                     header += f" (showing page {page} of {total_pages})"
                 if query:
-                    header += f" for query '{query}' in library '{library_name}'"
+                    header += f" for query '{query}' in library '{library_name}"
+                    if library_version:
+                        header += f" {library_version}"
+                    header += "'"
                 else:
-                    header += f" in library '{library_name}'"
+                    header += f" in library '{library_name}"
+                    if library_version:
+                        header += f" {library_version}"
+                    header += "'"
                 header += "\n\n"
 
                 return header + formatted_results
@@ -477,18 +497,26 @@ class MCPTools:
                 "job_id": job_id
             }
 
-    async def get_page_markdown(self, url: str) -> Dict[str, Any]:
-        """Get the full markdown content of a documentation page by URL.
+    async def get_page_markdown(
+        self, 
+        url: str,
+        max_tokens: Optional[int] = None,
+        chunk_index: Optional[int] = None,
+        chunk_size: int = 4000
+    ) -> Dict[str, Any]:
+        """Get the markdown content of a documentation page by URL with optional chunking.
 
-        This tool retrieves the complete markdown content stored for a specific
-        documentation page. Use this when you need the full context of a page,
-        not just code snippets.
+        This tool retrieves markdown content stored for a specific documentation page.
+        Supports chunking for large documents and provides token count estimates.
 
         Args:
             url: The URL of the documentation page
+            max_tokens: Optional maximum tokens to return (overrides chunk_index if set)
+            chunk_index: Optional chunk number for paginated content (0-based)
+            chunk_size: Size of each chunk in tokens (default: 4000)
 
         Returns:
-            Dictionary containing markdown content and metadata
+            Dictionary containing markdown content, metadata, and token information
         """
         try:
             with self.db_manager.session_scope() as session:
@@ -524,15 +552,39 @@ class MCPTools:
                     if upload_job:
                         library_name = upload_job.name
                 
+                # Token counting
+                content = doc.markdown_content
+                total_tokens = self._estimate_tokens(content)
+                
+                # Handle chunking if requested
+                if max_tokens or chunk_index is not None:
+                    content, chunk_info = self._chunk_content(
+                        content, 
+                        max_tokens=max_tokens,
+                        chunk_index=chunk_index,
+                        chunk_size=chunk_size
+                    )
+                    returned_tokens = self._estimate_tokens(content)
+                else:
+                    chunk_info = {
+                        "total_chunks": 1,
+                        "current_chunk": 0,
+                        "has_more": False
+                    }
+                    returned_tokens = total_tokens
+                
                 # Prepare response with markdown and metadata
                 response = {
                     "status": "success",
                     "url": url,
                     "title": doc.title or "Untitled",
                     "library_name": library_name or "Unknown",
-                    "content_length": len(doc.markdown_content),
+                    "content_length": len(content),
+                    "total_tokens": total_tokens,
+                    "returned_tokens": returned_tokens,
                     "last_crawled": doc.last_crawled.isoformat() if doc.last_crawled else None,
-                    "markdown_content": doc.markdown_content
+                    "markdown_content": content,
+                    **chunk_info  # Add chunk information
                 }
                 
                 # Add metadata if available
@@ -548,3 +600,119 @@ class MCPTools:
                 "error": str(e),
                 "url": url
             }
+    
+    def _estimate_tokens(self, text: str) -> int:
+        """Estimate token count for text.
+        
+        Uses tiktoken for accurate counting, falls back to character-based estimation.
+        """
+        try:
+            import tiktoken
+            # Use cl100k_base encoding (used by GPT-4)
+            encoding = tiktoken.get_encoding("cl100k_base")
+            return len(encoding.encode(text))
+        except ImportError:
+            # Fallback: Approximate 4 characters per token
+            return len(text) // 4
+    
+    def _chunk_content(
+        self, 
+        content: str, 
+        max_tokens: Optional[int] = None,
+        chunk_index: Optional[int] = None,
+        chunk_size: int = 4000
+    ) -> tuple[str, dict]:
+        """Chunk content by tokens with overlap.
+        
+        Returns:
+            Tuple of (chunked_content, chunk_info)
+        """
+        # Split content into paragraphs for natural boundaries
+        paragraphs = content.split('\n\n')
+        
+        # Calculate tokens per paragraph
+        paragraph_tokens = []
+        for para in paragraphs:
+            tokens = self._estimate_tokens(para)
+            paragraph_tokens.append((para, tokens))
+        
+        # Build chunks
+        chunks = []
+        current_chunk = []
+        current_tokens = 0
+        overlap_size = chunk_size // 10  # 10% overlap
+        
+        for para, tokens in paragraph_tokens:
+            if current_tokens + tokens > chunk_size and current_chunk:
+                # Save current chunk
+                chunks.append('\n\n'.join(current_chunk))
+                
+                # Start new chunk with overlap
+                overlap_tokens = 0
+                overlap_paras = []
+                for p in reversed(current_chunk):
+                    p_tokens = self._estimate_tokens(p)
+                    if overlap_tokens + p_tokens <= overlap_size:
+                        overlap_paras.insert(0, p)
+                        overlap_tokens += p_tokens
+                    else:
+                        break
+                
+                current_chunk = overlap_paras
+                current_tokens = overlap_tokens
+            
+            current_chunk.append(para)
+            current_tokens += tokens
+        
+        # Add final chunk
+        if current_chunk:
+            chunks.append('\n\n'.join(current_chunk))
+        
+        # Handle max_tokens request
+        if max_tokens:
+            # Return content up to max_tokens
+            result = []
+            total = 0
+            for chunk in chunks:
+                chunk_tokens = self._estimate_tokens(chunk)
+                if total + chunk_tokens <= max_tokens:
+                    result.append(chunk)
+                    total += chunk_tokens
+                else:
+                    # Add partial chunk
+                    remaining = max_tokens - total
+                    if remaining > 100:  # Only add if meaningful amount
+                        # Approximate truncation
+                        chars_per_token = len(chunk) // chunk_tokens
+                        truncated = chunk[:remaining * chars_per_token]
+                        result.append(truncated + "\n\n[Content truncated...]")
+                    break
+            
+            return '\n\n'.join(result), {
+                "total_chunks": len(chunks),
+                "current_chunk": 0,
+                "has_more": len(result) < len(chunks)
+            }
+        
+        # Handle chunk_index request
+        if chunk_index is not None:
+            if 0 <= chunk_index < len(chunks):
+                return chunks[chunk_index], {
+                    "total_chunks": len(chunks),
+                    "current_chunk": chunk_index,
+                    "has_more": chunk_index < len(chunks) - 1
+                }
+            else:
+                return "", {
+                    "total_chunks": len(chunks),
+                    "current_chunk": chunk_index,
+                    "has_more": False,
+                    "error": f"Chunk index {chunk_index} out of range (0-{len(chunks)-1})"
+                }
+        
+        # Default: return all content
+        return content, {
+            "total_chunks": len(chunks),
+            "current_chunk": 0,
+            "has_more": False
+        }

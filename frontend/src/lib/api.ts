@@ -382,6 +382,7 @@ class APIClient {
     name?: string
     base_url: string
     max_depth: number
+    max_pages?: number
     domain_filter?: string
     url_patterns?: string[]
     max_concurrent_crawls?: number

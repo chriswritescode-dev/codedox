@@ -20,8 +20,10 @@ mcp_tools = MCPTools()
 
 class CreateCrawlJobRequest(BaseModel):
     name: str | None = None
+    version: str | None = None
     base_url: str
     max_depth: int = 2
+    max_pages: int | None = None
     domain_filter: str | None = None
     url_patterns: list[str] | None = None
     max_concurrent_crawls: int | None = None
@@ -40,6 +42,7 @@ async def get_crawl_jobs(db: Session = Depends(get_db)) -> list[dict[str, Any]]:
         {
             "id": str(job.id),
             "name": job.name,
+            "version": job.version,
             "domain": job.domain,
             "status": job.status,
             "base_url": job.start_urls[0] if job.start_urls else "",
@@ -73,6 +76,7 @@ async def get_crawl_job(job_id: str, db: Session = Depends(get_db)) -> dict[str,
     return {
         "id": str(job.id),
         "name": job.name,
+        "version": job.version,
         "domain": job.domain,
         "status": job.status,
         "base_url": job.start_urls[0] if job.start_urls else "",
@@ -101,8 +105,10 @@ async def create_crawl_job(
     """Create a new crawl job."""
     result = await mcp_tools.init_crawl(
         name=request.name,
+        version=request.version,
         start_urls=[request.base_url],
         max_depth=request.max_depth,
+        max_pages=request.max_pages,
         domain_filter=request.domain_filter,
         url_patterns=request.url_patterns,
         max_concurrent_crawls=request.max_concurrent_crawls

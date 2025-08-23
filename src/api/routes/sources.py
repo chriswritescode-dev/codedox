@@ -619,6 +619,69 @@ async def delete_sources_bulk(source_ids: list[str], db: Session = Depends(get_d
     }
 
 
+@router.get("/documents/{document_id}/markdown")
+async def get_document_markdown(
+    document_id: int,
+    db: Session = Depends(get_db)
+) -> dict[str, Any]:
+    """Get the full markdown content of a document by ID."""
+    # Query for the document by ID
+    document = db.query(Document).filter(Document.id == document_id).first()
+    
+    if not document:
+        raise HTTPException(
+            status_code=404, 
+            detail=f"No document found with ID: {document_id}"
+        )
+    
+    # Check if markdown content exists
+    if not document.markdown_content:
+        return {
+            "status": "no_content",
+            "message": "Document exists but has no markdown content",
+            "document": {
+                "id": document.id,
+                "url": document.url,
+                "title": document.title,
+                "last_crawled": document.last_crawled.isoformat() if document.last_crawled else None,
+            },
+            "note": "This document may have been crawled before markdown storage was enabled"
+        }
+    
+    # Get library/source info
+    source_info = None
+    if document.crawl_job_id:
+        source = db.query(CrawlJob).filter_by(id=document.crawl_job_id).first()
+        if source:
+            source_info = {
+                "id": str(source.id),
+                "name": source.name,
+                "type": "crawl"
+            }
+    elif document.upload_job_id:
+        source = db.query(UploadJob).filter_by(id=document.upload_job_id).first()
+        if source:
+            source_info = {
+                "id": str(source.id),
+                "name": source.name,
+                "type": "upload"
+            }
+    
+    return {
+        "status": "success",
+        "document": {
+            "id": document.id,
+            "url": document.url,
+            "title": document.title or "Untitled",
+            "last_crawled": document.last_crawled.isoformat() if document.last_crawled else None,
+            "content_length": len(document.markdown_content),
+        },
+        "source": source_info,
+        "markdown_content": document.markdown_content,
+        "metadata": document.meta_data if document.meta_data else {}
+    }
+
+
 @router.get("/documents/markdown")
 async def get_page_markdown(
     url: str = Query(..., description="The URL of the document to get markdown for"),
@@ -1039,16 +1102,20 @@ async def recrawl_source(
         # Get configuration from original job config if available
         max_concurrent = get_settings().crawling.max_concurrent_crawls  # default
         url_patterns = None  # default
+        max_pages = None  # default
 
         if original_job.config and isinstance(original_job.config, dict):
             max_concurrent = original_job.config.get('max_concurrent_crawls', get_settings().crawling.max_concurrent_crawls)
             # Preserve URL patterns from original crawl
             url_patterns = original_job.config.get('url_patterns', original_job.config.get('include_patterns'))
+            # Preserve max_pages from original crawl
+            max_pages = original_job.config.get('max_pages')
 
         result = await mcp_tools.init_crawl(
             name=original_job.name,  # type: ignore[arg-type]
             start_urls=original_job.start_urls,  # type: ignore[arg-type]
             max_depth=original_job.max_depth,  # type: ignore[arg-type]
+            max_pages=max_pages,
             domain_filter=original_job.domain if original_job.domain else None,  # type: ignore[arg-type]
             url_patterns=url_patterns,
             metadata={

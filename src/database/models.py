@@ -29,11 +29,12 @@ class CrawlJob(Base):  # type: ignore[misc,valid-type]
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid4)
     name = Column(String, nullable=False)
-    domain = Column(String, unique=True)
+    version = Column(String, nullable=True)
+    domain = Column(String, nullable=True)
     start_urls: Column[list[str]] = Column(ARRAY(Text), nullable=False)
     max_depth = Column(Integer, default=1, nullable=False)
     domain_restrictions: Column[list[str]] = Column(ARRAY(Text))
-    status = Column(String(20), default='pending', nullable=False)
+    status = Column(String(20), default='running', nullable=False)
     total_pages = Column(Integer, default=0)
     processed_pages = Column(Integer, default=0)
     snippets_extracted = Column(Integer, default=0)
@@ -58,9 +59,10 @@ class CrawlJob(Base):  # type: ignore[misc,valid-type]
     failed_pages = relationship("FailedPage", back_populates="crawl_job", cascade="all, delete-orphan")
 
     __table_args__ = (
+        UniqueConstraint('name', 'version', name='unique_name_version'),
         CheckConstraint('max_depth >= 0 AND max_depth <= 5', name='check_max_depth'),
         CheckConstraint(
-            "status IN ('pending', 'running', 'paused', 'completed', 'failed', 'cancelled')",
+            "status IN ('running', 'completed')",
             name='check_status'
         ),
         CheckConstraint(
@@ -74,6 +76,7 @@ class CrawlJob(Base):  # type: ignore[misc,valid-type]
         return {
             'id': str(self.id),
             'name': self.name,
+            'version': self.version,
             'domain': self.domain,
             'start_urls': self.start_urls,
             'max_depth': self.max_depth,
@@ -96,9 +99,10 @@ class UploadJob(Base):  # type: ignore[misc,valid-type]
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid4)
     name = Column(String, nullable=False)
+    version = Column(String, nullable=True)
     source_type = Column(String(20), default='upload', nullable=False)
     file_count = Column(Integer, default=0)
-    status = Column(String(20), default='pending', nullable=False)
+    status = Column(String(20), default='running', nullable=False)
     processed_files = Column(Integer, default=0)
     snippets_extracted = Column(Integer, default=0)
     started_at = Column(DateTime)
@@ -113,12 +117,13 @@ class UploadJob(Base):  # type: ignore[misc,valid-type]
     documents = relationship("Document", back_populates="upload_job", cascade="all, delete-orphan")
 
     __table_args__ = (
+        UniqueConstraint('name', 'version', name='unique_upload_name_version'),
         CheckConstraint(
             "source_type IN ('upload', 'file', 'api')",
             name='check_source_type'
         ),
         CheckConstraint(
-            "status IN ('pending', 'running', 'completed', 'failed', 'cancelled')",
+            "status IN ('running', 'completed')",
             name='check_upload_status'
         ),
     )
@@ -128,6 +133,7 @@ class UploadJob(Base):  # type: ignore[misc,valid-type]
         return {
             'id': str(self.id),
             'name': self.name,
+            'version': self.version,
             'source_type': self.source_type,
             'file_count': self.file_count,
             'status': self.status,

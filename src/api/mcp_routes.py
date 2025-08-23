@@ -9,6 +9,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
+from ..constants import __version__, __mcp_server_name__
 from ..mcp_server.server import MCPServer
 from .auth import verify_mcp_token
 
@@ -170,8 +171,8 @@ async def mcp_stream(request: Request) -> StreamingResponse:
                     "sampling": {}
                 },
                 "serverInfo": {
-                    "name": "codedox-mcp",
-                    "version": "0.2.2"
+                    "name": __mcp_server_name__,
+                    "version": __version__
                 }
             }
 

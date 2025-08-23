@@ -12,7 +12,8 @@ CREATE EXTENSION IF NOT EXISTS "pg_trgm";
 CREATE TABLE IF NOT EXISTS crawl_jobs (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     name TEXT NOT NULL,
-    domain TEXT UNIQUE,
+    version TEXT,
+    domain TEXT,
     start_urls TEXT[] NOT NULL,
     max_depth INTEGER DEFAULT 1 CHECK (max_depth >= 0 AND max_depth <= 5),
     domain_restrictions TEXT[],
@@ -34,13 +35,17 @@ CREATE TABLE IF NOT EXISTS crawl_jobs (
     crawl_completed_at TIMESTAMP,
     documents_crawled INTEGER DEFAULT 0,
     retry_count INTEGER DEFAULT 0,
-    max_retries INTEGER DEFAULT 3
+    max_retries INTEGER DEFAULT 3,
+    
+    -- Unique constraint on name and version combination
+    CONSTRAINT unique_name_version UNIQUE (name, version)
 );
 
 -- Upload job tracking
 CREATE TABLE IF NOT EXISTS upload_jobs (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     name TEXT NOT NULL,
+    version TEXT,
     source_type VARCHAR(20) DEFAULT 'upload' CHECK (source_type IN ('upload', 'file', 'api')),
     file_count INTEGER DEFAULT 0,
     status VARCHAR(20) DEFAULT 'running' CHECK (status IN ('running', 'completed')),
@@ -52,7 +57,10 @@ CREATE TABLE IF NOT EXISTS upload_jobs (
     config JSONB DEFAULT '{}',
     created_by TEXT,
     created_at TIMESTAMP DEFAULT NOW(),
-    updated_at TIMESTAMP DEFAULT NOW()
+    updated_at TIMESTAMP DEFAULT NOW(),
+    
+    -- Unique constraint on name and version combination
+    CONSTRAINT unique_upload_name_version UNIQUE (name, version)
 );
 
 -- Documents/pages crawled
@@ -124,6 +132,10 @@ CREATE INDEX IF NOT EXISTS idx_crawl_jobs_created_at ON crawl_jobs(created_at DE
 CREATE INDEX IF NOT EXISTS idx_upload_jobs_status ON upload_jobs(status);
 CREATE INDEX IF NOT EXISTS idx_upload_jobs_created_by ON upload_jobs(created_by);
 CREATE INDEX IF NOT EXISTS idx_upload_jobs_created_at ON upload_jobs(created_at DESC);
+
+-- Version-specific indexes for better performance
+CREATE INDEX IF NOT EXISTS idx_crawl_jobs_name_version ON crawl_jobs(name, version);
+CREATE INDEX IF NOT EXISTS idx_upload_jobs_name_version ON upload_jobs(name, version);
 
 -- Documents indexes
 CREATE INDEX IF NOT EXISTS idx_documents_url ON documents(url);
@@ -208,6 +220,7 @@ CREATE TRIGGER update_code_snippets_search_vector
 CREATE OR REPLACE VIEW source_statistics AS
 SELECT 
     name,
+    version,
     domain,
     repository,
     description,
@@ -222,6 +235,7 @@ FROM (
     -- Crawl jobs
     SELECT 
         cj.name as name,
+        cj.version as version,
         cj.domain as domain,
         cj.config->'metadata'->>'repository' as repository,
         cj.config->'metadata'->>'description' as description,
@@ -235,13 +249,14 @@ FROM (
     FROM crawl_jobs cj
     LEFT JOIN documents d ON d.crawl_job_id = cj.id
     LEFT JOIN code_snippets cs ON cs.document_id = d.id
-    GROUP BY cj.id, cj.name, cj.domain, cj.status, cj.config
+    GROUP BY cj.id, cj.name, cj.version, cj.domain, cj.status, cj.config
     
     UNION ALL
     
     -- Upload jobs
     SELECT 
         uj.name as name,
+        uj.version as version,
         NULL as domain,
         uj.config->'metadata'->>'repository' as repository,
         uj.config->'metadata'->>'description' as description,
@@ -255,7 +270,7 @@ FROM (
     FROM upload_jobs uj
     LEFT JOIN documents d ON d.upload_job_id = uj.id
     LEFT JOIN code_snippets cs ON cs.document_id = d.id
-    GROUP BY uj.id, uj.name, uj.status, uj.config
+    GROUP BY uj.id, uj.name, uj.version, uj.status, uj.config
 ) combined_stats;
 
 -- Function for full-text search
