@@ -38,29 +38,35 @@ def extract_code_blocks_with_context(content: str, url: str) -> list[SimpleCodeB
     code_blocks = []
     lines = content.split("\n")
 
-    # Match code blocks with optional language
-    pattern = r"```(\w*)\n(.*?)\n```"
+    pattern = r"(`{3,}|~{3,})(\w*)\n(.*?)\1"
     matches = list(re.finditer(pattern, content, re.DOTALL))
+    
+    code_block_lines = set()
+    for match in matches:
+        start_line = content[:match.start()].count("\n")
+        end_line = content[:match.end()].count("\n")
+        # Mark all lines from start to end as part of a code block
+        for line_num in range(start_line, end_line + 1):
+            code_block_lines.add(line_num)
 
     for i, match in enumerate(matches):
-        language = match.group(1) or None
-        code = match.group(2).strip()
+        language = match.group(2) or None
+        code = match.group(3).strip()
 
         if code:  # Only add non-empty code blocks
             # Get line numbers
             start_line = content[: match.start()].count("\n")
             end_line = content[: match.end()].count("\n")
 
-            # Extract context before (up to 5 lines)
             context_before = []
-            for j in range(max(0, start_line - 5), start_line):
-                if j < len(lines) and lines[j].strip():
-                    context_before.append(lines[j].strip())
-
-            # Extract context after (up to 3 lines) and add to context_before
-            for j in range(end_line + 1, min(len(lines), end_line + 4)):
-                if j < len(lines) and lines[j].strip():
-                    context_before.append(lines[j].strip())
+            for j in range(start_line - 1, -1, -1):
+                if j in code_block_lines:
+                    # Hit another code block, stop here
+                    break
+                if j >= 0 and j < len(lines):
+                    line_content = lines[j].strip()
+                    if line_content:
+                        context_before.insert(0, line_content)
 
             # Create SimpleCodeBlock for LLM processing
             block = SimpleCodeBlock(
