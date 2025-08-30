@@ -278,7 +278,7 @@ export default function Upload() {
   }
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 mb-8">
       <div>
         <h1 className="text-3xl font-bold">Upload Documentation</h1>
         <p className="mt-2 text-muted-foreground">
@@ -394,7 +394,11 @@ export default function Upload() {
                     Selected files ({selectedFiles.length}):
                   </p>
                   <p className="text-xs text-muted-foreground">
-                    Total size: {formatFileSize(selectedFiles.reduce((sum, f) => sum + f.size, 0))} / {formatFileSize(MAX_TOTAL_SIZE)}
+                    Total size:{" "}
+                    {formatFileSize(
+                      selectedFiles.reduce((sum, f) => sum + f.size, 0),
+                    )}{" "}
+                    / {formatFileSize(MAX_TOTAL_SIZE)}
                   </p>
                 </div>
                 {selectedFiles.length > 1 && (
@@ -506,7 +510,7 @@ export default function Upload() {
 
         {/* Upload Progress */}
         {uploadProgress && (
-          <div className="rounded-md bg-blue-50 p-4">
+          <div className="rounded-md bg-blue-50 p-4 mb-10">
             <div className="flex items-center">
               <Loader2 className="animate-spin h-5 w-5 text-blue-400" />
               <div className="ml-3">
@@ -546,8 +550,6 @@ export default function Upload() {
             </div>
           </div>
         )}
-
-        {/* Submit Button */}
       </form>
     </div>
   );
