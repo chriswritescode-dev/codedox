@@ -18,11 +18,9 @@ logger = logging.getLogger(__name__)
 
 class DatabaseConfig(BaseSettings):
     """Database configuration."""
+
     model_config = SettingsConfigDict(
-        env_prefix="DB_",
-        env_file=".env",
-        env_file_encoding="utf-8",
-        extra="allow"
+        env_prefix="DB_", env_file=".env", env_file_encoding="utf-8", extra="allow"
     )
 
     host: str = "localhost"
@@ -41,7 +39,6 @@ class DatabaseConfig(BaseSettings):
         return f"postgresql+psycopg://{self.user}:{encoded_password}@{self.host}:{self.port}/{self.name}"
 
 
-
 class MCPConfig(BaseSettings):
     """MCP server configuration.
 
@@ -49,6 +46,7 @@ class MCPConfig(BaseSettings):
     When using HTTP mode (recommended), MCP tools are served via the main API server
     on the API_PORT (default 8000).
     """
+
     model_config = SettingsConfigDict(env_prefix="MCP_", extra="allow")
 
     port: int = 8899  # Only used for standalone stdio server
@@ -59,6 +57,7 @@ class MCPConfig(BaseSettings):
 
 class CrawlingConfig(BaseSettings):
     """Web crawling configuration."""
+
     model_config = SettingsConfigDict(env_prefix="CRAWL_", extra="allow")
 
     default_max_depth: int = 2
@@ -70,33 +69,30 @@ class CrawlingConfig(BaseSettings):
 
     # Concurrent crawl management
     max_concurrent_crawls: int = Field(
-        default=5,
-        description="Maximum concurrent crawl sessions per job"
+        default=5, description="Maximum concurrent crawl sessions per job"
     )
     task_cancellation_timeout: float = Field(
-        default=5.0,
-        description="Timeout in seconds when cancelling crawl tasks"
+        default=5.0, description="Timeout in seconds when cancelling crawl tasks"
     )
     heartbeat_stall_threshold: int = Field(
-        default=60,
-        description="Seconds without heartbeat before considering job stalled"
+        default=60, description="Seconds without heartbeat before considering job stalled"
     )
     global_crawl_timeout: int = Field(
         default=3600,  # 1 hour
-        description="Maximum time in seconds for entire crawl job"
+        description="Maximum time in seconds for entire crawl job",
     )
     format_thread_pool_size: int = Field(
         default=16,  # Reduced from 32 to be more conservative
-        description="Size of thread pool for code formatting"
+        description="Size of thread pool for code formatting",
     )
     format_thread_pool_queue_size: int = Field(
-        default=100,
-        description="Maximum queue size for format thread pool"
+        default=100, description="Maximum queue size for format thread pool"
     )
 
 
 class CodeExtractionConfig(BaseSettings):
     """Code extraction configuration."""
+
     model_config = SettingsConfigDict(env_prefix="CODE_", extra="allow")
 
     max_code_block_size: int = 50000
@@ -106,36 +102,31 @@ class CodeExtractionConfig(BaseSettings):
     # LLM extraction configuration
     enable_llm_extraction: bool = Field(
         default=True,
-        description="Enable LLM for title/description extraction (when false, uses page title and context)"
+        description="Enable LLM for title/description extraction (when false, uses page title and context)",
     )
     llm_api_key: SecretStr = Field(
-        default=SecretStr(""),
-        description="API key for LLM extraction (OpenAI-compatible)"
+        default=SecretStr(""), description="API key for LLM extraction (OpenAI-compatible)"
     )
     llm_extraction_model: str = Field(
-        default="gpt-4o-mini",
-        description="LLM model for code extraction"
+        default="gpt-4o-mini", description="LLM model for code extraction"
     )
     llm_base_url: str | None = Field(
-        default=None,
-        description="Base URL for LLM API (if using custom endpoint)"
+        default=None, description="Base URL for LLM API (if using custom endpoint)"
     )
     llm_max_tokens: int = Field(
-        default=1000,
-        description="Maximum tokens for LLM title and description generation"
+        default=1000, description="Maximum tokens for LLM title and description generation"
     )
     enable_context_extraction: bool = Field(
-        default=True,
-        description="Extract surrounding context for code blocks"
+        default=True, description="Extract surrounding context for code blocks"
     )
     max_context_length: int = Field(
-        default=1000,
-        description="Maximum characters of context to extract around code blocks"
+        default=1000, description="Maximum characters of context to extract around code blocks"
     )
 
 
 class SearchConfig(BaseSettings):
     """Search configuration."""
+
     model_config = SettingsConfigDict(env_prefix="SEARCH_", extra="allow")
 
     max_results: int = 50
@@ -157,6 +148,7 @@ class SearchConfig(BaseSettings):
 
 class APIConfig(BaseSettings):
     """API server configuration."""
+
     model_config = SettingsConfigDict(env_prefix="API_", extra="allow")
 
     host: str = "0.0.0.0"
@@ -166,24 +158,20 @@ class APIConfig(BaseSettings):
 
     def get_cors_origins_list(self) -> list[str]:
         """Get CORS origins as a list."""
-        return [origin.strip() for origin in self.cors_origins.split(',')]
+        return [origin.strip() for origin in self.cors_origins.split(",")]
 
 
 class MCPAuthConfig(BaseSettings):
     """MCP authentication configuration."""
+
     model_config = SettingsConfigDict(env_prefix="MCP_AUTH_", extra="allow")
 
-    enabled: bool = Field(
-        default=False,
-        description="Enable authentication for MCP endpoints"
-    )
+    enabled: bool = Field(default=False, description="Enable authentication for MCP endpoints")
     token: SecretStr = Field(
-        default=SecretStr(""),
-        description="Single authentication token for MCP access"
+        default=SecretStr(""), description="Single authentication token for MCP access"
     )
     tokens: str | None = Field(
-        default=None,
-        description="Multiple authentication tokens (comma-separated)"
+        default=None, description="Multiple authentication tokens (comma-separated)"
     )
 
     def get_valid_tokens(self) -> set[str]:
@@ -196,7 +184,7 @@ class MCPAuthConfig(BaseSettings):
 
         # Add multiple tokens if configured
         if self.tokens:
-            tokens.update(token.strip() for token in self.tokens.split(',') if token.strip())
+            tokens.update(token.strip() for token in self.tokens.split(",") if token.strip())
 
         return tokens
 
@@ -213,8 +201,32 @@ class MCPAuthConfig(BaseSettings):
         return token in valid_tokens
 
 
+class UploadConfig(BaseSettings):
+    """Upload configuration."""
+
+    model_config = SettingsConfigDict(env_prefix="UPLOAD_", extra="allow")
+
+    max_file_size: int = Field(
+        default=10 * 1024 * 1024,  # 10MB
+        description="Maximum file size in bytes",
+    )
+    max_total_size: int = Field(
+        default=500 * 1024 * 1024,  # 500MB
+        description="Maximum total size for batch uploads in bytes",
+    )
+    title_search_lines: int = Field(
+        default=20,
+        description="Number of lines to search for H1 title in markdown",
+    )
+    binary_check_bytes: int = Field(
+        default=1024,
+        description="Number of bytes to check for binary content detection",
+    )
+
+
 class LoggingConfig(BaseSettings):
     """Logging configuration."""
+
     model_config = SettingsConfigDict(env_prefix="LOG_", extra="allow")
 
     level: str = "INFO"
@@ -252,6 +264,7 @@ class Settings(BaseSettings):
         self.search = SearchConfig()
         self.api = APIConfig()
         self.mcp_auth = MCPAuthConfig()
+        self.upload = UploadConfig()
         self.logging = LoggingConfig()
 
     def setup_logging(self) -> None:
@@ -272,9 +285,11 @@ class Settings(BaseSettings):
                 logging.handlers.RotatingFileHandler(
                     self.logging.file,
                     maxBytes=self.logging.max_size,
-                    backupCount=self.logging.backup_count
-                ) if self.logging.file else logging.NullHandler()
-            ]
+                    backupCount=self.logging.backup_count,
+                )
+                if self.logging.file
+                else logging.NullHandler(),
+            ],
         )
 
 
