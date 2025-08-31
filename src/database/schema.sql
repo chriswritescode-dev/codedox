@@ -214,6 +214,22 @@ CREATE TRIGGER update_code_snippets_search_vector
     ON code_snippets
     FOR EACH ROW EXECUTE FUNCTION update_search_vector();
 
+-- Function to update markdown search vector
+CREATE OR REPLACE FUNCTION update_markdown_search_vector_trigger()
+RETURNS TRIGGER AS $$
+BEGIN
+    NEW.markdown_search_vector := to_tsvector('english', COALESCE(NEW.markdown_content, ''));
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+-- Trigger to maintain markdown search vector
+DROP TRIGGER IF EXISTS update_markdown_search_vector ON documents;
+CREATE TRIGGER update_markdown_search_vector
+    BEFORE INSERT OR UPDATE OF markdown_content
+    ON documents
+    FOR EACH ROW EXECUTE FUNCTION update_markdown_search_vector_trigger();
+
 -- Helper views
 
 -- View for source statistics
