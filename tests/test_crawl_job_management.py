@@ -213,7 +213,7 @@ class TestCrawlJobManagement:
             job.last_heartbeat = datetime.utcnow()
 
             # Reset job fields
-            docs = session.query(Document).filter_by(
+            session.query(Document).filter_by(
                 crawl_job_id=job_id
             ).all()
 

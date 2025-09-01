@@ -11,11 +11,11 @@ from mcp.server import Server
 from mcp.shared.exceptions import McpError
 from mcp.types import ErrorData
 
-from ..constants import __version__, __mcp_server_name__
-
 # Use FastAPI's StreamingResponse for SSE instead of MCP's EventSourceResponse
 # to avoid the asyncio event loop issues in tests
 from pydantic import BaseModel
+
+from ..constants import __mcp_server_name__, __version__
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/mcp")

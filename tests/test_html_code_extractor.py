@@ -23,7 +23,7 @@ class TestHTMLCodeExtractor:
             </body>
         </html>
         """
-        soup = BeautifulSoup(html, 'html.parser')
+        BeautifulSoup(html, 'html.parser')
 
         blocks = self.extractor.extract_code_blocks(html, "https://test.com")
 
@@ -164,7 +164,7 @@ body {
             </body>
         </html>
         """
-        soup = BeautifulSoup(html, 'html.parser')
+        BeautifulSoup(html, 'html.parser')
 
         # Reset stats
         self.extractor.stats = {
