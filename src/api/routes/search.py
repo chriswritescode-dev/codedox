@@ -17,18 +17,20 @@ async def search_snippets(
     source_name: str | None = Query(None),
     query: str | None = Query(None),
     language: str | None = Query(None),
+    search_mode: str = Query("enhanced", description="Search mode: 'code' or 'enhanced'"),
     limit: int = Query(20, le=100),
     offset: int = Query(0, ge=0),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
 ) -> list[dict[str, Any]]:
-    """Search code snippets."""
+    """Search code snippets with optional enhanced search mode."""
     searcher = CodeSearcher(db)
     snippets, total = searcher.search(
         query=query,
         source=source_name,
         language=language,
         limit=limit,
-        offset=offset
+        offset=offset,
+        search_mode=search_mode,
     )
 
     # Return list directly for backward compatibility with tests
@@ -50,5 +52,3 @@ async def search_snippets(
         }
         for snippet in snippets
     ]
-
-
