@@ -51,6 +51,9 @@ See the [full installation guide](https://chriswritescode-dev.github.io/codedox/
 ### Dashboard
 <img src="screenshots/WebUI-Dashboard.webp" alt="CodeDox Dashboard" width="800">
 
+### Markdown Search with Highlighting
+<img src="screenshots/CodeDoX-WebUI-Markdown-Search.webp" alt="CodeDox Markdown Search" width="800">
+
 ### Source Detail View
 <img src="screenshots/WebUI-Source-Detail.webp" alt="CodeDox Source Detail" width="800">
 

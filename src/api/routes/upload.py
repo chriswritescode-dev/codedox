@@ -52,7 +52,7 @@ def extract_code_blocks_with_context(content: str, url: str) -> list[SimpleCodeB
         for line_num in range(start_line, end_line + 1):
             code_block_lines.add(line_num)
 
-    for i, match in enumerate(matches):
+    for _i, match in enumerate(matches):
         language = match.group(2) or None
         code = match.group(3).strip()
 

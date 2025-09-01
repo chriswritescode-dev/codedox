@@ -109,7 +109,7 @@ class TestCrawlRestart:
                     session.commit()
 
                 # Continue crawling with stored values
-                config = CrawlConfig(
+                CrawlConfig(
                     name=job_name,
                     start_urls=job_start_urls,
                     max_depth=job_max_depth,
@@ -222,7 +222,7 @@ class TestCrawlRestart:
             )
             session.add(original_job)
             session.commit()
-            job_id = str(original_job.id)
+            str(original_job.id)
 
         # Create new job with updated config
         new_config = CrawlConfig(
@@ -400,7 +400,7 @@ class TestCrawlRestart:
             job.last_heartbeat = datetime.utcnow()
 
             # Reset documents
-            docs = session.query(Document).filter_by(crawl_job_id=job_id).all()
+            session.query(Document).filter_by(crawl_job_id=job_id).all()
 
             session.commit()
 
