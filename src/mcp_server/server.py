@@ -181,10 +181,14 @@ class MCPServer:
                 name="get_content",
                 description="Get code snippets from a library (searches CODE only, not documentation text).\n\n"
                 "**IMPORTANT: Each result includes a SOURCE URL - use this with get_page_markdown() for full documentation!**\n\n"
+                "**Search Modes:**\n"
+                "- **'code' (default)**: Direct code search, falls back to markdown if <5 results found\n"
+                "- **'enhanced'**: ALWAYS searches markdown docs to find ALL related snippets, even those without exact keyword matches\n"
+                "  Use 'enhanced' when you want comprehensive results beyond keyword matching!\n\n"
                 "**What this searches:**\n"
                 "- Code content, function names, imports\n"
                 "- Code titles and descriptions\n"
-                "- Does NOT search full documentation text\n\n"
+                "- In 'enhanced' mode: Also searches full markdown to discover related code\n"
                 "**Workflow for complete information:**\n"
                 "1. Use get_content() to find code snippets\n"
                 "2. Each result has SOURCE: url\n"
@@ -195,7 +199,8 @@ class MCPServer:
                 "- Fuzzy matching helps find the right library\n\n"
                 "**Examples:**\n"
                 "- `library_id: 'react', query: 'useState'` - finds useState code snippets\n"
-                "- `library_id: 'nextjs', query: 'api routes'` - finds API route examples\n"
+                "- `library_id: 'nextjs', query: 'api', search_mode: 'enhanced'` - finds ALL API-related code\n"
+                "- `library_id: 'react', page: 2, limit: 10` - get second page of results\n"
                 "- Then use SOURCE URLs with get_page_markdown() for complete docs if needed\n\n"
                 "Returns formatted code snippets with SOURCE URLs for documentation access.",
                 inputSchema={
@@ -221,6 +226,12 @@ class MCPServer:
                             "default": 1,
                             "minimum": 1,
                             "description": "Page number for paginated results (1-indexed). Use with limit to control pagination.",
+                        },
+                        "search_mode": {
+                            "type": "string",
+                            "enum": ["code", "enhanced"],
+                            "default": "code",
+                            "description": "Search strategy: 'code' (default) searches code directly with markdown fallback for <5 results. 'enhanced' always searches markdown docs to find ALL related snippets, even those without matching keywords.",
                         },
                     },
                     "required": ["library_id"],

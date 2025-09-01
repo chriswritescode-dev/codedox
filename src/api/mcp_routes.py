@@ -9,7 +9,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
-from ..constants import __version__, __mcp_server_name__
+from ..constants import __mcp_server_name__, __version__
 from ..mcp_server.server import MCPServer
 from .auth import verify_mcp_token
 

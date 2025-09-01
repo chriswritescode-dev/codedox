@@ -182,7 +182,7 @@ class TestFailedPagesTracking:
                 mock_process.return_value = None  # Failed pages return None
 
                 # Run a partial crawl
-                config = CrawlConfig(
+                CrawlConfig(
                     name="Test",
                     start_urls=["https://example.com/failed"],
                     max_depth=0

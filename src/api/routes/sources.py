@@ -22,6 +22,7 @@ mcp_tools = MCPTools()
 
 class UpdateSourceRequest(BaseModel):
     """Request model for updating source name."""
+
     name: str = Field(..., min_length=1, max_length=200, description="New source name")
 
 
@@ -30,18 +31,15 @@ def _get_snippet_counts_for_crawl_jobs(db: Session, job_ids: list[str]) -> dict[
     if not job_ids:
         return {}
 
-    counts = db.query(
-        Document.crawl_job_id,
-        func.count(CodeSnippet.id).label('count')
-    ).join(
-        CodeSnippet, Document.id == CodeSnippet.document_id
-    ).filter(
-        Document.crawl_job_id.in_(job_ids)
-    ).group_by(
-        Document.crawl_job_id
-    ).all()
+    counts = (
+        db.query(Document.crawl_job_id, func.count(CodeSnippet.id).label("count"))
+        .join(CodeSnippet, Document.id == CodeSnippet.document_id)
+        .filter(Document.crawl_job_id.in_(job_ids))
+        .group_by(Document.crawl_job_id)
+        .all()
+    )
 
-    return {str(row.crawl_job_id): getattr(row, 'count') for row in counts}
+    return {str(row.crawl_job_id): row.count for row in counts}
 
 
 def _get_snippet_counts_for_upload_jobs(db: Session, job_ids: list[str]) -> dict[str, int]:
@@ -49,25 +47,22 @@ def _get_snippet_counts_for_upload_jobs(db: Session, job_ids: list[str]) -> dict
     if not job_ids:
         return {}
 
-    counts = db.query(
-        Document.upload_job_id,
-        func.count(CodeSnippet.id).label('count')
-    ).join(
-        CodeSnippet, Document.id == CodeSnippet.document_id
-    ).filter(
-        Document.upload_job_id.in_(job_ids)
-    ).group_by(
-        Document.upload_job_id
-    ).all()
+    counts = (
+        db.query(Document.upload_job_id, func.count(CodeSnippet.id).label("count"))
+        .join(CodeSnippet, Document.id == CodeSnippet.document_id)
+        .filter(Document.upload_job_id.in_(job_ids))
+        .group_by(Document.upload_job_id)
+        .all()
+    )
 
-    return {str(row.upload_job_id): getattr(row, 'count') for row in counts}
+    return {str(row.upload_job_id): row.count for row in counts}
 
 
 def _batch_get_crawl_jobs(db: Session, job_ids: list[str]) -> dict[str, CrawlJob]:
     """Batch fetch multiple crawl jobs in a single query."""
     if not job_ids:
         return {}
-    
+
     jobs = db.query(CrawlJob).filter(CrawlJob.id.in_(job_ids)).all()
     return {str(job.id): job for job in jobs}
 
@@ -76,7 +71,7 @@ def _batch_get_upload_jobs(db: Session, job_ids: list[str]) -> dict[str, UploadJ
     """Batch fetch multiple upload jobs in a single query."""
     if not job_ids:
         return {}
-    
+
     jobs = db.query(UploadJob).filter(UploadJob.id.in_(job_ids)).all()
     return {str(job.id): job for job in jobs}
 
@@ -114,15 +109,15 @@ def _build_upload_source_dict(source: UploadJob, snippet_count: int) -> dict[str
 
 @router.get("/sources")
 async def get_sources(
-    limit: int = Query(20, le=100),
-    offset: int = Query(0, ge=0),
-    db: Session = Depends(get_db)
+    limit: int = Query(20, le=100), offset: int = Query(0, ge=0), db: Session = Depends(get_db)
 ) -> dict[str, Any]:
     """Get paginated sources (completed crawl jobs and upload jobs)."""
     result = []
 
     # Get completed crawl jobs with pagination
-    crawl_sources = db.query(CrawlJob).filter_by(status='completed').offset(offset).limit(limit).all()
+    crawl_sources = (
+        db.query(CrawlJob).filter_by(status="completed").offset(offset).limit(limit).all()
+    )
     crawl_ids = [str(source.id) for source in crawl_sources]
     crawl_snippet_counts = _get_snippet_counts_for_crawl_jobs(db, crawl_ids)
 
@@ -131,7 +126,9 @@ async def get_sources(
         result.append(_build_crawl_source_dict(source, snippet_count))
 
     # Get completed upload jobs with pagination
-    upload_sources = db.query(UploadJob).filter_by(status='completed').offset(offset).limit(limit).all()
+    upload_sources = (
+        db.query(UploadJob).filter_by(status="completed").offset(offset).limit(limit).all()
+    )
     upload_ids = [str(source.id) for source in upload_sources]
     upload_snippet_counts = _get_snippet_counts_for_upload_jobs(db, upload_ids)
 
@@ -140,11 +137,11 @@ async def get_sources(
         result.append(_build_upload_source_dict(source, snippet_count))
 
     # Sort by updated_at descending
-    result.sort(key=lambda x: x['updated_at'], reverse=True)
+    result.sort(key=lambda x: x["updated_at"], reverse=True)
 
     # Get total count for pagination
-    total_crawl = db.query(CrawlJob).filter_by(status='completed').count()
-    total_upload = db.query(UploadJob).filter_by(status='completed').count()
+    total_crawl = db.query(CrawlJob).filter_by(status="completed").count()
+    total_upload = db.query(UploadJob).filter_by(status="completed").count()
     total = total_crawl + total_upload
 
     return {
@@ -164,17 +161,17 @@ async def search_sources(
     max_snippets: int | None = Query(None, ge=0, description="Maximum snippet count"),
     limit: int = Query(20, le=100),
     offset: int = Query(0, ge=0),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
 ) -> dict[str, Any]:
     """Search sources with fuzzy matching and snippet count filtering."""
 
     # Treat empty string as None
-    if query == '' or query is None:
+    if query == "" or query is None:
         # If no query, get all sources with snippet filtering
         result = []
 
         # Get all completed crawl jobs
-        crawl_sources = db.query(CrawlJob).filter_by(status='completed').all()
+        crawl_sources = db.query(CrawlJob).filter_by(status="completed").all()
         crawl_ids = [str(source.id) for source in crawl_sources]
         crawl_snippet_counts = _get_snippet_counts_for_crawl_jobs(db, crawl_ids)
 
@@ -188,11 +185,11 @@ async def search_sources(
                 continue
 
             source_dict = _build_crawl_source_dict(source, snippet_count)
-            source_dict['match_score'] = None
+            source_dict["match_score"] = None
             result.append(source_dict)
 
         # Get all completed upload jobs
-        upload_sources = db.query(UploadJob).filter_by(status='completed').all()
+        upload_sources = db.query(UploadJob).filter_by(status="completed").all()
         upload_ids = [str(source.id) for source in upload_sources]
         upload_snippet_counts = _get_snippet_counts_for_upload_jobs(db, upload_ids)
 
@@ -206,15 +203,15 @@ async def search_sources(
                 continue
 
             source_dict = _build_upload_source_dict(source, snippet_count)
-            source_dict['match_score'] = None
+            source_dict["match_score"] = None
             result.append(source_dict)
 
         # Sort by snippets_count descending, then updated_at
-        result.sort(key=lambda x: (-x['snippets_count'], x['updated_at']), reverse=True)
+        result.sort(key=lambda x: (-x["snippets_count"], x["updated_at"]), reverse=True)
 
         # Apply pagination
         total = len(result)
-        result = result[offset:offset + limit]
+        result = result[offset : offset + limit]
 
         return {
             "sources": result,
@@ -224,10 +221,7 @@ async def search_sources(
             "has_next": offset + limit < total,
             "has_previous": offset > 0,
             "query": None,
-            "filters": {
-                "min_snippets": min_snippets,
-                "max_snippets": max_snippets
-            }
+            "filters": {"min_snippets": min_snippets, "max_snippets": max_snippets},
         }
 
     # We have a query - use CodeSearcher for fuzzy search
@@ -237,57 +231,57 @@ async def search_sources(
     libraries, total_count = searcher.search_libraries(
         query=query,
         limit=1000,  # Get all to filter by snippets
-        offset=0
+        offset=0,
     )
 
     # Convert to sources format and filter
     sources = []
-    
+
     # Collect IDs by type for batch fetching
     crawl_ids = []
     upload_ids = []
     filtered_libraries = []
-    
+
     for lib in libraries:
         # Apply snippet count filter
-        if min_snippets is not None and lib['snippet_count'] < min_snippets:
+        if min_snippets is not None and lib["snippet_count"] < min_snippets:
             continue
-        if max_snippets is not None and lib['snippet_count'] > max_snippets:
+        if max_snippets is not None and lib["snippet_count"] > max_snippets:
             continue
-        
+
         # Collect IDs for batch fetching
-        if lib['source_type'] == 'crawl':
-            crawl_ids.append(lib['library_id'])
+        if lib["source_type"] == "crawl":
+            crawl_ids.append(lib["library_id"])
         else:
-            upload_ids.append(lib['library_id'])
-        
+            upload_ids.append(lib["library_id"])
+
         filtered_libraries.append(lib)
-    
+
     # Batch fetch all needed sources (2 queries instead of N)
     crawl_jobs = _batch_get_crawl_jobs(db, crawl_ids) if crawl_ids else {}
     upload_jobs = _batch_get_upload_jobs(db, upload_ids) if upload_ids else {}
-    
+
     # Build sources using pre-fetched data
     for lib in filtered_libraries:
-        if lib['source_type'] == 'crawl':
-            crawl_source = crawl_jobs.get(lib['library_id'])
+        if lib["source_type"] == "crawl":
+            crawl_source = crawl_jobs.get(lib["library_id"])
             if crawl_source:
-                source_dict = _build_crawl_source_dict(crawl_source, lib['snippet_count'])
-                source_dict['match_score'] = lib.get('similarity_score', 0.0)
+                source_dict = _build_crawl_source_dict(crawl_source, lib["snippet_count"])
+                source_dict["match_score"] = lib.get("similarity_score", 0.0)
                 sources.append(source_dict)
         else:
-            upload_source = upload_jobs.get(lib['library_id'])
+            upload_source = upload_jobs.get(lib["library_id"])
             if upload_source:
-                source_dict = _build_upload_source_dict(upload_source, lib['snippet_count'])
-                source_dict['match_score'] = lib.get('similarity_score', 0.0)
+                source_dict = _build_upload_source_dict(upload_source, lib["snippet_count"])
+                source_dict["match_score"] = lib.get("similarity_score", 0.0)
                 sources.append(source_dict)
 
     # Sort by match score
-    sources.sort(key=lambda x: x.get('match_score', 0), reverse=True)
+    sources.sort(key=lambda x: x.get("match_score", 0), reverse=True)
 
     # Apply pagination
     total = len(sources)
-    paginated_sources = sources[offset:offset + limit]
+    paginated_sources = sources[offset : offset + limit]
 
     return {
         "sources": paginated_sources,
@@ -297,10 +291,7 @@ async def search_sources(
         "has_next": offset + limit < total,
         "has_previous": offset > 0,
         "query": query,
-        "filters": {
-            "min_snippets": min_snippets,
-            "max_snippets": max_snippets
-        }
+        "filters": {"min_snippets": min_snippets, "max_snippets": max_snippets},
     }
 
 
@@ -331,7 +322,7 @@ async def get_source_documents(
     source_id: str,
     limit: int = Query(20, le=100),
     offset: int = Query(0, ge=0),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
 ) -> dict[str, Any]:
     """Get paginated documents for a specific source."""
     # Check if it's a crawl job or upload job
@@ -351,11 +342,7 @@ async def get_source_documents(
     total = query.count()
 
     # Get paginated documents
-    documents = query\
-        .order_by(Document.created_at.desc())\
-        .offset(offset)\
-        .limit(limit)\
-        .all()
+    documents = query.order_by(Document.created_at.desc()).offset(offset).limit(limit).all()
 
     return {
         "documents": [
@@ -382,7 +369,7 @@ async def get_source_snippets(
     language: str | None = Query(None),
     limit: int = Query(20, le=100),
     offset: int = Query(0, ge=0),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
 ) -> dict[str, Any]:
     """Get paginated code snippets for a specific source with optional search."""
     # Check if it's a crawl job or upload job
@@ -399,10 +386,10 @@ async def get_source_snippets(
         searcher = CodeSearcher(db)
         snippets, total = searcher.search(
             query=query,
-            source=source.name if hasattr(source, 'name') else None,
+            source=source.name if hasattr(source, "name") else None,
             language=language,
             limit=limit,
-            offset=offset
+            offset=offset,
         )
     else:
         # Build query for snippets based on source type
@@ -420,11 +407,9 @@ async def get_source_snippets(
         total = snippet_query.count()
 
         # Get paginated snippets
-        snippets = snippet_query\
-            .order_by(CodeSnippet.created_at.desc())\
-            .offset(offset)\
-            .limit(limit)\
-            .all()
+        snippets = (
+            snippet_query.order_by(CodeSnippet.created_at.desc()).offset(offset).limit(limit).all()
+        )
 
     return {
         "snippets": [
@@ -450,7 +435,9 @@ async def get_source_snippets(
 
 
 @router.get("/sources/{source_id}/languages")
-async def get_source_languages(source_id: str, db: Session = Depends(get_db)) -> dict[str, list[dict[str, Any]]]:
+async def get_source_languages(
+    source_id: str, db: Session = Depends(get_db)
+) -> dict[str, list[dict[str, Any]]]:
     """Get unique languages used in a source's code snippets."""
     # Find the source (either crawl job or upload job)
     crawl_source = db.query(CrawlJob).filter_by(id=source_id).first()
@@ -462,20 +449,20 @@ async def get_source_languages(source_id: str, db: Session = Depends(get_db)) ->
     source_type = "crawl" if crawl_source else "upload"
 
     # Get unique languages with counts
-    language_stats = db.query(
-        CodeSnippet.language,
-        func.count(CodeSnippet.id).label('count')
-    ).join(Document).filter(
-        (Document.crawl_job_id == source_id) if source_type == "crawl" else (Document.upload_job_id == source_id),
-        CodeSnippet.language.isnot(None)
-    ).group_by(CodeSnippet.language).all()
+    language_stats = (
+        db.query(CodeSnippet.language, func.count(CodeSnippet.id).label("count"))
+        .join(Document)
+        .filter(
+            (Document.crawl_job_id == source_id)
+            if source_type == "crawl"
+            else (Document.upload_job_id == source_id),
+            CodeSnippet.language.isnot(None),
+        )
+        .group_by(CodeSnippet.language)
+        .all()
+    )
 
-    return {
-        "languages": [
-            {"name": stat.language, "count": stat.count}
-            for stat in language_stats
-        ]
-    }
+    return {"languages": [{"name": stat.language, "count": stat.count} for stat in language_stats]}
 
 
 @router.get("/documents/{document_id}/snippets")
@@ -485,7 +472,7 @@ async def get_document_snippets(
     language: str | None = Query(None),
     limit: int = Query(20, le=100),
     offset: int = Query(0, ge=0),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
 ) -> dict[str, Any]:
     """Get paginated code snippets for a specific document with optional search."""
     # Get the document
@@ -496,7 +483,7 @@ async def get_document_snippets(
 
     # If query is provided, use the search functionality
     if query:
-        searcher = CodeSearcher(db)
+        CodeSearcher(db)
         # Search within this document's snippets
         snippet_query = db.query(CodeSnippet).filter(CodeSnippet.document_id == document_id)
 
@@ -507,12 +494,14 @@ async def get_document_snippets(
         search_filter = or_(
             CodeSnippet.title.ilike(f"%{query}%"),
             CodeSnippet.description.ilike(f"%{query}%"),
-            CodeSnippet.code_content.ilike(f"%{query}%")
+            CodeSnippet.code_content.ilike(f"%{query}%"),
         )
         snippet_query = snippet_query.filter(search_filter)
 
         total = snippet_query.count()
-        snippets = snippet_query.order_by(CodeSnippet.created_at.desc()).offset(offset).limit(limit).all()
+        snippets = (
+            snippet_query.order_by(CodeSnippet.created_at.desc()).offset(offset).limit(limit).all()
+        )
     else:
         # Build query for snippets
         snippet_query = db.query(CodeSnippet).filter(CodeSnippet.document_id == document_id)
@@ -521,26 +510,20 @@ async def get_document_snippets(
             snippet_query = snippet_query.filter(CodeSnippet.language == language)
 
         total = snippet_query.count()
-        snippets = snippet_query.order_by(CodeSnippet.created_at.desc()).offset(offset).limit(limit).all()
+        snippets = (
+            snippet_query.order_by(CodeSnippet.created_at.desc()).offset(offset).limit(limit).all()
+        )
 
     # Get source info
     source_info = None
     if document.crawl_job_id:
         source = db.query(CrawlJob).filter_by(id=document.crawl_job_id).first()
         if source:
-            source_info = {
-                "id": str(source.id),
-                "name": source.name,
-                "type": "crawl"
-            }
+            source_info = {"id": str(source.id), "name": source.name, "type": "crawl"}
     elif document.upload_job_id:
         source = db.query(UploadJob).filter_by(id=document.upload_job_id).first()
         if source:
-            source_info = {
-                "id": str(source.id),
-                "name": source.name,
-                "type": "upload"
-            }
+            source_info = {"id": str(source.id), "name": source.name, "type": "upload"}
 
     return {
         "document": {
@@ -574,7 +557,9 @@ async def get_document_snippets(
 
 
 @router.delete("/sources/bulk")
-async def delete_sources_bulk(source_ids: list[str], db: Session = Depends(get_db)) -> dict[str, Any]:
+async def delete_sources_bulk(
+    source_ids: list[str], db: Session = Depends(get_db)
+) -> dict[str, Any]:
     """Delete multiple sources (crawl jobs or upload jobs) and all their associated data."""
     if not source_ids:
         raise HTTPException(status_code=400, detail="No source IDs provided")
@@ -615,25 +600,19 @@ async def delete_sources_bulk(source_ids: list[str], db: Session = Depends(get_d
 
     return {
         "message": f"Successfully deleted {deleted_count} source(s)",
-        "deleted_count": deleted_count
+        "deleted_count": deleted_count,
     }
 
 
 @router.get("/documents/{document_id}/markdown")
-async def get_document_markdown(
-    document_id: int,
-    db: Session = Depends(get_db)
-) -> dict[str, Any]:
+async def get_document_markdown(document_id: int, db: Session = Depends(get_db)) -> dict[str, Any]:
     """Get the full markdown content of a document by ID."""
     # Query for the document by ID
     document = db.query(Document).filter(Document.id == document_id).first()
-    
+
     if not document:
-        raise HTTPException(
-            status_code=404, 
-            detail=f"No document found with ID: {document_id}"
-        )
-    
+        raise HTTPException(status_code=404, detail=f"No document found with ID: {document_id}")
+
     # Check if markdown content exists
     if not document.markdown_content:
         return {
@@ -643,30 +622,24 @@ async def get_document_markdown(
                 "id": document.id,
                 "url": document.url,
                 "title": document.title,
-                "last_crawled": document.last_crawled.isoformat() if document.last_crawled else None,
+                "last_crawled": document.last_crawled.isoformat()
+                if document.last_crawled
+                else None,
             },
-            "note": "This document may have been crawled before markdown storage was enabled"
+            "note": "This document may have been crawled before markdown storage was enabled",
         }
-    
+
     # Get library/source info
     source_info = None
     if document.crawl_job_id:
         source = db.query(CrawlJob).filter_by(id=document.crawl_job_id).first()
         if source:
-            source_info = {
-                "id": str(source.id),
-                "name": source.name,
-                "type": "crawl"
-            }
+            source_info = {"id": str(source.id), "name": source.name, "type": "crawl"}
     elif document.upload_job_id:
         source = db.query(UploadJob).filter_by(id=document.upload_job_id).first()
         if source:
-            source_info = {
-                "id": str(source.id),
-                "name": source.name,
-                "type": "upload"
-            }
-    
+            source_info = {"id": str(source.id), "name": source.name, "type": "upload"}
+
     return {
         "status": "success",
         "document": {
@@ -678,25 +651,22 @@ async def get_document_markdown(
         },
         "source": source_info,
         "markdown_content": document.markdown_content,
-        "metadata": document.meta_data if document.meta_data else {}
+        "metadata": document.meta_data if document.meta_data else {},
     }
 
 
 @router.get("/documents/markdown")
 async def get_page_markdown(
     url: str = Query(..., description="The URL of the document to get markdown for"),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
 ) -> dict[str, Any]:
     """Get the full markdown content of a documentation page by URL."""
     # Query for the document by URL
     document = db.query(Document).filter(Document.url == url).first()
-    
+
     if not document:
-        raise HTTPException(
-            status_code=404, 
-            detail=f"No document found with URL: {url}"
-        )
-    
+        raise HTTPException(status_code=404, detail=f"No document found with URL: {url}")
+
     # Check if markdown content exists
     if not document.markdown_content:
         return {
@@ -706,30 +676,24 @@ async def get_page_markdown(
                 "id": document.id,
                 "url": document.url,
                 "title": document.title,
-                "last_crawled": document.last_crawled.isoformat() if document.last_crawled else None,
+                "last_crawled": document.last_crawled.isoformat()
+                if document.last_crawled
+                else None,
             },
-            "note": "This document may have been crawled before markdown storage was enabled"
+            "note": "This document may have been crawled before markdown storage was enabled",
         }
-    
+
     # Get library/source info
     source_info = None
     if document.crawl_job_id:
         source = db.query(CrawlJob).filter_by(id=document.crawl_job_id).first()
         if source:
-            source_info = {
-                "id": str(source.id),
-                "name": source.name,
-                "type": "crawl"
-            }
+            source_info = {"id": str(source.id), "name": source.name, "type": "crawl"}
     elif document.upload_job_id:
         source = db.query(UploadJob).filter_by(id=document.upload_job_id).first()
         if source:
-            source_info = {
-                "id": str(source.id),
-                "name": source.name,
-                "type": "upload"
-            }
-    
+            source_info = {"id": str(source.id), "name": source.name, "type": "upload"}
+
     return {
         "status": "success",
         "document": {
@@ -741,42 +705,52 @@ async def get_page_markdown(
         },
         "source": source_info,
         "markdown_content": document.markdown_content,
-        "metadata": document.meta_data if document.meta_data else {}
+        "metadata": document.meta_data if document.meta_data else {},
     }
 
 
 @router.get("/documents/search")
 async def search_documents(
-    query: str = Query(..., description="Search query for document title or URL"),
+    query: str = Query(..., description="Search query for document title, URL, or content"),
     limit: int = Query(20, le=100),
     offset: int = Query(0, ge=0),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
 ) -> dict[str, Any]:
-    """Search for documents by title or URL with fuzzy matching."""
+    """Search for documents by title, URL, or markdown content."""
     from sqlalchemy import case
-    
-    # Build the search query
+
+    # Build the search query - now includes markdown content
     search_query = db.query(Document).filter(
         or_(
             Document.title.ilike(f"%{query}%"),
-            Document.url.ilike(f"%{query}%")
+            Document.url.ilike(f"%{query}%"),
+            Document.markdown_content.ilike(f"%{query}%"),
         )
     )
-    
+
     # Get total count
     total = search_query.count()
-    
+
     # Get paginated results
-    documents = search_query.order_by(
-        case(
-            # Prioritize exact matches
-            (Document.title.ilike(query), 0),
-            (Document.url.ilike(f"%/{query}%"), 1),
-            else_=2
-        ),
-        Document.title
-    ).offset(offset).limit(limit).all()
-    
+    documents = (
+        search_query.order_by(
+            case(
+                # Prioritize exact title matches
+                (Document.title.ilike(query), 0),
+                # Then partial title matches
+                (Document.title.ilike(f"%{query}%"), 1),
+                # Then URL matches
+                (Document.url.ilike(f"%/{query}%"), 2),
+                # Content matches come last
+                else_=3,
+            ),
+            Document.title,
+        )
+        .offset(offset)
+        .limit(limit)
+        .all()
+    )
+
     # Format results
     results = []
     for doc in documents:
@@ -790,16 +764,18 @@ async def search_documents(
             source = db.query(UploadJob).filter_by(id=doc.upload_job_id).first()
             if source:
                 source_name = source.name
-        
-        results.append({
-            "id": doc.id,
-            "url": doc.url,
-            "title": doc.title or "Untitled",
-            "source_name": source_name,
-            "has_markdown": doc.markdown_content is not None,
-            "last_crawled": doc.last_crawled.isoformat() if doc.last_crawled else None,
-        })
-    
+
+        results.append(
+            {
+                "id": doc.id,
+                "url": doc.url,
+                "title": doc.title or "Untitled",
+                "source_name": source_name,
+                "has_markdown": doc.markdown_content is not None,
+                "last_crawled": doc.last_crawled.isoformat() if doc.last_crawled else None,
+            }
+        )
+
     return {
         "results": results,
         "pagination": {
@@ -808,12 +784,13 @@ async def search_documents(
             "offset": offset,
             "has_more": (offset + limit) < total,
         },
-        "query": query
+        "query": query,
     }
 
 
 class DeleteFilteredRequest(BaseModel):
     """Request model for deleting filtered sources."""
+
     min_snippets: int | None = Field(None, ge=0, description="Minimum snippet count")
     max_snippets: int | None = Field(None, ge=0, description="Maximum snippet count")
     query: str | None = Field(None, description="Search query for name/URL matching")
@@ -821,205 +798,205 @@ class DeleteFilteredRequest(BaseModel):
 
 @router.post("/sources/bulk/delete-filtered")
 async def delete_filtered_sources(
-    request: DeleteFilteredRequest,
-    db: Session = Depends(get_db)
+    request: DeleteFilteredRequest, db: Session = Depends(get_db)
 ) -> dict[str, Any]:
     """Delete all sources matching the filter criteria."""
     sources_to_delete = []
-    
+
     # Get all completed crawl jobs
-    crawl_sources = db.query(CrawlJob).filter_by(status='completed').all()
+    crawl_sources = db.query(CrawlJob).filter_by(status="completed").all()
     crawl_ids = [str(source.id) for source in crawl_sources]
     crawl_snippet_counts = _get_snippet_counts_for_crawl_jobs(db, crawl_ids)
-    
+
     for source in crawl_sources:
         snippet_count = crawl_snippet_counts.get(str(source.id), 0)
-        
+
         # Apply snippet filter
         if request.min_snippets is not None and snippet_count < request.min_snippets:
             continue
         if request.max_snippets is not None and snippet_count > request.max_snippets:
             continue
-            
+
         # Apply query filter if provided
         if request.query:
             query_lower = request.query.lower()
-            if not (query_lower in source.name.lower() or 
-                    any(query_lower in url.lower() for url in (source.start_urls or []))):
+            if not (
+                query_lower in source.name.lower()
+                or any(query_lower in url.lower() for url in (source.start_urls or []))
+            ):
                 continue
-        
+
         sources_to_delete.append(source)
-    
+
     # Get all completed upload jobs
-    upload_sources = db.query(UploadJob).filter_by(status='completed').all()
+    upload_sources = db.query(UploadJob).filter_by(status="completed").all()
     upload_ids = [str(source.id) for source in upload_sources]
     upload_snippet_counts = _get_snippet_counts_for_upload_jobs(db, upload_ids)
-    
+
     for source in upload_sources:
         snippet_count = upload_snippet_counts.get(str(source.id), 0)
-        
+
         # Apply snippet filter
         if request.min_snippets is not None and snippet_count < request.min_snippets:
             continue
         if request.max_snippets is not None and snippet_count > request.max_snippets:
             continue
-            
+
         # Apply query filter if provided
         if request.query:
             query_lower = request.query.lower()
-            if not query_lower in source.name.lower():
+            if query_lower not in source.name.lower():
                 continue
-        
+
         sources_to_delete.append(source)
-    
+
     deleted_count = len(sources_to_delete)
-    
+
     if deleted_count == 0:
-        return {
-            "message": "No sources found matching the filter criteria",
-            "deleted_count": 0
-        }
-    
+        return {"message": "No sources found matching the filter criteria", "deleted_count": 0}
+
     # Delete all matching sources (cascade will handle documents and snippets)
     for source in sources_to_delete:
         db.delete(source)
-    
+
     db.commit()
-    
+
     return {
         "message": f"Successfully deleted {deleted_count} source(s) matching filter criteria",
-        "deleted_count": deleted_count
+        "deleted_count": deleted_count,
     }
 
 
 @router.post("/sources/bulk/count-filtered")
 async def count_filtered_sources(
-    request: DeleteFilteredRequest,
-    db: Session = Depends(get_db)
+    request: DeleteFilteredRequest, db: Session = Depends(get_db)
 ) -> dict[str, Any]:
     """Count all sources matching the filter criteria (useful for confirmation dialogs)."""
     matching_count = 0
-    
+
     # Get all completed crawl jobs
-    crawl_sources = db.query(CrawlJob).filter_by(status='completed').all()
+    crawl_sources = db.query(CrawlJob).filter_by(status="completed").all()
     crawl_ids = [str(source.id) for source in crawl_sources]
     crawl_snippet_counts = _get_snippet_counts_for_crawl_jobs(db, crawl_ids)
-    
+
     for source in crawl_sources:
         snippet_count = crawl_snippet_counts.get(str(source.id), 0)
-        
+
         # Apply snippet filter
         if request.min_snippets is not None and snippet_count < request.min_snippets:
             continue
         if request.max_snippets is not None and snippet_count > request.max_snippets:
             continue
-            
+
         # Apply query filter if provided
         if request.query:
             query_lower = request.query.lower()
-            if not (query_lower in source.name.lower() or 
-                    any(query_lower in url.lower() for url in (source.start_urls or []))):
+            if not (
+                query_lower in source.name.lower()
+                or any(query_lower in url.lower() for url in (source.start_urls or []))
+            ):
                 continue
-        
+
         matching_count += 1
-    
+
     # Get all completed upload jobs
-    upload_sources = db.query(UploadJob).filter_by(status='completed').all()
+    upload_sources = db.query(UploadJob).filter_by(status="completed").all()
     upload_ids = [str(source.id) for source in upload_sources]
     upload_snippet_counts = _get_snippet_counts_for_upload_jobs(db, upload_ids)
-    
+
     for source in upload_sources:
         snippet_count = upload_snippet_counts.get(str(source.id), 0)
-        
+
         # Apply snippet filter
         if request.min_snippets is not None and snippet_count < request.min_snippets:
             continue
         if request.max_snippets is not None and snippet_count > request.max_snippets:
             continue
-            
+
         # Apply query filter if provided
         if request.query:
             query_lower = request.query.lower()
-            if not query_lower in source.name.lower():
+            if query_lower not in source.name.lower():
                 continue
-        
+
         matching_count += 1
-    
+
     return {
         "count": matching_count,
         "filters": {
             "min_snippets": request.min_snippets,
             "max_snippets": request.max_snippets,
-            "query": request.query
-        }
+            "query": request.query,
+        },
     }
 
 
 @router.post("/sources/ids")
 async def get_filtered_source_ids(
-    request: DeleteFilteredRequest,
-    db: Session = Depends(get_db)
+    request: DeleteFilteredRequest, db: Session = Depends(get_db)
 ) -> dict[str, Any]:
     """Get IDs of all sources matching the filter criteria."""
     matching_ids = []
-    
+
     # Get all completed crawl jobs
-    crawl_sources = db.query(CrawlJob).filter_by(status='completed').all()
+    crawl_sources = db.query(CrawlJob).filter_by(status="completed").all()
     crawl_ids = [str(source.id) for source in crawl_sources]
     crawl_snippet_counts = _get_snippet_counts_for_crawl_jobs(db, crawl_ids)
-    
+
     for source in crawl_sources:
         snippet_count = crawl_snippet_counts.get(str(source.id), 0)
-        
+
         # Apply snippet filter
         if request.min_snippets is not None and snippet_count < request.min_snippets:
             continue
         if request.max_snippets is not None and snippet_count > request.max_snippets:
             continue
-            
+
         # Apply query filter
         if request.query:
             query_lower = request.query.lower()
-            if not (query_lower in source.name.lower() or 
-                    (source.start_urls and any(query_lower in url.lower() for url in source.start_urls))):
+            if not (
+                query_lower in source.name.lower()
+                or (
+                    source.start_urls
+                    and any(query_lower in url.lower() for url in source.start_urls)
+                )
+            ):
                 continue
-                
+
         matching_ids.append(str(source.id))
-    
+
     # Get all upload jobs
     upload_sources = db.query(UploadJob).all()
     upload_ids = [str(source.id) for source in upload_sources]
     upload_snippet_counts = _get_snippet_counts_for_upload_jobs(db, upload_ids)
-    
+
     for source in upload_sources:
         snippet_count = upload_snippet_counts.get(str(source.id), 0)
-        
+
         # Apply snippet filter
         if request.min_snippets is not None and snippet_count < request.min_snippets:
             continue
         if request.max_snippets is not None and snippet_count > request.max_snippets:
             continue
-            
+
         # Apply query filter
         if request.query:
             query_lower = request.query.lower()
-            if not (query_lower in source.name.lower() or 
-                    (source.source_url and query_lower in source.source_url.lower())):
+            if not (
+                query_lower in source.name.lower()
+                or (source.source_url and query_lower in source.source_url.lower())
+            ):
                 continue
-                
+
         matching_ids.append(str(source.id))
-    
-    return {
-        "ids": matching_ids,
-        "total": len(matching_ids)
-    }
+
+    return {"ids": matching_ids, "total": len(matching_ids)}
 
 
 @router.patch("/sources/{source_id}")
 async def update_source_name(
-    source_id: str,
-    request: UpdateSourceRequest,
-    db: Session = Depends(get_db)
+    source_id: str, request: UpdateSourceRequest, db: Session = Depends(get_db)
 ) -> dict[str, Any]:
     """Update source name for both crawl jobs and upload jobs."""
     # Try crawl job first
@@ -1074,14 +1051,15 @@ async def delete_source(source_id: str, db: Session = Depends(get_db)) -> dict[s
 
 class RecrawlRequest(BaseModel):
     """Request model for recrawling a source."""
-    ignore_hash: bool = Field(default=False, description="Ignore content hash and regenerate all content")
+
+    ignore_hash: bool = Field(
+        default=False, description="Ignore content hash and regenerate all content"
+    )
 
 
 @router.post("/sources/{source_id}/recrawl")
 async def recrawl_source(
-    source_id: str,
-    request: RecrawlRequest = RecrawlRequest(),
-    db: Session = Depends(get_db)
+    source_id: str, request: RecrawlRequest = RecrawlRequest(), db: Session = Depends(get_db)
 ) -> dict[str, Any]:
     """Recrawl an existing source (completed crawl job only)."""
     # Check if it's an upload job first
@@ -1094,7 +1072,7 @@ async def recrawl_source(
     if not original_job:
         raise HTTPException(status_code=404, detail="Source not found")
 
-    if original_job.status != 'completed':
+    if original_job.status != "completed":
         raise HTTPException(status_code=400, detail="Can only recrawl completed sources")
 
     try:
@@ -1105,11 +1083,15 @@ async def recrawl_source(
         max_pages = None  # default
 
         if original_job.config and isinstance(original_job.config, dict):
-            max_concurrent = original_job.config.get('max_concurrent_crawls', get_settings().crawling.max_concurrent_crawls)
+            max_concurrent = original_job.config.get(
+                "max_concurrent_crawls", get_settings().crawling.max_concurrent_crawls
+            )
             # Preserve URL patterns from original crawl
-            url_patterns = original_job.config.get('url_patterns', original_job.config.get('include_patterns'))
+            url_patterns = original_job.config.get(
+                "url_patterns", original_job.config.get("include_patterns")
+            )
             # Preserve max_pages from original crawl
-            max_pages = original_job.config.get('max_pages')
+            max_pages = original_job.config.get("max_pages")
 
         result = await mcp_tools.init_crawl(
             name=original_job.name,  # type: ignore[arg-type]
@@ -1123,9 +1105,9 @@ async def recrawl_source(
                 "original_source_id": source_id,
                 "original_name": original_job.name,
                 "recrawl_started_at": datetime.utcnow().isoformat(),
-                "ignore_hash": request.ignore_hash
+                "ignore_hash": request.ignore_hash,
             },
-            max_concurrent_crawls=max_concurrent
+            max_concurrent_crawls=max_concurrent,
         )
 
         if "error" in result:
@@ -1133,8 +1115,8 @@ async def recrawl_source(
 
         # For recrawl, the job_id will be the same as source_id due to domain reuse
         # Add 'id' field for frontend compatibility
-        result['id'] = source_id
-        result['is_recrawl'] = True
+        result["id"] = source_id
+        result["is_recrawl"] = True
 
         return result
 

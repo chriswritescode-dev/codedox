@@ -93,7 +93,7 @@ export const DocumentSearchModal: React.FC<DocumentSearchModalProps> = ({
               value={query}
               onChange={(e) => setQuery(e.target.value)}
               onKeyDown={handleKeyDown}
-              placeholder="Search markdown pages..."
+              placeholder="Search pages by title, URL, or content..."
               className="flex-1 bg-transparent outline-none text-gray-900 dark:text-gray-100 placeholder-gray-500"
               autoFocus
             />
@@ -150,7 +150,7 @@ export const DocumentSearchModal: React.FC<DocumentSearchModalProps> = ({
               </div>
             ) : !query ? (
               <div className="p-8 text-center text-gray-500 dark:text-gray-400">
-                Start typing to search markdown pages
+                Start typing to search page titles, URLs, or content
               </div>
             ) : null}
           </div>
