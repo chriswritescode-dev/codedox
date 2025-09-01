@@ -196,7 +196,7 @@ class MCPServer:
                 "**Examples:**\n"
                 "- `library_id: 'react', query: 'useState'` - finds useState code snippets\n"
                 "- `library_id: 'nextjs', query: 'api routes'` - finds API route examples\n"
-                "- Then use SOURCE URLs with get_page_markdown() for complete docs if neeed\n\n"
+                "- Then use SOURCE URLs with get_page_markdown() for complete docs if needed\n\n"
                 "Returns formatted code snippets with SOURCE URLs for documentation access.",
                 inputSchema={
                     "type": "object",
