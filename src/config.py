@@ -145,6 +145,11 @@ class SearchConfig(BaseSettings):
     # Relationship-based search
     include_related_snippets: bool = True  # Include related snippets in search results
 
+    # Markdown fallback search
+    markdown_fallback_threshold: int = 5  # Trigger markdown search when direct results < this
+    markdown_fallback_enabled: bool = True  # Enable/disable markdown fallback
+    markdown_fallback_doc_limit: int = 10  # Max documents to search via markdown
+
 
 class APIConfig(BaseSettings):
     """API server configuration."""
