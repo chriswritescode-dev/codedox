@@ -445,11 +445,14 @@ class APIClient {
     source_name?: string
     query?: string
     language?: string
+    search_mode?: string
     limit?: number
     offset?: number
   }): Promise<SearchResult[]> {
     const queryParams = new URLSearchParams()
-    Object.entries(params).forEach(([key, value]) => {
+    // Default to enhanced mode for better results
+    const searchParams = { search_mode: 'enhanced', ...params }
+    Object.entries(searchParams).forEach(([key, value]) => {
       if (value !== undefined) {
         queryParams.append(key, String(value))
       }
