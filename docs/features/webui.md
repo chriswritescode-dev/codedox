@@ -31,6 +31,15 @@ Powerful search capabilities with multiple options:
 
 ![Fuzzy Page Search](../screenshots/WebUI-Fuzzy-Page-Search.webp)
 
+### Markdown Search with Highlighting
+Search within documentation content with intelligent highlighting:
+- Full-text search across markdown documentation
+- Automatic highlighting of search matches
+- Auto-scroll to first match in document
+- Navigate between search results easily
+
+![Markdown Search with Highlighting](../screenshots/CodeDoX-WebUI-Markdown-Search.webp)
+
 ### Document Viewer
 Full content viewing with rich formatting:
 - Markdown rendering with syntax highlighting

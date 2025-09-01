@@ -39,7 +39,7 @@ def _get_snippet_counts_for_crawl_jobs(db: Session, job_ids: list[str]) -> dict[
         .all()
     )
 
-    return {str(row.crawl_job_id): getattr(row, "count") for row in counts}
+    return {str(row.crawl_job_id): row.count for row in counts}
 
 
 def _get_snippet_counts_for_upload_jobs(db: Session, job_ids: list[str]) -> dict[str, int]:
@@ -55,7 +55,7 @@ def _get_snippet_counts_for_upload_jobs(db: Session, job_ids: list[str]) -> dict
         .all()
     )
 
-    return {str(row.upload_job_id): getattr(row, "count") for row in counts}
+    return {str(row.upload_job_id): row.count for row in counts}
 
 
 def _batch_get_crawl_jobs(db: Session, job_ids: list[str]) -> dict[str, CrawlJob]:
@@ -483,7 +483,7 @@ async def get_document_snippets(
 
     # If query is provided, use the search functionality
     if query:
-        searcher = CodeSearcher(db)
+        CodeSearcher(db)
         # Search within this document's snippets
         snippet_query = db.query(CodeSnippet).filter(CodeSnippet.document_id == document_id)
 
@@ -717,7 +717,7 @@ async def search_documents(
     db: Session = Depends(get_db),
 ) -> dict[str, Any]:
     """Search for documents by title, URL, or markdown content."""
-    from sqlalchemy import case, text
+    from sqlalchemy import case
 
     # Build the search query - now includes markdown content
     search_query = db.query(Document).filter(
@@ -845,7 +845,7 @@ async def delete_filtered_sources(
         # Apply query filter if provided
         if request.query:
             query_lower = request.query.lower()
-            if not query_lower in source.name.lower():
+            if query_lower not in source.name.lower():
                 continue
 
         sources_to_delete.append(source)
@@ -916,7 +916,7 @@ async def count_filtered_sources(
         # Apply query filter if provided
         if request.query:
             query_lower = request.query.lower()
-            if not query_lower in source.name.lower():
+            if query_lower not in source.name.lower():
                 continue
 
         matching_count += 1

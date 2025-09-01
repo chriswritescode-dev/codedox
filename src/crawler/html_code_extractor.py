@@ -5,7 +5,7 @@ import re
 from dataclasses import dataclass, field
 from typing import Any
 
-from bs4 import BeautifulSoup, NavigableString, Tag
+from bs4 import BeautifulSoup, Tag
 
 logger = logging.getLogger(__name__)
 

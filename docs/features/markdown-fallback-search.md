@@ -4,6 +4,9 @@
 
 The markdown fallback search feature enhances code snippet discovery by using documentation content as a secondary search mechanism when direct code searches return few results. Users can also explicitly request enhanced search to maximize results.
 
+![Markdown Search with Highlighting](../screenshots/CodeDoX-WebUI-Markdown-Search.webp)
+*The Web UI provides intelligent highlighting and auto-scrolling to search matches within markdown documentation*
+
 ## How It Works
 
 ### Automatic Mode (Default)
