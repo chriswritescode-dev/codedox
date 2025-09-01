@@ -44,18 +44,18 @@ See the [full installation guide](https://chriswritescode-dev.github.io/codedox/
 
 ## Demo - MCP Integration Example - OpenCode TUI
 
-<img src="screenshots/CodeDox-1.gif" alt="CodeDox Demo" width="800">
+<img src="docs/screenshots/CodeDox-1.gif" alt="CodeDox Demo" width="800">
 
 ## Screenshots
 
 ### Dashboard
-<img src="screenshots/WebUI-Dashboard.webp" alt="CodeDox Dashboard" width="800">
+<img src="docs/screenshots/WebUI-Dashboard.webp" alt="CodeDox Dashboard" width="800">
 
 ### Markdown Search with Highlighting
-<img src="screenshots/CodeDoX-WebUI-Markdown-Search.webp" alt="CodeDox Markdown Search" width="800">
+<img src="docs/screenshots/CodeDoX-WebUI-Markdown-Search.webp" alt="CodeDox Markdown Search" width="800">
 
 ### Source Detail View
-<img src="screenshots/WebUI-Source-Detail.webp" alt="CodeDox Source Detail" width="800">
+<img src="docs/screenshots/WebUI-Source-Detail.webp" alt="CodeDox Source Detail" width="800">
 
 ## Documentation
 
