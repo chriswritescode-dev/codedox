@@ -132,13 +132,13 @@ python cli.py init --drop
 python -c "
 from src.crawler import MarkdownCodeExtractor
 extractor = MarkdownCodeExtractor()
-content = open('test_upload.md').read()
+content = open('tests/fixtures/test_upload.md').read()
 blocks = extractor.extract_code_blocks(content, 'test.md')
 print(f'Found {len(blocks)} code blocks')
 "
 
 # Test upload via CLI
-python cli.py upload test_upload.md --name "Test Upload"
+python cli.py upload tests/fixtures/test_upload.md --name "Test Upload"
 
 # Search uploaded content
 python cli.py search "hello world"
