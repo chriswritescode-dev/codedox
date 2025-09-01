@@ -9,7 +9,8 @@ import {
   FileCode,
   Folder,
 } from "lucide-react";
-import { uploadMarkdown, uploadFiles } from '../lib/api'
+import { uploadMarkdown, uploadFiles, api } from '../lib/api'
+import { ConfirmationDialog } from '../components/ConfirmationDialog'
 
 const MAX_TOTAL_SIZE = 500 * 1024 * 1024 // 500MB total size limit
 const BATCH_SIZE = 100 // Upload files in batches of 100
@@ -29,6 +30,16 @@ export default function Upload() {
   const [directoryStructure, setDirectoryStructure] = useState<
     Map<string, File[]>
   >(new Map());
+  
+  // Confirmation dialog state
+  const [showConfirmDialog, setShowConfirmDialog] = useState(false)
+  const [existingSourceInfo, setExistingSourceInfo] = useState<{
+    name: string
+    snippetCount: number
+    documentCount: number
+  } | null>(null)
+  const [pendingUpload, setPendingUpload] = useState<(() => Promise<void>) | null>(null)
+  const [checkingSource, setCheckingSource] = useState(false)
 
   const handleDragEnter = useCallback((e: React.DragEvent) => {
     e.preventDefault()
@@ -182,14 +193,34 @@ export default function Upload() {
     return (bytes / (1024 * 1024)).toFixed(1) + ' MB'
   }
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault()
-    
-    if (selectedFiles.length === 0 && !pastedContent.trim()) {
-      setError('Please select files to upload or paste content')
-      return
+  const checkForExistingSource = async (name: string): Promise<boolean> => {
+    setCheckingSource(true)
+    try {
+      const result = await api.searchSources({ query: name, limit: 100 })
+      // Look for exact match (case-insensitive)
+      const exactMatch = result.sources.find(
+        source => source.name.toLowerCase() === name.toLowerCase()
+      )
+      
+      if (exactMatch) {
+        setExistingSourceInfo({
+          name: exactMatch.name,
+          snippetCount: exactMatch.snippets_count || 0,
+          documentCount: exactMatch.documents_count || 0
+        })
+        return true
+      }
+      return false
+    } catch (error) {
+      console.error('Error checking for existing source:', error)
+      // If we can't check, proceed without confirmation
+      return false
+    } finally {
+      setCheckingSource(false)
     }
-    
+  }
+
+  const performUpload = async () => {
     setUploading(true)
     setError(null)
     setSuccess(null)
@@ -277,6 +308,43 @@ export default function Upload() {
     }
   }
 
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault()
+    
+    if (selectedFiles.length === 0 && !pastedContent.trim()) {
+      setError('Please select files to upload or paste content')
+      return
+    }
+    
+    // Generate a name from title or date if not provided
+    const uploadName = title || `Upload ${new Date().toISOString().split('T')[0]}`
+    
+    // Check if a source with this name already exists
+    const hasExisting = await checkForExistingSource(uploadName)
+    
+    if (hasExisting) {
+      // Store the upload function to execute after confirmation
+      setPendingUpload(() => performUpload)
+      setShowConfirmDialog(true)
+    } else {
+      // No existing source, proceed directly
+      await performUpload()
+    }
+  }
+  
+  const handleConfirmUpload = async () => {
+    setShowConfirmDialog(false)
+    if (pendingUpload) {
+      await pendingUpload()
+    }
+  }
+  
+  const handleCancelUpload = () => {
+    setShowConfirmDialog(false)
+    setExistingSourceInfo(null)
+    setPendingUpload(null)
+  }
+
   return (
     <div className="space-y-6 mb-8">
       <div>
@@ -285,8 +353,50 @@ export default function Upload() {
           Upload markdown or text files to extract code snippets with AI
         </p>
       </div>
+      {/* Upload Progress */}
+      {uploadProgress && (
+        <div className="rounded-md bg-blue-50 p-4">
+          <div className="flex items-center">
+            <Loader2 className="animate-spin h-5 w-5 text-blue-400" />
+            <div className="ml-3">
+              <p className="text-sm font-medium text-blue-800">
+                {uploadProgress}
+              </p>
+              {uploadedCount > 0 && (
+                <p className="text-xs text-blue-600 mt-1">
+                  Processed: {uploadedCount} files
+                </p>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
 
-      <form onSubmit={handleSubmit} className="space-y-6">
+      {/* Error Message */}
+      {error && (
+        <div className="rounded-md bg-red-50 p-4">
+          <div className="flex">
+            <AlertCircle className="h-5 w-5 text-red-400" />
+            <div className="ml-3">
+              <p className="text-sm font-medium text-red-800">{error}</p>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Success Message */}
+      {success && (
+        <div className="rounded-md bg-green-50 p-4">
+          <div className="flex">
+            <CheckCircle2 className="h-5 w-5 text-green-400" />
+            <div className="ml-3">
+              <p className="text-sm font-medium text-green-800">{success}</p>
+            </div>
+          </div>
+        </div>
+      )}
+
+      <form onSubmit={handleSubmit} className="space-y-6 mb-20">
         {/* Title Input */}
         <div className="flex items-center gap-4">
           <div>
@@ -550,7 +660,46 @@ export default function Upload() {
             </div>
           </div>
         )}
+
+        {/* Submit Button */}
+        <div className="flex justify-end">
+          <button
+            type="submit"
+            disabled={uploading || checkingSource || (selectedFiles.length === 0 && !pastedContent.trim())}
+            className="px-6 py-2 bg-primary text-primary-foreground rounded-md hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+          >
+            {uploading ? (
+              <>
+                <Loader2 className="animate-spin h-4 w-4" />
+                Uploading...
+              </>
+            ) : checkingSource ? (
+              <>
+                <Loader2 className="animate-spin h-4 w-4" />
+                Checking...
+              </>
+            ) : (
+              'Upload Files'
+            )}
+          </button>
+        </div>
       </form>
+      
+      {/* Confirmation Dialog */}
+      <ConfirmationDialog
+        isOpen={showConfirmDialog}
+        title="Add to Existing Source?"
+        message={`A source named "${existingSourceInfo?.name}" already exists with ${existingSourceInfo?.documentCount} documents and ${existingSourceInfo?.snippetCount} code snippets. 
+
+Your new files will be added to this existing source, allowing you to build a comprehensive documentation library in one place.
+
+Would you like to continue adding to this source?`}
+        confirmText="Yes, Add to Existing Source"
+        cancelText="Cancel Upload"
+        onConfirm={handleConfirmUpload}
+        onCancel={handleCancelUpload}
+        variant="default"
+      />
     </div>
   );
 }
