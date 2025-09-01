@@ -11,6 +11,9 @@ export default function Search() {
   );
   const [query, setQuery] = useState(searchParams.get("q") || "");
   const [language, setLanguage] = useState(searchParams.get("lang") || "");
+  const [enhancedSearch, setEnhancedSearch] = useState(
+    searchParams.get("enhanced") !== "false" // Default to true
+  );
 
   // Update URL when search parameters change
   useEffect(() => {
@@ -18,13 +21,20 @@ export default function Search() {
     if (sourceName) params.set("source", sourceName);
     if (query) params.set("q", query);
     if (language) params.set("lang", language);
+    params.set("enhanced", String(enhancedSearch));
     setSearchParams(params, { replace: true });
-  }, [sourceName, query, language, setSearchParams]);
+  }, [sourceName, query, language, enhancedSearch, setSearchParams]);
 
   const { data: results, isLoading } = useQuery({
-    queryKey: ["search", sourceName, query, language],
+    queryKey: ["search", sourceName, query, language, enhancedSearch],
     queryFn: () =>
-      api.search({ source_name: sourceName, query, language, limit: 10 }),
+      api.search({ 
+        source_name: sourceName, 
+        query, 
+        language, 
+        search_mode: enhancedSearch ? "enhanced" : "code",
+        limit: 10 
+      }),
     enabled: !!(sourceName || query || language),
   });
 
@@ -82,6 +92,22 @@ export default function Search() {
             placeholder="e.g., javascript, python"
             className="w-full px-3 py-2 bg-secondary border border-input rounded-md focus:outline-hidden focus:ring-2 focus:ring-primary"
           />
+        </div>
+
+        <div className="flex items-center space-x-2">
+          <input
+            type="checkbox"
+            id="enhanced-search"
+            checked={enhancedSearch}
+            onChange={(e) => setEnhancedSearch(e.target.checked)}
+            className="rounded border-gray-300 text-primary focus:ring-primary"
+          />
+          <label htmlFor="enhanced-search" className="text-sm">
+            <span className="font-medium">Enhanced Search</span>
+            <span className="text-muted-foreground ml-2">
+              (Searches documentation to find all related code snippets)
+            </span>
+          </label>
         </div>
 
         <button

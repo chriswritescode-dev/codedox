@@ -10,7 +10,7 @@ from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from ..config import get_settings
-from ..constants import __version__, __app_name__
+from ..constants import __app_name__, __version__
 from ..database import get_db
 from .mcp_routes import router as mcp_router
 from .mcp_streamable import router as mcp_streamable_router

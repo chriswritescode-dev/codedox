@@ -610,14 +610,14 @@ If you cannot determine the name, respond with "UNKNOWN"."""
                     # Different document - update metadata
                     self._update_snippet(existing, snippet)
                     updated_count += 1
-                    from_doc = session.query(Document).filter_by(id=existing.document_id).first()
+                    session.query(Document).filter_by(id=existing.document_id).first()
                     logger.debug(f"Updated existing snippet: {title}")
 
         # Commit snippets
         session.commit()
 
         # Log comprehensive statistics
-        total_processed = len(processed_blocks)
+        len(processed_blocks)
         logger.debug(f"Processed {len(code_blocks)} blocks for document {doc.id}: {new_snippet_count} new, {updated_count} updated, {duplicate_count} duplicates")
 
         return new_snippet_count

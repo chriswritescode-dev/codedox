@@ -1,21 +1,20 @@
 """MCP tool implementations."""
 
 import logging
-from typing import Dict, Any, List, Optional
 from datetime import datetime
+from typing import Any
 
-from sqlalchemy import text
 from ..config import get_settings
-from ..database import get_db_manager, CodeSearcher
-from ..crawler import CrawlManager, CrawlConfig
+from ..crawler import CrawlConfig, CrawlManager
+from ..database import CodeSearcher, get_db_manager
 
 logger = logging.getLogger(__name__)
 settings = get_settings()
 
 
 def create_error_response(
-    error_message: str, status: str = "error", additional_fields: Optional[Dict[str, Any]] = None
-) -> Dict[str, Any]:
+    error_message: str, status: str = "error", additional_fields: dict[str, Any] | None = None
+) -> dict[str, Any]:
     """Create a standardized error response.
 
     Args:
@@ -44,16 +43,16 @@ class MCPTools:
 
     async def init_crawl(
         self,
-        name: Optional[str],
-        start_urls: List[str],
+        name: str | None,
+        start_urls: list[str],
         max_depth: int = 1,
-        version: Optional[str] = None,
-        max_pages: Optional[int] = None,
-        domain_filter: Optional[str] = None,
-        url_patterns: Optional[List[str]] = None,
-        metadata: Optional[Dict[str, Any]] = None,
+        version: str | None = None,
+        max_pages: int | None = None,
+        domain_filter: str | None = None,
+        url_patterns: list[str] | None = None,
+        metadata: dict[str, Any] | None = None,
         max_concurrent_crawls: int | None = None,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """Initialize a new crawl job.
 
         Args:
@@ -286,7 +285,12 @@ class MCPTools:
             return create_error_response(str(e), "error", {"message": "Failed to search libraries"})
 
     async def get_content(
-        self, library_id: str, query: str | None = None, limit: int = 20, page: int = 1
+        self,
+        library_id: str,
+        query: str | None = None,
+        limit: int = 20,
+        page: int = 1,
+        search_mode: str = "code",
     ) -> str:
         """Get code snippets from a library with optional search.
 
@@ -298,15 +302,28 @@ class MCPTools:
         1. get_content("react", "useState") → Returns code snippets with SOURCE URLs
         2. Use SOURCE URL with get_page_markdown() to get full documentation context
 
+        Search modes:
+        - "code" (default): Searches snippets directly, uses markdown fallback only if < 5 results
+        - "enhanced": Always searches markdown documentation to find ALL relevant snippets,
+                      even if they don't match the query terms directly
+
         Search scope:
         - Searches in: code content, titles, descriptions, function names, imports
-        - Does NOT search: full markdown documentation text
+        - Enhanced mode also searches: full markdown documentation to discover related snippets
+
+        Pagination (IMPROVED):
+        - Consistent results across all pages - no duplicates or missing results
+        - Markdown fallback search properly handles offset for seamless pagination
+        - Total count accurately reflects all available results (direct + markdown)
+        - Works correctly whether results come from direct search, markdown, or both
 
         Args:
             library_id: Library ID (UUID) or library name - can use either format
             query: Optional search query to filter code snippets (not documentation)
             limit: Maximum results per page (default: 20)
-            page: Page number for paginated results (1-indexed)
+            page: Page number for paginated results (1-indexed, works consistently across all pages)
+            search_mode: Search strategy - "code" (default) uses threshold-based markdown fallback,
+                        "enhanced" always searches markdown for maximum results
 
         Returns:
             Formatted code snippets with SOURCE URLs for full documentation access
@@ -413,7 +430,7 @@ class MCPTools:
                         else:
                             # Multiple close matches, ask user to be more specific
                             suggestions = []
-                            for i, lib in enumerate(libraries[:5]):
+                            for _i, lib in enumerate(libraries[:5]):
                                 score = lib.get("similarity_score", 0)
                                 snippets = lib.get("snippet_count", 0)
                                 suggestions.append(
@@ -437,6 +454,7 @@ class MCPTools:
                     limit=limit,
                     offset=offset,
                     include_context=False,  # Don't include context in search results
+                    search_mode=search_mode,  # Pass through search mode
                 )
 
                 if not snippets:
@@ -478,7 +496,7 @@ class MCPTools:
             logger.error(f"Failed to search content: {e}")
             return f"Error searching content: {str(e)}"
 
-    async def get_crawl_status(self, job_id: str) -> Dict[str, Any]:
+    async def get_crawl_status(self, job_id: str) -> dict[str, Any]:
         """Get status of a specific crawl job.
 
         Args:
@@ -520,7 +538,7 @@ class MCPTools:
             logger.error(f"Failed to get crawl status: {e}")
             return {"error": str(e), "job_id": job_id}
 
-    async def cancel_crawl(self, job_id: str) -> Dict[str, Any]:
+    async def cancel_crawl(self, job_id: str) -> dict[str, Any]:
         """Cancel a running crawl job.
 
         Args:
@@ -552,11 +570,11 @@ class MCPTools:
     async def get_page_markdown(
         self,
         url: str,
-        query: Optional[str] = None,
-        max_tokens: Optional[int] = None,
-        chunk_index: Optional[int] = None,
+        query: str | None = None,
+        max_tokens: int | None = None,
+        chunk_index: int | None = None,
         chunk_size: int = 2048,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """Get full documentation markdown from a specific page URL.
 
         Use this tool to retrieve the complete documentation context for code snippets.
@@ -591,7 +609,7 @@ class MCPTools:
         """
         try:
             with self.db_manager.session_scope() as session:
-                from ..database.models import Document, CrawlJob, UploadJob
+                from ..database.models import CrawlJob, Document, UploadJob
 
                 doc = session.query(Document).filter(Document.url == url).first()
 
@@ -606,7 +624,7 @@ class MCPTools:
                 if not doc.markdown_content:
                     return {
                         "status": "no_content",
-                        "error": f"Document exists but has no markdown content",
+                        "error": "Document exists but has no markdown content",
                         "url": url,
                         "title": doc.title,
                         "note": "This document may have been crawled before markdown storage was enabled",
@@ -638,7 +656,7 @@ class MCPTools:
                         # Check if document matches the search query
                         match_result = session.execute(
                             text("""
-                            SELECT 
+                            SELECT
                                 markdown_search_vector @@ plainto_tsquery('english', :query) as matches,
                                 ts_rank(markdown_search_vector, plainto_tsquery('english', :query)) as rank
                             FROM documents
@@ -656,7 +674,7 @@ class MCPTools:
                                     'english',
                                     markdown_content,
                                     plainto_tsquery('english', :query),
-                                    'MaxWords=' || :max_words || ', MinWords=100, StartSel=****, StopSel=****, 
+                                    'MaxWords=' || :max_words || ', MinWords=100, StartSel=****, StopSel=****,
                                      MaxFragments=5, FragmentDelimiter=\n\n---\n\n'
                                 ) as content
                                 FROM documents
@@ -753,8 +771,8 @@ class MCPTools:
     def _chunk_content(
         self,
         content: str,
-        max_tokens: Optional[int] = None,
-        chunk_index: Optional[int] = None,
+        max_tokens: int | None = None,
+        chunk_index: int | None = None,
         chunk_size: int = 4000,
     ) -> tuple[str, dict]:
         """Chunk content by tokens with overlap.
@@ -1000,7 +1018,7 @@ class MCPTools:
                 unique_lines = []
                 seen_indices = set()
 
-                for line_content, start_idx, end_idx in context_lines:
+                for line_content, start_idx, _end_idx in context_lines:
                     if (
                         line_content == "..."
                         or line_content.startswith("[")

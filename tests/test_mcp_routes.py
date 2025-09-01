@@ -114,7 +114,7 @@ class TestMCPExecuteEndpoints:
         assert response.status_code == 200
         data = response.json()
         assert "result" in data
-        result = data["result"]
+        data["result"]
 
     def test_execute_get_content_with_library_name(self, client, mock_mcp_tools):
         """Test executing get_content tool with library name instead of ID."""

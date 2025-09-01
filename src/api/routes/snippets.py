@@ -8,7 +8,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session, joinedload
 
 from ...database import get_db
-from ...database.models import CodeSnippet, CrawlJob, Document, UploadJob
+from ...database.models import CodeSnippet, CrawlJob, Document
 
 logger = logging.getLogger(__name__)
 
