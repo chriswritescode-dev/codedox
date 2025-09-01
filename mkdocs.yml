@@ -37,6 +37,7 @@ nav:
     - Installation: getting-started/installation.md
     - Quick Start: getting-started/quickstart.md
   - Features:
+    - Web UI: features/webui.md
     - Web Crawling: features/crawling.md
     - Code Extraction: features/extraction.md
     - Search: features/search.md
