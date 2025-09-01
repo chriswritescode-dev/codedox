@@ -124,6 +124,9 @@ Lightning-fast search powered by PostgreSQL's native full-text search with weigh
 - **Fuzzy Matching**: Handles typos and variations
 - **Language Filters**: Search within specific languages
 - **Source Filters**: Limit search to specific documentation sources
+- **Markdown Search**: Search within documentation content with automatic highlighting
+
+![Markdown Search with Highlighting](screenshots/CodeDoX-WebUI-Markdown-Search.webp)
 
 **Search Syntax:**
 
