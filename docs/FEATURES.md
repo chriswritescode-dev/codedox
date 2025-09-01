@@ -80,20 +80,9 @@ Optimize crawl speed with configurable concurrent sessions while respecting serv
 
 ### HTML-Based Extraction
 
-The core extraction engine uses BeautifulSoup to accurately identify and extract code blocks from various documentation frameworks.
-
-**Supported Frameworks:**
-
-- Docusaurus
-- VitePress
-- MkDocs
-- Sphinx
-- GitBook
-- Custom documentation sites
-
 **Extraction Process:**
 
-1. Identifies code blocks using 20+ CSS selectors
+1. Identifies code blocks 
 2. Extracts surrounding context and titles
 3. Captures filename hints from attributes
 4. Removes UI elements (copy buttons, line numbers)
@@ -113,7 +102,7 @@ Optional LLM integration enhances extracted code with intelligent metadata.
 **Configuration:**
 
 ```bash
-# Enable AI enhancement
+# Enable AI enhancement for better Title and snippet generation
 CODE_ENABLE_LLM_EXTRACTION=true
 CODE_LLM_API_KEY=your-api-key
 CODE_LLM_EXTRACTION_MODEL=gpt-4o-mini
@@ -122,23 +111,6 @@ CODE_LLM_EXTRACTION_MODEL=gpt-4o-mini
 CODE_LLM_BASE_URL=http://localhost:11434/v1
 CODE_LLM_EXTRACTION_MODEL=qwen2.5-coder:32b
 ```
-
-### Language Support
-
-CodeDox automatically detects and categorizes code in 50+ programming languages:
-
-**Popular Languages:**
-
-- JavaScript/TypeScript
-- Python
-- Java/Kotlin
-- C/C++/C#
-- Go
-- Rust
-- Ruby
-- PHP
-- Swift
-- And many more...
 
 ## Search Capabilities
 
@@ -171,6 +143,7 @@ python cli.py search "database connection" --limit 20
 **Web UI Search Features:**
 
 - Real-time search as you type
+- Full Markdown Results for more detailed information
 - Syntax highlighting in results
 - Filter by language, source, or date
 - Sort by relevance or recency
