@@ -11,18 +11,21 @@ from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
+from ...config import get_settings
 from ...crawler.extraction_models import SimpleCodeBlock
 from ...crawler.llm_retry import LLMDescriptionGenerator
 from ...database import get_db
 from ...database.models import CodeSnippet, CrawlJob, Document
+from .upload_utils import (
+    is_binary_content,
+    process_code_snippets,
+    resolve_document_title,
+    validate_and_read_file,
+)
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/upload", tags=["upload"])
-
-# Upload limits
-MAX_TOTAL_SIZE = 500 * 1024 * 1024  # 500MB total size limit
-MAX_FILE_SIZE = 10 * 1024 * 1024  # 10MB per file limit
 
 
 class UploadMarkdownRequest(BaseModel):
@@ -100,10 +103,13 @@ async def upload_markdown(
 
         # Create document
         content_hash = hashlib.md5(request.content.encode()).hexdigest()
-        doc_url = f"upload://{request.name}/{request.title or 'content'}"
+
+        final_title = resolve_document_title(request.title, request.content, request.name)
+
+        doc_url = f"upload://{request.name}/{final_title}"
         doc = Document(
             url=doc_url,
-            title=request.title or request.name,
+            title=final_title,
             content_type="markdown",
             content_hash=content_hash,
             markdown_content=request.content,
@@ -195,37 +201,20 @@ async def upload_file(
     title: str | None = Form(None, description="Optional title"),
     db: Session = Depends(get_db),
 ) -> dict[str, Any]:
-    """Upload a markdown file for processing."""
+    """Upload a markdown or text file for processing."""
     try:
-        # Check file type
-        if not file.filename.endswith((".md", ".markdown", ".txt")):
-            raise HTTPException(
-                status_code=400,
-                detail="Only markdown (.md, .markdown) or text (.txt) files are supported",
-            )
-        
-        # Check file size
-        if file.size and file.size > MAX_FILE_SIZE:
-            raise HTTPException(
-                status_code=400,
-                detail=f"File size exceeds {MAX_FILE_SIZE / (1024*1024):.0f}MB limit"
-            )
-
-        # Read file content
-        content = await file.read()
-        content_str = content.decode("utf-8")
+        content_str, filename_without_ext = await validate_and_read_file(file)
 
         # Process using markdown upload endpoint
+        final_name = name or title or filename_without_ext
         request = UploadMarkdownRequest(
             content=content_str,
-            name=name or title or file.filename.rsplit(".", 1)[0],
-            title=title or file.filename,
+            name=final_name,
+            title=title,  # Let the markdown processor handle H1 extraction
         )
 
         return await upload_markdown(request, db)
 
-    except UnicodeDecodeError:
-        raise HTTPException(status_code=400, detail="Invalid file encoding. Please use UTF-8.")
     except HTTPException:
         raise
     except Exception as e:
@@ -242,24 +231,26 @@ async def upload_files(
 ) -> dict[str, Any]:
     """Upload multiple markdown files and process them."""
     try:
+        settings = get_settings()
+
         if not files:
             raise HTTPException(status_code=400, detail="No files provided")
-        
+
         # Check total size and individual file sizes
         total_size = 0
         for file in files:
-            if file.size and file.size > MAX_FILE_SIZE:
+            if file.size and file.size > settings.upload.max_file_size:
                 raise HTTPException(
                     status_code=400,
-                    detail=f"File '{file.filename}' exceeds {MAX_FILE_SIZE / (1024*1024):.0f}MB limit"
+                    detail=f"File '{file.filename}' exceeds {settings.upload.max_file_size / (1024 * 1024):.0f}MB limit",
                 )
             if file.size:
                 total_size += file.size
-        
-        if total_size > MAX_TOTAL_SIZE:
+
+        if total_size > settings.upload.max_total_size:
             raise HTTPException(
                 status_code=400,
-                detail=f"Total file size ({total_size / (1024*1024):.1f}MB) exceeds {MAX_TOTAL_SIZE / (1024*1024):.0f}MB limit"
+                detail=f"Total file size ({total_size / (1024 * 1024):.1f}MB) exceeds {settings.upload.max_total_size / (1024 * 1024):.0f}MB limit",
             )
 
         # Create a source for all files
@@ -315,8 +306,16 @@ async def upload_files(
                     continue
 
                 # Read file content
-                content = await file.read()
-                content_str = content.decode("utf-8")
+                try:
+                    content = await file.read()
+                    # Check if file is likely binary
+                    if is_binary_content(content):
+                        logger.warning(f"Skipping binary file: {file.filename}")
+                        continue
+                    content_str = content.decode("utf-8")
+                except UnicodeDecodeError:
+                    logger.warning(f"Skipping file with invalid encoding: {file.filename}")
+                    continue
 
                 # Create URL for this file
                 file_url = f"upload://{source_name}/{file.filename}"
@@ -335,9 +334,14 @@ async def upload_files(
                     logger.info(f"Skipping duplicate file: {file.filename}")
                     continue
 
+                filename_without_ext = (
+                    file.filename.rsplit(".", 1)[0] if file.filename else "unknown"
+                )
+                final_title = resolve_document_title(None, content_str, filename_without_ext)
+
                 document = Document(
                     url=file_url,
-                    title=title or file.filename,
+                    title=final_title,
                     content_type="markdown",
                     content_hash=content_hash,
                     markdown_content=content_str,
@@ -365,41 +369,19 @@ async def upload_files(
                     except Exception as e:
                         logger.warning(f"LLM processing failed for {file.filename}: {e}")
 
-                # Create code snippets
-                for block in code_blocks:
-                    # Calculate code hash
-                    code_hash = hashlib.md5(block.code.encode()).hexdigest()
-
-                    # Check if snippet already exists in database or current batch
-                    if code_hash in batch_snippets:
-                        logger.info(f"Skipping duplicate within batch: {code_hash}")
-                        continue
-                        
-                    existing_snippet = (
-                        db.query(CodeSnippet).filter(CodeSnippet.code_hash == code_hash).first()
-                    )
-
-                    if existing_snippet:
-                        logger.info(f"Skipping existing code snippet with hash {code_hash}")
-                        continue
-
-                    snippet = CodeSnippet(
-                        document_id=document.id,
-                        title=block.title or f"Code Block from {file.filename}",
-                        description=block.description,
-                        language=block.language or "text",
-                        code_content=block.code,
-                        code_hash=code_hash,
-                        source_url=file_url,
-                        created_at=datetime.utcnow(),
-                        updated_at=datetime.utcnow(),
-                    )
-                    db.add(snippet)
-                    batch_snippets[code_hash] = snippet  # Track in batch
-                    total_snippets += 1
+                # Process code snippets using shared utility
+                snippets_added = process_code_snippets(
+                    code_blocks,
+                    document,
+                    file_url,
+                    db,
+                    batch_snippets,
+                    f"Code Block from {file.filename}",
+                )
+                total_snippets += snippets_added
 
                 processed_files += 1
-                
+
                 # Flush periodically to avoid memory issues with large batches
                 if processed_files % 10 == 0:
                     db.flush()
