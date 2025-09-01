@@ -52,7 +52,7 @@ class MCPServer:
             return await self.tools.search_libraries(
                 query=arguments.get("query", ""),
                 limit=arguments.get("limit", 20),
-                page=arguments.get("page", 1)
+                page=arguments.get("page", 1),
             )
         elif name == "get_content":
             return await self.tools.get_content(
@@ -64,9 +64,10 @@ class MCPServer:
         elif name == "get_page_markdown":
             return await self.tools.get_page_markdown(
                 url=arguments.get("url"),
+                query=arguments.get("query"),  # Add the missing query parameter!
                 max_tokens=arguments.get("max_tokens"),
                 chunk_index=arguments.get("chunk_index"),
-                chunk_size=arguments.get("chunk_size", 4000)
+                chunk_size=arguments.get("chunk_size", 4000),
             )
         else:
             available_tools = [
@@ -76,7 +77,9 @@ class MCPServer:
                 "get_page_markdown",
             ]
             logger.error(f"Unknown tool requested: '{name}'. Available tools: {available_tools}")
-            raise ValueError(f"Unknown tool: '{name}'. Available tools: {', '.join(available_tools)}")
+            raise ValueError(
+                f"Unknown tool: '{name}'. Available tools: {', '.join(available_tools)}"
+            )
 
     def _register_handlers(self) -> None:
         """Register MCP tool handlers."""
@@ -176,24 +179,25 @@ class MCPServer:
             ),
             Tool(
                 name="get_content",
-                description="Get code snippets and documentation from a specific library.\n\n"
-                "**Accepts both library names and IDs:**\n"
-                "- Library name: 'nextjs', 'react', 'django', '.NET', etc.\n"
-                "- Library ID: UUID format like 'a1b2c3d4-5678-90ab-cdef-1234567890ab'\n\n"
-                "**Smart name matching:**\n"
-                "- Exact matches are prioritized (case-insensitive)\n"
-                "- Fuzzy matching finds similar names automatically\n"
-                "- Clear suggestions provided when multiple matches found\n\n"
-                "**Pagination:**\n"
-                "- Use `page` parameter to navigate through results\n"
-                "- Use `limit` parameter to control page size (default: 20)\n"
-                "- Results show current page and total pages available\n\n"
+                description="Get code snippets from a library (searches CODE only, not documentation text).\n\n"
+                "**IMPORTANT: Each result includes a SOURCE URL - use this with get_page_markdown() for full documentation!**\n\n"
+                "**What this searches:**\n"
+                "- Code content, function names, imports\n"
+                "- Code titles and descriptions\n"
+                "- Does NOT search full documentation text\n\n"
+                "**Workflow for complete information:**\n"
+                "1. Use get_content() to find code snippets\n"
+                "2. Each result has SOURCE: url\n"
+                "3. Use get_page_markdown(url=SOURCE) for full documentation context\n\n"
+                "**Library identification:**\n"
+                "- Use library name: 'nextjs', 'react', 'django', etc.\n"
+                "- Or use UUID from search_libraries\n"
+                "- Fuzzy matching helps find the right library\n\n"
                 "**Examples:**\n"
-                "- `library_id: 'nextjs'` - finds Next.js documentation\n"
-                "- `library_id: 'react', query: 'hooks'` - finds React hooks examples\n"
-                "- `library_id: 'django', query: 'authentication'` - finds Django auth code\n"
-                "- `library_id: 'nextjs', page: 2, limit: 30` - get page 2 with 30 results per page\n\n"
-                "Returns formatted code examples with language highlighting, descriptions, and source URLs.",
+                "- `library_id: 'react', query: 'useState'` - finds useState code snippets\n"
+                "- `library_id: 'nextjs', query: 'api routes'` - finds API route examples\n"
+                "- Then use SOURCE URLs with get_page_markdown() for complete docs if needed\n\n"
+                "Returns formatted code snippets with SOURCE URLs for documentation access.",
                 inputSchema={
                     "type": "object",
                     "properties": {
@@ -224,38 +228,49 @@ class MCPServer:
             ),
             Tool(
                 name="get_page_markdown",
-                description="Get the markdown content of a documentation page by URL with optional chunking.\n\n"
+                description="Get full documentation from a page URL (typically from get_content SOURCE field).\n\n"
+                "**PRIMARY USE: Get complete documentation context after finding code with get_content()**\n\n"
                 "**Features:**\n"
-                "- Retrieve full or partial page content\n"
-                "- Token count estimation for context management\n"
-                "- Smart chunking with overlap for continuity\n"
-                "- Supports pagination through large documents\n\n"
-                "**Use cases:**\n"
-                "- Get full page: `url` only\n"
-                "- Get first N tokens: `url` + `max_tokens`\n"
-                "- Get specific chunk: `url` + `chunk_index`\n\n"
-                "The URL is typically provided in code snippet results.",
+                "- Get full documentation page from SOURCE URL\n"
+                "- Search WITHIN a specific page using 'query' parameter\n"
+                "- Limit content size with max_tokens for summaries\n"
+                "- Chunk large documents for manageable reading\n\n"
+                "**Common workflows:**\n"
+                "1. After get_content: Use SOURCE URL here for full docs\n"
+                "2. Search in page: Add query='search term' to find specific content\n"
+                "3. Get summary: Use max_tokens=500 for brief overview\n"
+                "4. Navigate large docs: Use chunk_index=0,1,2... for pagination\n\n"
+                "**Examples:**\n"
+                "- `url: 'https://react.dev/reference/useState'` - get full page\n"
+                "- `url: '...', query: 'dependencies'` - search for 'dependencies' in that page\n"
+                "- `url: '...', max_tokens: 1000` - get first 1000 tokens only\n"
+                "- `url: '...', chunk_index: 0` - get first chunk of large document\n\n"
+                "**Note:** The query parameter searches WITHIN this single document only, not across all docs.",
                 inputSchema={
                     "type": "object",
                     "properties": {
                         "url": {
                             "type": "string",
-                            "description": "The URL of the documentation page to retrieve markdown content for",
+                            "description": "The URL of the documentation page (typically from SOURCE field in get_content results)",
+                        },
+                        "query": {
+                            "type": "string",
+                            "description": "Optional: Search for this text WITHIN the document (highlights matches, returns relevant excerpts)",
                         },
                         "max_tokens": {
                             "type": "integer",
-                            "description": "Maximum tokens to return (overrides chunk_index if set)",
+                            "description": "Optional: Limit response to first N tokens (useful for summaries)",
                             "minimum": 100,
                         },
                         "chunk_index": {
                             "type": "integer",
-                            "description": "Chunk number for paginated content (0-based)",
+                            "description": "Optional: Get specific chunk of large document (0-based, use for pagination)",
                             "minimum": 0,
                         },
                         "chunk_size": {
                             "type": "integer",
-                            "description": "Size of each chunk in tokens (default: 4000)",
-                            "default": 4000,
+                            "description": "Size of each chunk in tokens when using chunk_index (default: 2048)",
+                            "default": 2048,
                             "minimum": 500,
                             "maximum": 10000,
                         },
@@ -289,7 +304,7 @@ class MCPServer:
                 error_result = {
                     "error": str(e),
                     "tool": name,
-                    "timestamp": datetime.utcnow().isoformat()
+                    "timestamp": datetime.utcnow().isoformat(),
                 }
                 return [TextContent(type="text", text=json.dumps(error_result, indent=2))]
 
@@ -301,10 +316,11 @@ class MCPServer:
             # MCP servers use stdio for communication
             # The actual network binding (if needed) should be handled by a wrapper
             import sys
+
             await self.server.run(
                 read_stream=sys.stdin.buffer,
                 write_stream=sys.stdout.buffer,
-                initialization_options=self.server.create_initialization_options()
+                initialization_options=self.server.create_initialization_options(),
             )
         except Exception as e:
             logger.error(f"Failed to start MCP server: {e}")
@@ -320,7 +336,9 @@ def main() -> None:
     # Test database connection
     db_manager = get_db_manager()
     if not db_manager.test_connection():
-        logger.error("Failed to connect to database. Please ensure PostgreSQL is running and the database exists.")
+        logger.error(
+            "Failed to connect to database. Please ensure PostgreSQL is running and the database exists."
+        )
         logger.error("Run 'python cli.py init' to initialize the database.")
         raise RuntimeError("Database connection failed")
 
