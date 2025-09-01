@@ -1,6 +1,6 @@
 """Tests for result processor code block handling."""
 
-from unittest.mock import Mock, patch
+from unittest.mock import Mock
 
 import pytest
 
