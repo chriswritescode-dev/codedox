@@ -33,15 +33,16 @@ See the [full installation guide](https://chriswritescode-dev.github.io/codedox/
 
 ## Key Features
 
-- **Intelligent Web Crawling**: Depth-controlled crawling with URL pattern filtering
-- **Smart Code Extraction**: Dual-mode extraction (AI-enhanced or standalone)
+- **Intelligent Web Crawling**: Depth-controlled crawling with URL pattern filtering and domain restrictions
+- **Smart Code Extraction**: Dual-mode extraction (AI-enhanced snippet descriptions or standalone)
 - **Lightning-Fast Search**: PostgreSQL full-text search with fuzzy matching
 - **MCP Integration**: Native Model Context Protocol support for AI assistants
 - **Modern Web Dashboard**: React + TypeScript UI for visual management
 - **Version Support**: Track multiple versions of documentation
 - **Real-time Monitoring**: Live crawl progress and health monitoring
+- **Upload Support**: Upload documentation archives directly (Markdown, TXT - useful as some docs are avaible in github repos)
 
-## Demo
+## Demo - MCP Integration Example - OpenCode TUI
 
 <img src="screenshots/CodeDox-1.gif" alt="CodeDox Demo" width="800">
 
