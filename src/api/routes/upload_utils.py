@@ -3,7 +3,6 @@
 import hashlib
 import logging
 import re
-from typing import Optional, Tuple
 
 from fastapi import HTTPException, UploadFile
 from sqlalchemy.orm import Session
@@ -16,7 +15,7 @@ logger = logging.getLogger(__name__)
 settings = get_settings()
 
 
-def is_binary_content(content: bytes, sample_size: Optional[int] = None) -> bool:
+def is_binary_content(content: bytes, sample_size: int | None = None) -> bool:
     """Check if content appears to be binary.
 
     Args:
@@ -32,7 +31,7 @@ def is_binary_content(content: bytes, sample_size: Optional[int] = None) -> bool
     return b"\x00" in content[:sample_size]
 
 
-def extract_title_from_markdown(content: str, max_lines: Optional[int] = None) -> Optional[str]:
+def extract_title_from_markdown(content: str, max_lines: int | None = None) -> str | None:
     """Extract the first H1 title from markdown content.
 
     Args:
@@ -54,7 +53,7 @@ def extract_title_from_markdown(content: str, max_lines: Optional[int] = None) -
     return None
 
 
-def resolve_document_title(explicit_title: Optional[str], content: str, fallback_name: str) -> str:
+def resolve_document_title(explicit_title: str | None, content: str, fallback_name: str) -> str:
     """Resolve document title with priority: explicit -> H1 from markdown -> fallback name.
 
     Args:
@@ -74,9 +73,9 @@ def resolve_document_title(explicit_title: Optional[str], content: str, fallback
 
 async def validate_and_read_file(
     file: UploadFile,
-    max_file_size: Optional[int] = None,
-    allowed_extensions: Optional[tuple] = None,
-) -> Tuple[str, str]:
+    max_file_size: int | None = None,
+    allowed_extensions: tuple | None = None,
+) -> tuple[str, str]:
     """Validate file and return content and filename without extension.
 
     Args:
@@ -159,8 +158,8 @@ def process_code_snippets(
     document: Document,
     source_url: str,
     db: Session,
-    batch_snippets: Optional[dict] = None,
-    file_context: Optional[str] = None,
+    batch_snippets: dict | None = None,
+    file_context: str | None = None,
 ) -> int:
     """Process and store code snippets, avoiding duplicates.
 

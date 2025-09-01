@@ -6,11 +6,9 @@ from crawl4ai import (
     CacheMode,
     CrawlerRunConfig,
 )
-from crawl4ai.content_filter_strategy import PruningContentFilter
 from crawl4ai.deep_crawling import BFSDeepCrawlStrategy
 from crawl4ai.deep_crawling.filters import DomainFilter, FilterChain, URLPatternFilter
 from crawl4ai.markdown_generation_strategy import DefaultMarkdownGenerator
-
 
 
 def create_browser_config(

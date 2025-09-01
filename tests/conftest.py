@@ -51,6 +51,7 @@ engine = create_engine(TEST_DATABASE_URL)
 # Use a test schema to isolate test data
 TEST_SCHEMA = "test_codedox"
 
+
 @event.listens_for(engine, "connect", insert=True)
 def set_search_path(dbapi_connection, connection_record):
     """Set schema search path for all connections."""
@@ -61,6 +62,7 @@ def set_search_path(dbapi_connection, connection_record):
     cursor.execute(f"SET search_path TO {TEST_SCHEMA}, public")
     cursor.close()
     dbapi_connection.autocommit = existing_autocommit
+
 
 TestingSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
@@ -111,8 +113,8 @@ def setup_database():
 
         # Create extensions in public schema (they're global)
         conn.execute(text("SET search_path TO public"))
-        conn.execute(text("CREATE EXTENSION IF NOT EXISTS \"uuid-ossp\""))
-        conn.execute(text("CREATE EXTENSION IF NOT EXISTS \"pg_trgm\""))
+        conn.execute(text('CREATE EXTENSION IF NOT EXISTS "uuid-ossp"'))
+        conn.execute(text('CREATE EXTENSION IF NOT EXISTS "pg_trgm"'))
 
         # Switch back to test schema
         conn.execute(text(f"SET search_path TO {TEST_SCHEMA}"))
@@ -121,13 +123,24 @@ def setup_database():
         Base.metadata.create_all(bind=conn)
 
         # Add the search_vector column and trigger manually
-        conn.execute(text("""
+        conn.execute(
+            text("""
             ALTER TABLE code_snippets 
             ADD COLUMN IF NOT EXISTS search_vector tsvector
-        """))
+        """)
+        )
+
+        # Add markdown_search_vector column to documents table
+        conn.execute(
+            text("""
+            ALTER TABLE documents 
+            ADD COLUMN IF NOT EXISTS markdown_search_vector tsvector
+        """)
+        )
 
         # Create the update_search_vector function
-        conn.execute(text("""
+        conn.execute(
+            text("""
             CREATE OR REPLACE FUNCTION update_search_vector()
             RETURNS TRIGGER AS $$
             BEGIN
@@ -140,24 +153,69 @@ def setup_database():
                 RETURN NEW;
             END;
             $$ LANGUAGE plpgsql
-        """))
+        """)
+        )
 
         # Create the trigger
-        conn.execute(text("""
+        conn.execute(
+            text("""
             DROP TRIGGER IF EXISTS update_code_snippets_search_vector ON code_snippets
-        """))
-        conn.execute(text("""
+        """)
+        )
+        conn.execute(
+            text("""
             CREATE TRIGGER update_code_snippets_search_vector 
             BEFORE INSERT OR UPDATE OF title, description, code_content, functions, imports 
             ON code_snippets
             FOR EACH ROW EXECUTE FUNCTION update_search_vector()
-        """))
+        """)
+        )
 
         # Create index on search_vector
-        conn.execute(text("""
+        conn.execute(
+            text("""
             CREATE INDEX IF NOT EXISTS idx_snippets_search_vector 
             ON code_snippets USING GIN(search_vector)
-        """))
+        """)
+        )
+
+        # Create function and trigger for markdown_search_vector
+        conn.execute(
+            text("""
+            CREATE OR REPLACE FUNCTION update_markdown_search_vector()
+            RETURNS TRIGGER AS $$
+            BEGIN
+                NEW.markdown_search_vector := 
+                    setweight(to_tsvector('english', COALESCE(NEW.title, '')), 'A') ||
+                    setweight(to_tsvector('english', COALESCE(NEW.markdown_content, '')), 'B');
+                RETURN NEW;
+            END;
+            $$ LANGUAGE plpgsql
+        """)
+        )
+
+        conn.execute(
+            text("""
+            DROP TRIGGER IF EXISTS update_documents_markdown_search_vector ON documents
+        """)
+        )
+
+        conn.execute(
+            text("""
+            CREATE TRIGGER update_documents_markdown_search_vector 
+            BEFORE INSERT OR UPDATE OF title, markdown_content 
+            ON documents
+            FOR EACH ROW EXECUTE FUNCTION update_markdown_search_vector()
+        """)
+        )
+
+        # Create index on markdown_search_vector
+        conn.execute(
+            text("""
+            CREATE INDEX IF NOT EXISTS idx_documents_markdown_search_vector 
+            ON documents USING GIN(markdown_search_vector)
+        """)
+        )
 
     yield
 
@@ -175,7 +233,8 @@ def setup_database():
     try:
         with engine.begin() as conn:
             # Clean up any test data that might have leaked
-            result = conn.execute(text("""
+            result = conn.execute(
+                text("""
                 DELETE FROM code_snippets 
                 WHERE document_id IN (
                     SELECT id FROM documents 
@@ -185,42 +244,51 @@ def setup_database():
                            OR start_urls[1] LIKE '%example%'
                     )
                 )
-            """))
+            """)
+            )
             snippets_deleted = result.rowcount
 
-            result = conn.execute(text("""
+            result = conn.execute(
+                text("""
                 DELETE FROM documents 
                 WHERE crawl_job_id IN (
                     SELECT id FROM crawl_jobs 
                     WHERE name LIKE '%Test%' OR name LIKE '%test%' 
                        OR start_urls[1] LIKE '%example%'
                 )
-            """))
+            """)
+            )
             docs_deleted = result.rowcount
 
             try:
-                result = conn.execute(text("""
+                result = conn.execute(
+                    text("""
                     DELETE FROM page_links 
                     WHERE crawl_job_id IN (
                         SELECT id FROM crawl_jobs 
                         WHERE name LIKE '%Test%' OR name LIKE '%test%' 
                            OR start_urls[1] LIKE '%example%'
                     )
-                """))
+                """)
+                )
             except Exception:
                 # page_links table doesn't exist, ignore
-                result = type('', (), {'rowcount': 0})()
+                result = type("", (), {"rowcount": 0})()
             links_deleted = result.rowcount
 
-            result = conn.execute(text("""
+            result = conn.execute(
+                text("""
                 DELETE FROM crawl_jobs 
                 WHERE name LIKE '%Test%' OR name LIKE '%test%' 
                    OR start_urls[1] LIKE '%example%'
-            """))
+            """)
+            )
             jobs_deleted = result.rowcount
 
             if any([snippets_deleted, docs_deleted, links_deleted, jobs_deleted]):
-                print(f"\n✓ Final cleanup removed leaked test data: {jobs_deleted} jobs, {docs_deleted} docs, {snippets_deleted} snippets, {links_deleted} links")
+                print(
+                    f"\n✓ Final cleanup removed leaked test data: {jobs_deleted} jobs, {docs_deleted} docs, {snippets_deleted} snippets, {links_deleted} links"
+                )
             else:
                 print("\n✓ No leaked test data found in main schema")
     except Exception as e:
@@ -251,7 +319,21 @@ def db(setup_database) -> Generator[Session, None, None]:
         cleanup_conn.execute(text(f"SET search_path TO {TEST_SCHEMA}, public"))
         cleanup_conn.execute(text("DELETE FROM code_snippets"))
         cleanup_conn.execute(text("DELETE FROM documents"))
-        cleanup_conn.execute(text("DELETE FROM page_links"))
+
+        # Check if page_links table exists before trying to delete
+        result = cleanup_conn.execute(
+            text("""
+            SELECT EXISTS (
+                SELECT FROM information_schema.tables 
+                WHERE table_schema = :schema
+                AND table_name = 'page_links'
+            )
+        """),
+            {"schema": TEST_SCHEMA},
+        )
+        if result.scalar():
+            cleanup_conn.execute(text("DELETE FROM page_links"))
+
         cleanup_conn.execute(text("DELETE FROM failed_pages"))
         cleanup_conn.execute(text("DELETE FROM crawl_jobs"))
 
@@ -269,7 +351,8 @@ def db(setup_database) -> Generator[Session, None, None]:
     try:
         with engine.begin() as cleanup_conn:
             # Delete test data from main schema that matches test patterns
-            cleanup_conn.execute(text("""
+            cleanup_conn.execute(
+                text("""
                 DELETE FROM code_snippets 
                 WHERE document_id IN (
                     SELECT id FROM documents 
@@ -284,9 +367,11 @@ def db(setup_database) -> Generator[Session, None, None]:
                            OR start_urls[1] LIKE '%example4.com%'
                     )
                 )
-            """))
+            """)
+            )
 
-            cleanup_conn.execute(text("""
+            cleanup_conn.execute(
+                text("""
                 DELETE FROM documents 
                 WHERE crawl_job_id IN (
                     SELECT id FROM crawl_jobs 
@@ -298,9 +383,11 @@ def db(setup_database) -> Generator[Session, None, None]:
                        OR start_urls[1] LIKE '%example3.com%'
                        OR start_urls[1] LIKE '%example4.com%'
                 )
-            """))
+            """)
+            )
 
-            cleanup_conn.execute(text("""
+            cleanup_conn.execute(
+                text("""
                 DELETE FROM page_links 
                 WHERE crawl_job_id IN (
                     SELECT id FROM crawl_jobs 
@@ -312,9 +399,11 @@ def db(setup_database) -> Generator[Session, None, None]:
                        OR start_urls[1] LIKE '%example3.com%'
                        OR start_urls[1] LIKE '%example4.com%'
                 )
-            """))
+            """)
+            )
 
-            cleanup_conn.execute(text("""
+            cleanup_conn.execute(
+                text("""
                 DELETE FROM crawl_jobs 
                 WHERE name LIKE '%Test%' OR name LIKE '%test%' 
                    OR start_urls[1] LIKE '%example.com%'
@@ -323,7 +412,8 @@ def db(setup_database) -> Generator[Session, None, None]:
                    OR start_urls[1] LIKE '%example2.com%'
                    OR start_urls[1] LIKE '%example3.com%'
                    OR start_urls[1] LIKE '%example4.com%'
-            """))
+            """)
+            )
     except Exception:
         # Ignore cleanup errors - they're not critical
         pass
@@ -362,8 +452,10 @@ def client(db: Session) -> TestClient:
 
     # Mock MCP authentication for tests
     from src.api.auth import verify_mcp_token
+
     async def mock_verify_mcp_token():
         return True
+
     app.dependency_overrides[verify_mcp_token] = mock_verify_mcp_token
 
     # Create test client
@@ -380,6 +472,7 @@ def client(db: Session) -> TestClient:
 
         # Small delay to ensure connections are closed
         import time
+
         time.sleep(0.05)
 
 
@@ -399,7 +492,7 @@ def sample_crawl_job(db: Session) -> CrawlJob:
         started_at=datetime.utcnow(),
         completed_at=datetime.utcnow(),
         created_at=datetime.utcnow(),
-        updated_at=datetime.utcnow()
+        updated_at=datetime.utcnow(),
     )
     db.add(job)
     db.commit()
@@ -418,7 +511,7 @@ def sample_document(db: Session, sample_crawl_job: CrawlJob) -> Document:
         crawl_depth=1,
         parent_url="https://example.com/docs",
         created_at=datetime.utcnow(),
-        updated_at=datetime.utcnow()
+        updated_at=datetime.utcnow(),
     )
     db.add(doc)
     db.commit()
@@ -445,7 +538,7 @@ def sample_code_snippets(db: Session, sample_document: Document) -> list[CodeSni
         snippet_type="function",
         source_url=sample_document.url,
         created_at=datetime.utcnow(),
-        updated_at=datetime.utcnow()
+        updated_at=datetime.utcnow(),
     )
     snippets.append(python_snippet)
 
@@ -464,7 +557,7 @@ def sample_code_snippets(db: Session, sample_document: Document) -> list[CodeSni
         snippet_type="function",
         source_url=sample_document.url,
         created_at=datetime.utcnow(),
-        updated_at=datetime.utcnow()
+        updated_at=datetime.utcnow(),
     )
     snippets.append(js_snippet)
 
@@ -479,7 +572,7 @@ def sample_code_snippets(db: Session, sample_document: Document) -> list[CodeSni
         snippet_type="config",
         source_url=sample_document.url,
         created_at=datetime.utcnow(),
-        updated_at=datetime.utcnow()
+        updated_at=datetime.utcnow(),
     )
     snippets.append(config_snippet)
 
@@ -502,8 +595,8 @@ def multiple_crawl_jobs(db: Session) -> list[CrawlJob]:
     for i, status in enumerate(statuses):
         job = CrawlJob(
             id=uuid4(),
-            name=f"Test Job {i+1}",
-            start_urls=[f"https://example{i+1}.com"],
+            name=f"Test Job {i + 1}",
+            start_urls=[f"https://example{i + 1}.com"],
             max_depth=1,
             status=status,
             total_pages=10 if i < 2 else 0,
@@ -513,7 +606,7 @@ def multiple_crawl_jobs(db: Session) -> list[CrawlJob]:
             completed_at=datetime.utcnow() if status == "completed" else None,
             error_message="Test error" if i == 2 else None,
             created_at=datetime.utcnow(),
-            updated_at=datetime.utcnow()
+            updated_at=datetime.utcnow(),
         )
         jobs.append(job)
         db.add(job)
@@ -528,7 +621,19 @@ def multiple_crawl_jobs(db: Session) -> list[CrawlJob]:
 @pytest.fixture
 def mock_mcp_tools(monkeypatch):
     """Mock MCP tools to avoid external dependencies."""
-    async def mock_init_crawl(self, name: str, start_urls: list, max_depth: int = 1, version: str = None, max_pages: int = None, domain_filter: str = None, url_patterns: list = None, metadata: dict = None, max_concurrent_crawls: int = 20):
+
+    async def mock_init_crawl(
+        self,
+        name: str,
+        start_urls: list,
+        max_depth: int = 1,
+        version: str = None,
+        max_pages: int = None,
+        domain_filter: str = None,
+        url_patterns: list = None,
+        metadata: dict = None,
+        max_concurrent_crawls: int = 20,
+    ):
         return {
             "job_id": str(uuid4()),
             "status": "started",
@@ -537,7 +642,7 @@ def mock_mcp_tools(monkeypatch):
             "start_urls": start_urls,
             "max_depth": max_depth,
             "domain_restrictions": [],
-            "url_patterns": url_patterns or []
+            "url_patterns": url_patterns or [],
         }
 
     async def mock_search_libraries(self, query: str = "", limit: int = 20, page: int = 1):
@@ -547,12 +652,14 @@ def mock_mcp_tools(monkeypatch):
                 "library_id": str(uuid4()),
                 "name": "Test Source",
                 "description": "Test description",
-                "snippet_count": 100
+                "snippet_count": 100,
             },
-            "explanation": "Exact match found for 'test'"
+            "explanation": "Exact match found for 'test'",
         }
 
-    async def mock_get_content(self, library_id: str, query: str = None, limit: int = 20, page: int = 1):
+    async def mock_get_content(
+        self, library_id: str, query: str = None, limit: int = 20, page: int = 1
+    ):
         return """Found 1 results in Test Source
 
 TITLE: Test Result
@@ -567,11 +674,9 @@ print('test')
 
 ----------------------------------------"""
 
-
     # Patch the MCPTools methods
     from src.mcp_server.tools import MCPTools
+
     monkeypatch.setattr(MCPTools, "init_crawl", mock_init_crawl)
     monkeypatch.setattr(MCPTools, "search_libraries", mock_search_libraries)
     monkeypatch.setattr(MCPTools, "get_content", mock_get_content)
-
-

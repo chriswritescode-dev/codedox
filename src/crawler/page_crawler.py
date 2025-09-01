@@ -20,7 +20,6 @@ from .extraction_models import SimpleCodeBlock
 from .failed_page_utils import record_failed_page
 from .html_code_extractor import HTMLCodeExtractor
 from .llm_retry import LLMDescriptionGenerator
-from .markdown_utils import remove_markdown_links
 
 logger = logging.getLogger(__name__)
 
@@ -356,7 +355,7 @@ class PageCrawler:
                 extraction_semaphore = asyncio.Semaphore(llm_parallel_limit)
 
                 workers = []
-                for i in range(llm_parallel_limit):
+                for _i in range(llm_parallel_limit):
                     worker = asyncio.create_task(
                         self._extraction_worker(
                             extraction_queue,
