@@ -346,7 +346,7 @@ export default function Upload() {
   }
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 mb-8">
       <div>
         <h1 className="text-3xl font-bold">Upload Documentation</h1>
         <p className="mt-2 text-muted-foreground">
@@ -617,6 +617,49 @@ export default function Upload() {
             file
           </p>
         </div>
+
+        {/* Upload Progress */}
+        {uploadProgress && (
+          <div className="rounded-md bg-blue-50 p-4 mb-10">
+            <div className="flex items-center">
+              <Loader2 className="animate-spin h-5 w-5 text-blue-400" />
+              <div className="ml-3">
+                <p className="text-sm font-medium text-blue-800">
+                  {uploadProgress}
+                </p>
+                {uploadedCount > 0 && (
+                  <p className="text-xs text-blue-600 mt-1">
+                    Processed: {uploadedCount} files
+                  </p>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Error Message */}
+        {error && (
+          <div className="rounded-md bg-red-50 p-4">
+            <div className="flex">
+              <AlertCircle className="h-5 w-5 text-red-400" />
+              <div className="ml-3">
+                <p className="text-sm font-medium text-red-800">{error}</p>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Success Message */}
+        {success && (
+          <div className="rounded-md bg-green-50 p-4">
+            <div className="flex">
+              <CheckCircle2 className="h-5 w-5 text-green-400" />
+              <div className="ml-3">
+                <p className="text-sm font-medium text-green-800">{success}</p>
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* Submit Button */}
         <div className="flex justify-end">
