@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useRef, useCallback } from "react";
 import {
   X,
   ExternalLink,
@@ -6,6 +6,9 @@ import {
   Check,
   AlertCircle,
   FileText,
+  Search,
+  ChevronUp,
+  ChevronDown,
 } from "lucide-react";
 import { api } from "../lib/api";
 import { Link } from "react-router-dom";
@@ -27,6 +30,12 @@ export const FullPageModal: React.FC<FullPageModalProps> = ({
   const [error, setError] = useState<string | null>(null);
   const [data, setData] = useState<any>(null);
   const [copied, setCopied] = useState(false);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [currentMatch, setCurrentMatch] = useState(0);
+  const [totalMatches, setTotalMatches] = useState(0);
+  const [highlightedContent, setHighlightedContent] = useState<string>("");
+  const contentRef = useRef<HTMLDivElement>(null);
+  const searchInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     if (isOpen && url) {
@@ -34,15 +43,25 @@ export const FullPageModal: React.FC<FullPageModalProps> = ({
     }
   }, [isOpen, url]);
 
-  // Handle ESC key to close modal
+  // Handle keyboard shortcuts
   useEffect(() => {
-    const handleEsc = (e: KeyboardEvent) => {
-      if (e.key === "Escape" && isOpen) {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (!isOpen) return;
+
+      // ESC to close modal
+      if (e.key === "Escape") {
         onClose();
       }
+
+      // Ctrl/Cmd + F to focus search
+      if ((e.ctrlKey || e.metaKey) && e.key === "f") {
+        e.preventDefault();
+        searchInputRef.current?.focus();
+      }
     };
-    window.addEventListener("keydown", handleEsc);
-    return () => window.removeEventListener("keydown", handleEsc);
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
   }, [isOpen, onClose]);
 
   const fetchPageMarkdown = async () => {
@@ -78,8 +97,76 @@ export const FullPageModal: React.FC<FullPageModalProps> = ({
     window.open(url, "_blank", "noopener,noreferrer");
   };
 
+  // Highlight search matches in content
+  const highlightMatches = useCallback((text: string, query: string) => {
+    if (!query) return text;
+
+    const regex = new RegExp(
+      `(${query.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")})`,
+      "gi",
+    );
+    const matches = text.match(regex);
+    setTotalMatches(matches ? matches.length : 0);
+    setCurrentMatch(matches && matches.length > 0 ? 1 : 0);
+
+    return text;
+  }, []);
+
+  // Navigate between search matches
+  const navigateSearch = useCallback(
+    (direction: "next" | "prev") => {
+      if (totalMatches === 0) return;
+
+      let newMatch = currentMatch;
+      if (direction === "next") {
+        newMatch = currentMatch >= totalMatches ? 1 : currentMatch + 1;
+      } else {
+        newMatch = currentMatch <= 1 ? totalMatches : currentMatch - 1;
+      }
+      setCurrentMatch(newMatch);
+
+      // Scroll to the match using element ID
+      setTimeout(() => {
+        const targetElement = document.getElementById(
+          `search-match-${newMatch}`,
+        );
+        if (targetElement) {
+          targetElement.scrollIntoView({
+            behavior: "smooth",
+            block: "center",
+          });
+        }
+      }, 50); // Small delay to ensure DOM is updated
+    },
+    [currentMatch, totalMatches],
+  );
+
+  // Handle search input change
+  useEffect(() => {
+    if (data?.markdown_content && searchQuery) {
+      const highlighted = highlightMatches(data.markdown_content, searchQuery);
+      setHighlightedContent(highlighted);
+
+      // Auto-scroll to first match when new search
+      if (totalMatches > 0) {
+        setTimeout(() => {
+          const firstMatch = document.getElementById("search-match-1");
+          if (firstMatch) {
+            firstMatch.scrollIntoView({
+              behavior: "smooth",
+              block: "center",
+            });
+          }
+        }, 100);
+      }
+    } else {
+      setHighlightedContent("");
+      setTotalMatches(0);
+      setCurrentMatch(0);
+    }
+  }, [searchQuery, data, highlightMatches]);
+
   if (!isOpen) return null;
-console.log(url);
 
   return (
     <div
@@ -90,11 +177,11 @@ console.log(url);
         }
       }}
     >
-      <div className="bg-background rounded-lg shadow-xl w-full max-w-6xl max-h-[90vh] flex flex-col mx-4">
+      <div className="bg-background rounded-lg shadow-xl w-[90%] max-w-[1600px] max-h-[90vh] flex flex-col mx-auto">
         <div className="flex items-center justify-between p-4 border-b border-border">
           <div className="flex items-center gap-3 flex-1 min-w-0">
             <FileText className="h-5 w-5 text-muted-foreground flex-shrink-0" />
-            <div className="min-w-0 ">
+            <div className="min-w-0">
               <h2 className="text-lg font-semibold truncate">
                 {data?.document?.title || "Loading..."}
               </h2>
@@ -104,17 +191,78 @@ console.log(url);
                 </p>
               )}
             </div>
+          </div>
+
+          {/* Search box in center */}
+          {data?.markdown_content && (
+            <div className="flex items-center gap-2 mx-4 border border-border rounded-lg px-3 py-1.5 bg-secondary/30">
+              <Search className="h-4 w-4 text-muted-foreground" />
+              <input
+                ref={searchInputRef}
+                type="text"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" && !e.shiftKey && totalMatches > 0) {
+                    e.preventDefault();
+                    navigateSearch("next");
+                  } else if (
+                    e.key === "Enter" &&
+                    e.shiftKey &&
+                    totalMatches > 0
+                  ) {
+                    e.preventDefault();
+                    navigateSearch("prev");
+                  }
+                }}
+                placeholder="Search content..."
+                className="bg-transparent outline-none text-sm w-48"
+              />
+              {totalMatches > 0 && (
+                <>
+                  <span className="text-xs text-muted-foreground ml-2">
+                    {currentMatch}/{totalMatches}
+                  </span>
+                  <div className="flex items-center gap-0.5 ml-1">
+                    <button
+                      onClick={() => navigateSearch("prev")}
+                      className="p-0.5 hover:bg-secondary rounded"
+                      title="Previous (Shift+Enter)"
+                    >
+                      <ChevronUp className="h-3.5 w-3.5" />
+                    </button>
+                    <button
+                      onClick={() => navigateSearch("next")}
+                      className="p-0.5 hover:bg-secondary rounded"
+                      title="Next (Enter)"
+                    >
+                      <ChevronDown className="h-3.5 w-3.5" />
+                    </button>
+                  </div>
+                </>
+              )}
+              {searchQuery && (
+                <button
+                  onClick={() => setSearchQuery("")}
+                  className="p-0.5 hover:bg-secondary rounded ml-1"
+                  title="Clear search"
+                >
+                  <X className="h-3.5 w-3.5" />
+                </button>
+              )}
+            </div>
+          )}
+
+          <div className="flex items-center gap-2">
             {data?.source?.id && data?.document?.id && (
               <Link
                 to={`/sources/${data.source.id}/documents/${data.document.id}`}
                 onClick={onNavigateToSnippets || onClose}
-                className="ml-auto text-primary hover:underline text-sm font-medium"
+                className="text-primary hover:underline text-sm font-medium mr-2"
               >
-                View Document Snippets
+                View Snippets
               </Link>
             )}
-          </div>
-          <div className="flex items-center gap-2">
             <button
               onClick={handleCopyContent}
               disabled={!data?.markdown_content}
@@ -145,7 +293,7 @@ console.log(url);
         </div>
 
         {/* Content */}
-        <div className="flex-1 overflow-auto p-6">
+        <div className="flex-1 overflow-auto p-6 relative">
           {loading && (
             <div className="flex items-center justify-center h-64">
               <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
@@ -169,10 +317,26 @@ console.log(url);
           )}
 
           {!loading && data?.markdown_content && (
-            <div className="prose dark:prose-invert max-w-none">
-              <pre className="whitespace-pre-wrap font-mono text-sm bg-secondary p-4 rounded-lg overflow-x-auto">
-                {data.markdown_content}
-              </pre>
+            <div className="prose dark:prose-invert max-w-none w-full">
+              <div
+                ref={contentRef}
+                className="font-mono text-sm bg-secondary p-4 rounded-lg overflow-x-hidden"
+                style={{ 
+                  whiteSpace: 'pre-wrap',
+                  wordBreak: 'break-word',
+                  overflowWrap: 'break-word'
+                }}
+              >
+                {searchQuery && highlightedContent ? (
+                  <HighlightedText
+                    text={data.markdown_content}
+                    query={searchQuery}
+                    currentMatch={currentMatch}
+                  />
+                ) : (
+                  data.markdown_content
+                )}
+              </div>
             </div>
           )}
 
@@ -217,6 +381,45 @@ console.log(url);
         )}
       </div>
     </div>
+  );
+};
+
+// Component to render highlighted text
+const HighlightedText: React.FC<{
+  text: string;
+  query: string;
+  currentMatch: number;
+}> = ({ text, query, currentMatch }) => {
+  if (!query) return <>{text}</>;
+  
+  const regex = new RegExp(`(${query.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')})`, 'gi');
+  const parts = text.split(regex);
+  let matchIndex = 0;
+  
+  return (
+    <>
+      {parts.map((part, index) => {
+        if (index % 2 === 1) {
+          // This is a match
+          matchIndex++;
+          const isCurrentMatch = matchIndex === currentMatch;
+          return (
+            <mark
+              key={index}
+              id={`search-match-${matchIndex}`}
+              className={
+                isCurrentMatch
+                  ? "bg-yellow-400 dark:bg-yellow-500 text-black px-0.5 rounded scroll-mt-20"
+                  : "bg-yellow-200 dark:bg-yellow-700 text-black dark:text-white px-0.5 rounded"
+              }
+            >
+              {part}
+            </mark>
+          );
+        }
+        return <React.Fragment key={index}>{part}</React.Fragment>;
+      })}
+    </>
   );
 };
 
