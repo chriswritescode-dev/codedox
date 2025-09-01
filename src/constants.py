@@ -1,6 +1,6 @@
 """CodeDox constants and version information."""
 
-__version__ = "0.2.5"
+__version__ = "0.2.6"
 __author__ = "Chris Scott"
 __description__ = "Documentation Code Extraction and Search System"
 __app_name__ = "CodeDox"
