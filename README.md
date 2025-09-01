@@ -41,6 +41,10 @@ See the [full installation guide](https://chriswritescode-dev.github.io/codedox/
 - **Version Support**: Track multiple versions of documentation
 - **Real-time Monitoring**: Live crawl progress and health monitoring
 
+## Demo
+
+<img src="screenshots/CodeDox-1.gif" alt="CodeDox Demo" width="800">
+
 ## Screenshots
 
 ### Dashboard
