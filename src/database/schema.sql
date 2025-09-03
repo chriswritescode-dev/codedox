@@ -80,6 +80,9 @@ CREATE TABLE IF NOT EXISTS documents (
     meta_data JSONB DEFAULT '{}',
     created_at TIMESTAMP DEFAULT NOW(),
     updated_at TIMESTAMP DEFAULT NOW(),
+
+    -- Added search vector column for markdown content (fixes missing-field trigger error)
+    markdown_search_vector tsvector,
     
     -- Ensure document is linked to either crawl or upload job
     CONSTRAINT check_job_link CHECK (
@@ -146,6 +149,9 @@ CREATE INDEX IF NOT EXISTS idx_documents_content_hash ON documents(content_hash)
 CREATE INDEX IF NOT EXISTS idx_documents_crawl_depth ON documents(crawl_depth);
 CREATE INDEX IF NOT EXISTS idx_documents_created_at ON documents(created_at DESC);
 
+-- Index for markdown search vector (added)
+CREATE INDEX IF NOT EXISTS idx_documents_markdown_search_vector ON documents USING GIN(markdown_search_vector);
+
 -- Code snippets indexes
 CREATE INDEX IF NOT EXISTS idx_snippets_search_vector ON code_snippets USING GIN(search_vector);
 CREATE INDEX IF NOT EXISTS idx_snippets_language ON code_snippets(language);
@@ -192,7 +198,7 @@ DROP TRIGGER IF EXISTS update_code_snippets_updated_at ON code_snippets;
 CREATE TRIGGER update_code_snippets_updated_at BEFORE UPDATE ON code_snippets
     FOR EACH ROW EXECUTE FUNCTION update_updated_at();
 
--- Function to update search vector
+-- Function to update search vector for code_snippets
 CREATE OR REPLACE FUNCTION update_search_vector()
 RETURNS TRIGGER AS $$
 BEGIN
@@ -207,7 +213,7 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
--- Trigger to maintain search vector
+-- Trigger to maintain search vector for code_snippets
 DROP TRIGGER IF EXISTS update_code_snippets_search_vector ON code_snippets;
 CREATE TRIGGER update_code_snippets_search_vector 
     BEFORE INSERT OR UPDATE OF title, description, code_content, functions, imports 
@@ -229,6 +235,13 @@ CREATE TRIGGER update_markdown_search_vector
     BEFORE INSERT OR UPDATE OF markdown_content
     ON documents
     FOR EACH ROW EXECUTE FUNCTION update_markdown_search_vector_trigger();
+
+-- Backfill existing documents' markdown_search_vector (safe to run once)
+-- (This is necessary because the trigger only affects new/updated rows.)
+-- If you re-run the schema file multiple times, the WHERE clause prevents re-calculating non-null vectors.
+UPDATE documents
+SET markdown_search_vector = to_tsvector('english', COALESCE(markdown_content, ''))
+WHERE markdown_search_vector IS NULL;
 
 -- Helper views
 
@@ -411,7 +424,7 @@ RETURNS TABLE (
     related_snippet_id INTEGER,
     relationship_type VARCHAR(50),
     description TEXT
-) AS $$
+) AS $$ 
 BEGIN
     RETURN QUERY
     SELECT DISTINCT
