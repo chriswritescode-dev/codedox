@@ -56,7 +56,7 @@ if [ ! -f .env ]; then
     echo "   Example for OpenAI:"
     echo "      CODE_LLM_API_KEY=sk-..."
     echo ""
-    echo "   Example for local LLM (ollama, llama.cpp, lm studio)
+    echo "   Example for local LLM (ollama, llama.cpp, lm studio):"
     echo "      CODE_LLM_API_KEY=your-local-key"
     echo "      CODE_LLM_BASE_URL=http://host.docker.internal:1337/v1"
     echo ""
