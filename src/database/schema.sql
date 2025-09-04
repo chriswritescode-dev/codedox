@@ -71,6 +71,7 @@ CREATE TABLE IF NOT EXISTS documents (
     content_type VARCHAR(50) DEFAULT 'markdown',
     content_hash VARCHAR(64),
     markdown_content TEXT,
+    markdown_search_vector tsvector,
     crawl_job_id UUID REFERENCES crawl_jobs(id) ON DELETE CASCADE,
     upload_job_id UUID REFERENCES upload_jobs(id) ON DELETE CASCADE,
     source_type VARCHAR(20) DEFAULT 'crawl' CHECK (source_type IN ('crawl', 'upload')),
@@ -162,6 +163,7 @@ CREATE INDEX IF NOT EXISTS idx_snippets_description_trgm ON code_snippets USING 
 
 -- Document search indexes
 CREATE INDEX IF NOT EXISTS idx_documents_title ON documents(title);
+CREATE INDEX IF NOT EXISTS idx_documents_markdown_search ON documents USING GIN(markdown_search_vector);
 -- Trigram indexes for fuzzy search on documents
 CREATE INDEX IF NOT EXISTS idx_documents_title_trgm ON documents USING GIN(title gin_trgm_ops);
 CREATE INDEX IF NOT EXISTS idx_documents_url_trgm ON documents USING GIN(url gin_trgm_ops);
