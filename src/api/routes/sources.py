@@ -39,7 +39,7 @@ def _get_snippet_counts_for_crawl_jobs(db: Session, job_ids: list[str]) -> dict[
         .all()
     )
 
-    return {str(row.crawl_job_id): row.count for row in counts}
+    return {str(row.crawl_job_id): int(row.count) for row in counts}
 
 
 def _get_snippet_counts_for_upload_jobs(db: Session, job_ids: list[str]) -> dict[str, int]:
@@ -55,7 +55,7 @@ def _get_snippet_counts_for_upload_jobs(db: Session, job_ids: list[str]) -> dict
         .all()
     )
 
-    return {str(row.upload_job_id): row.count for row in counts}
+    return {str(row.upload_job_id): int(row.count) for row in counts}
 
 
 def _batch_get_crawl_jobs(db: Session, job_ids: list[str]) -> dict[str, CrawlJob]:
@@ -81,6 +81,7 @@ def _build_crawl_source_dict(source: CrawlJob, snippet_count: int) -> dict[str, 
     return {
         "id": str(source.id),
         "name": source.name,
+        "version": source.version,
         "source_type": "crawl",
         "domain": source.domain,
         "base_url": source.start_urls[0] if source.start_urls else "",
@@ -96,6 +97,7 @@ def _build_upload_source_dict(source: UploadJob, snippet_count: int) -> dict[str
     return {
         "id": str(source.id),
         "name": source.name,
+        "version": source.version,
         "source_type": "upload",
         "domain": "upload",
         "base_url": f"Uploaded: {source.created_at.strftime('%Y-%m-%d')}",

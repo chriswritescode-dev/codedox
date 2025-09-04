@@ -109,7 +109,7 @@ CODE_LLM_EXTRACTION_MODEL=gpt-4o-mini
 
 # Use local LLM (Ollama, etc.)
 CODE_LLM_BASE_URL=http://localhost:11434/v1
-CODE_LLM_EXTRACTION_MODEL=qwen2.5-coder:32b
+CODE_LLM_EXTRACTION_MODE=Qwen3-Coder-30B-A3B-Instruct
 ```
 
 ## Search Capabilities

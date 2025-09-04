@@ -4,6 +4,7 @@ const API_BASE_URL = import.meta.env.VITE_API_URL || '/api'
 export interface Source {
   id: string
   name: string
+  version?: string | null
   base_url: string
   created_at: string
   updated_at: string
@@ -511,7 +512,8 @@ class APIClient {
   async uploadFiles(
     files: File[],
     name: string,
-    title?: string
+    title?: string,
+    version?: string
   ): Promise<{
     status: string
     job_id: string
@@ -524,11 +526,68 @@ class APIClient {
     })
     formData.append('name', name) // Always append name to ensure consistent source
     if (title) formData.append('title', title)
+    if (version) formData.append('version', version)
 
     return this.fetch('/upload/files', {
       method: 'POST',
       body: formData
     })
+  }
+
+  async uploadGitHubRepo(data: {
+    repo_url: string
+    name?: string
+    version?: string
+    path?: string
+    branch?: string
+    token?: string
+    include_patterns?: string[]
+    exclude_patterns?: string[]
+  }): Promise<{
+    status: string
+    job_id: string
+    repository: string
+    name: string
+    path?: string
+    branch: string
+    message: string
+  }> {
+    return this.fetch('/upload/github', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify(data)
+    })
+  }
+
+  async getUploadStatus(jobId: string): Promise<{
+    job_id: string
+    name: string
+    status: string
+    file_count: number
+    processed_files: number
+    snippets_extracted: number
+    created_at: string | null
+    completed_at: string | null
+    error_message: string | null
+  }> {
+    return this.fetch(`/upload/status/${jobId}`)
+  }
+
+  async getGitHubUploadStatus(jobId: string): Promise<{
+    job_id: string
+    name: string
+    status: string
+    file_count: number
+    processed_files: number
+    snippets_extracted: number
+    created_at: string | null
+    completed_at: string | null
+    error_message: string | null
+  }> {
+    // Legacy method - redirects to unified status endpoint
+    return this.getUploadStatus(jobId)
   }
 }
 
@@ -538,3 +597,6 @@ export const api = new APIClient()
 export const uploadMarkdown = api.uploadMarkdown.bind(api)
 export const uploadFile = api.uploadFile.bind(api)
 export const uploadFiles = api.uploadFiles.bind(api)
+export const uploadGitHubRepo = api.uploadGitHubRepo.bind(api)
+export const getUploadStatus = api.getUploadStatus.bind(api)
+export const getGitHubUploadStatus = api.getGitHubUploadStatus.bind(api)

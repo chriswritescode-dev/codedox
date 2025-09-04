@@ -59,7 +59,7 @@ export default function SnippetDetail() {
       </div>
     )
   }
-
+ console.log("Snippet Detail", snippet)
   return (
     <div className="w-full">
       <div className="space-y-6 max-w-6xl mx-auto w-full">
@@ -78,7 +78,7 @@ export default function SnippetDetail() {
             <div>
               <h1 className="text-2xl font-bold flex items-center gap-2">
                 <Code className="h-6 w-6" />
-                {snippet.document_title}
+                {snippet.title || snippet.document_title}
               </h1>
               {snippet.description && (
                 <p className="text-muted-foreground mt-2">
