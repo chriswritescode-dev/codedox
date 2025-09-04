@@ -6,6 +6,7 @@ from dataclasses import dataclass, field
 @dataclass
 class SimpleCodeBlock:
     """Simplified code block structure for HTML extraction + LLM description."""
+
     code: str
     language: str | None = None
     title: str | None = None
@@ -35,9 +36,9 @@ Guidelines:
 - For Vue components, use "vue" not "javascript"
 - For markup/config files, be specific (e.g., "postcss" not just "css")
 - TITLE should describe the specific action or purpose of the code
-- DESCRIPTION should explain what this code does and how it works including any relevant versions if applicable. 
+- DESCRIPTION should explain what this code does and how it works including any relevant versions if applicable.
 - DO NOT start description with "The code..." or "This code..."
-- Be direct and specific to the actual code provided, provide enough detail for a definition. For a user to understand. 
+- Be direct and specific to the actual code provided, provide enough detail for a definition. For a user to understand.
 
 === ACTUAL CODE TO ANALYZE ===
 
@@ -49,7 +50,3 @@ Code to analyze:
 
 Analyze the above code and respond with LANGUAGE, TITLE and DESCRIPTION for it.
 """
-
-
-
-

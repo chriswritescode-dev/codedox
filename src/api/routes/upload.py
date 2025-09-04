@@ -2,23 +2,22 @@
 
 import hashlib
 import logging
-import re
 from datetime import datetime
 from typing import Any
 from uuid import uuid4
 
-from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
+from fastapi import APIRouter, BackgroundTasks, Depends, File, Form, HTTPException, UploadFile
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
 from ...config import get_settings
 from ...crawler.extraction_models import SimpleCodeBlock
+from ...crawler.github_processor import GitHubProcessor, GitHubRepoConfig
 from ...crawler.llm_retry import LLMDescriptionGenerator
 from ...database import get_db
 from ...database.models import CodeSnippet, CrawlJob, Document
 from .upload_utils import (
     is_binary_content,
-    process_code_snippets,
     resolve_document_title,
     validate_and_read_file,
 )
@@ -38,49 +37,22 @@ class UploadMarkdownRequest(BaseModel):
 
 def extract_code_blocks_with_context(content: str, url: str) -> list[SimpleCodeBlock]:
     """Extract code blocks from markdown content with surrounding context."""
-    code_blocks = []
-    lines = content.split("\n")
+    from .upload_utils import MarkdownCodeExtractor
 
-    pattern = r"(`{3,}|~{3,})(\w*)\n(.*?)\1"
-    matches = list(re.finditer(pattern, content, re.DOTALL))
-    
-    code_block_lines = set()
-    for match in matches:
-        start_line = content[:match.start()].count("\n")
-        end_line = content[:match.end()].count("\n")
-        # Mark all lines from start to end as part of a code block
-        for line_num in range(start_line, end_line + 1):
-            code_block_lines.add(line_num)
+    blocks = MarkdownCodeExtractor.extract_blocks(content, source_url=url, include_context=True)
 
-    for _i, match in enumerate(matches):
-        language = match.group(2) or None
-        code = match.group(3).strip()
+    # Add context_before attribute for backward compatibility
+    for block in blocks:
+        if "context_before" in block.metadata:
+            context_text = block.metadata["context_before"]
+            # Convert context text back to lines for compatibility
+            block.context_before = [
+                line.strip() for line in context_text.split("\n") if line.strip()
+            ]
+        else:
+            block.context_before = []
 
-        if code:  # Only add non-empty code blocks
-            # Get line numbers
-            start_line = content[: match.start()].count("\n")
-            end_line = content[: match.end()].count("\n")
-
-            context_before = []
-            for j in range(start_line - 1, -1, -1):
-                if j in code_block_lines:
-                    # Hit another code block, stop here
-                    break
-                if j >= 0 and j < len(lines):
-                    line_content = lines[j].strip()
-                    if line_content:
-                        context_before.insert(0, line_content)
-
-            # Create SimpleCodeBlock for LLM processing
-            block = SimpleCodeBlock(
-                code=code,
-                language=language,
-                source_url=url,
-                context_before=context_before,
-            )
-            code_blocks.append(block)
-
-    return code_blocks
+    return blocks
 
 
 @router.post("/markdown")
@@ -227,9 +199,10 @@ async def upload_files(
     files: list[UploadFile] = File(...),
     name: str | None = Form(None),
     title: str | None = Form(None),
+    version: str | None = Form(None),
     db: Session = Depends(get_db),
 ) -> dict[str, Any]:
-    """Upload multiple markdown files and process them."""
+    """Upload multiple markdown files and process them using the unified UploadProcessor."""
     try:
         settings = get_settings()
 
@@ -253,55 +226,20 @@ async def upload_files(
                 detail=f"Total file size ({total_size / (1024 * 1024):.1f}MB) exceeds {settings.upload.max_total_size / (1024 * 1024):.0f}MB limit",
             )
 
-        # Create a source for all files
+        # Prepare files data for UploadProcessor
         source_name = name or title or f"Upload {datetime.utcnow().strftime('%Y-%m-%d')}"
-        url = f"upload://{source_name}/batch"
+        files_data = []
 
-        # Check if source already exists
-        existing_job = db.query(CrawlJob).filter(CrawlJob.name == source_name).first()
-
-        if existing_job:
-            crawl_job = existing_job
-            logger.info(f"Using existing source: {source_name}")
-        else:
-            # Create crawl job for this upload batch
-            crawl_job = CrawlJob(
-                id=uuid4(),
-                name=source_name,
-                start_urls=[url],
-                max_depth=0,
-                status="completed",
-                started_at=datetime.utcnow(),
-                completed_at=datetime.utcnow(),
-                created_at=datetime.utcnow(),
-                updated_at=datetime.utcnow(),
-            )
-            db.add(crawl_job)
-            db.flush()
-
-        # Initialize LLM generator if available
-        llm_generator = None
-        try:
-            llm_generator = LLMDescriptionGenerator()
-            logger.info("LLM generator initialized for batch upload")
-        except Exception as e:
-            logger.warning(f"LLM generator not available: {e}")
-
-        total_snippets = 0
-        processed_files = 0
-        batch_snippets = {}  # Track snippets in this batch to avoid duplicates
-
+        # Read and validate all files first
         for file in files:
             try:
                 # Validate file type
                 if not file.filename:
                     continue
 
-                if not (
-                    file.filename.endswith(".md")
-                    or file.filename.endswith(".markdown")
-                    or file.filename.endswith(".txt")
-                ):
+                from .upload_utils import FileValidationRules
+
+                if not file.filename.endswith(FileValidationRules.ALLOWED_EXTENSIONS):
                     logger.warning(f"Skipping non-markdown file: {file.filename}")
                     continue
 
@@ -320,97 +258,46 @@ async def upload_files(
                 # Create URL for this file
                 file_url = f"upload://{source_name}/{file.filename}"
 
-                # Create document
-                content_hash = hashlib.md5(content_str.encode()).hexdigest()
-
-                # Check if document already exists
-                existing_doc = (
-                    db.query(Document)
-                    .filter(Document.url == file_url, Document.content_hash == content_hash)
-                    .first()
+                files_data.append(
+                    {
+                        "path": file.filename,
+                        "content": content_str,
+                        "source_url": file_url,
+                        "content_type": "markdown",
+                    }
                 )
-
-                if existing_doc:
-                    logger.info(f"Skipping duplicate file: {file.filename}")
-                    continue
-
-                filename_without_ext = (
-                    file.filename.rsplit(".", 1)[0] if file.filename else "unknown"
-                )
-                final_title = resolve_document_title(None, content_str, filename_without_ext)
-
-                document = Document(
-                    url=file_url,
-                    title=final_title,
-                    content_type="markdown",
-                    content_hash=content_hash,
-                    markdown_content=content_str,
-                    crawl_job_id=crawl_job.id,
-                    crawl_depth=0,
-                    created_at=datetime.utcnow(),
-                    updated_at=datetime.utcnow(),
-                )
-                db.add(document)
-                db.flush()
-
-                # Extract code blocks with context
-                code_blocks = extract_code_blocks_with_context(content_str, file_url)
-
-                # Process code blocks with LLM if available
-                if llm_generator and code_blocks:
-                    try:
-                        # Pass context to LLM for better understanding
-                        enhanced_blocks = (
-                            await llm_generator.generate_titles_and_descriptions_batch(
-                                code_blocks, file_url
-                            )
-                        )
-                        code_blocks = enhanced_blocks
-                    except Exception as e:
-                        logger.warning(f"LLM processing failed for {file.filename}: {e}")
-
-                # Process code snippets using shared utility
-                snippets_added = process_code_snippets(
-                    code_blocks,
-                    document,
-                    file_url,
-                    db,
-                    batch_snippets,
-                    f"Code Block from {file.filename}",
-                )
-                total_snippets += snippets_added
-
-                processed_files += 1
-
-                # Flush periodically to avoid memory issues with large batches
-                if processed_files % 10 == 0:
-                    db.flush()
 
             except Exception as e:
-                logger.error(f"Failed to process file {file.filename}: {e}")
-                db.rollback()  # Rollback this file's changes
+                logger.error(f"Failed to read file {file.filename}: {e}")
                 continue
 
-        # Update crawl job stats (accumulate if existing job)
-        if existing_job:
-            # Add to existing stats for subsequent batches
-            crawl_job.total_pages = (crawl_job.total_pages or 0) + processed_files
-            crawl_job.processed_pages = (crawl_job.processed_pages or 0) + processed_files
-            crawl_job.snippets_extracted = (crawl_job.snippets_extracted or 0) + total_snippets
-        else:
-            # First batch, set initial stats
-            crawl_job.total_pages = processed_files
-            crawl_job.processed_pages = processed_files
-            crawl_job.snippets_extracted = total_snippets
-        crawl_job.updated_at = datetime.utcnow()
+        if not files_data:
+            raise HTTPException(status_code=400, detail="No valid markdown files found in upload")
 
-        db.commit()
+        # Use UploadProcessor for consistent processing (same as GitHub)
+        from ...crawler.upload_processor import UploadConfig, UploadProcessor
+
+        processor = UploadProcessor()
+        upload_config = UploadConfig(
+            name=source_name,
+            files=files_data,
+            version=version,
+            metadata={
+                "source": "file_upload",
+                "upload_type": "batch",
+            },
+            extract_code_only=True,
+            use_llm=True,
+        )
+
+        # Process upload asynchronously (returns job_id immediately)
+        job_id = await processor.process_upload(upload_config)
 
         return {
-            "status": "success",
-            "job_id": str(crawl_job.id),
-            "file_count": processed_files,
-            "message": f"Successfully processed {processed_files} files with {total_snippets} code snippets extracted",
+            "status": "processing",
+            "job_id": job_id,
+            "file_count": len(files_data),
+            "message": f"Processing {len(files_data)} files",
         }
 
     except HTTPException:
@@ -419,3 +306,91 @@ async def upload_files(
         logger.error(f"Failed to upload files: {e}")
         db.rollback()
         raise HTTPException(status_code=500, detail=str(e))
+
+
+class UploadGitHubRepoRequest(BaseModel):
+    """Request model for uploading GitHub repository."""
+
+    repo_url: str = Field(..., description="GitHub repository URL")
+    name: str | None = Field(None, description="Name for this documentation source")
+    version: str | None = Field(None, description="Version identifier for this upload")
+    path: str | None = Field(None, description="Specific path within the repository to process")
+    branch: str = Field("main", description="Git branch to clone")
+    token: str | None = Field(None, description="GitHub personal access token for private repos")
+    include_patterns: list[str] | None = Field(None, description="Include file patterns")
+    exclude_patterns: list[str] | None = Field(None, description="Exclude file patterns")
+
+
+@router.post("/github")
+async def upload_github_repo(
+    request: UploadGitHubRepoRequest,
+    background_tasks: BackgroundTasks,
+    db: Session = Depends(get_db),
+) -> dict[str, Any]:
+    """Upload markdown documentation from a GitHub repository."""
+    try:
+        # Auto-generate name from repo URL if not provided
+        if not request.name:
+            import re
+
+            match = re.search(r"/([^/]+?)(?:\.git)?$", request.repo_url)
+            request.name = match.group(1) if match else "Repository Documentation"
+
+        config = GitHubRepoConfig(
+            repo_url=request.repo_url,
+            name=request.name,
+            version=request.version,
+            path=request.path,
+            branch=request.branch,
+            token=request.token,
+            include_patterns=request.include_patterns,
+            exclude_patterns=request.exclude_patterns,
+            cleanup=True,
+        )
+
+        processor = GitHubProcessor()
+
+        # Process repository asynchronously
+        job_id = await processor.process_repository(config)
+
+        return {
+            "status": "processing",
+            "job_id": job_id,
+            "repository": request.repo_url,
+            "name": request.name,
+            "path": request.path,
+            "branch": request.branch,
+            "message": f"Processing repository {request.repo_url}",
+        }
+
+    except Exception as e:
+        logger.error(f"Failed to process GitHub repository: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/status/{job_id}")
+async def get_upload_status(job_id: str, db: Session = Depends(get_db)) -> dict[str, Any]:
+    """Get the status of any upload job (files or GitHub)."""
+    from ...database import UploadJob
+
+    job = db.query(UploadJob).filter(UploadJob.id == job_id).first()
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found")
+
+    return {
+        "job_id": str(job.id),
+        "name": job.name,
+        "status": job.status,
+        "file_count": job.file_count,
+        "processed_files": job.processed_files,
+        "snippets_extracted": job.snippets_extracted,
+        "created_at": job.created_at.isoformat() if job.created_at else None,
+        "completed_at": job.completed_at.isoformat() if job.completed_at else None,
+        "error_message": job.error_message,
+    }
+
+
+@router.get("/github/status/{job_id}")
+async def get_github_upload_status(job_id: str, db: Session = Depends(get_db)) -> dict[str, Any]:
+    """Get the status of a GitHub repository upload job (legacy endpoint, redirects to unified)."""
+    return await get_upload_status(job_id, db)

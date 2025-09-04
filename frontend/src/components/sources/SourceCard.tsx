@@ -89,7 +89,7 @@ export const SourceCard = memo(({
       <div className="mb-4">
         <div 
           onClick={(e) => e.stopPropagation()}
-          className="inline-block"
+          className="inline-block w-full"
         >
           <EditableSourceName
             id={source.id}
@@ -97,6 +97,11 @@ export const SourceCard = memo(({
             onUpdate={onUpdateName}
             className="text-lg font-medium"
           />
+          {source.version && (
+            <span className="text-sm text-muted-foreground ml-2">
+              v{source.version}
+            </span>
+          )}
         </div>
         <div className="text-xs text-muted-foreground mt-1 truncate">
           {source.base_url}

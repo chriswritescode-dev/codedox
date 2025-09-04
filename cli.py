@@ -39,23 +39,27 @@ def crawl():
     pass
 
 
-@crawl.command('start')
-@click.argument('name')
-@click.argument('urls', nargs=-1, required=True)
-@click.option('--depth', default=1, help='Maximum crawl depth (0-3)')
-@click.option('--domain', help='Domain restriction pattern')
-@click.option('--url-patterns', multiple=True, help='URL patterns to include (e.g., "*docs*", "*guide*")')
-@click.option('--concurrent', default=None, help='Maximum concurrent crawl sessions (default: from config)')
-def crawl_start(name: str, urls: tuple, depth: int, domain: str | None, url_patterns: tuple,
-                concurrent: int):
+@crawl.command("start")
+@click.argument("name")
+@click.argument("urls", nargs=-1, required=True)
+@click.option("--depth", default=1, help="Maximum crawl depth (0-3)")
+@click.option("--domain", help="Domain restriction pattern")
+@click.option(
+    "--url-patterns", multiple=True, help='URL patterns to include (e.g., "*docs*", "*guide*")'
+)
+@click.option(
+    "--concurrent", default=None, help="Maximum concurrent crawl sessions (default: from config)"
+)
+def crawl_start(
+    name: str, urls: tuple, depth: int, domain: str | None, url_patterns: tuple, concurrent: int
+):
     """Start a new crawl job."""
+
     async def run_crawl():
         tools = MCPTools()
 
         with Progress(
-            SpinnerColumn(),
-            TextColumn("[progress.description]{task.description}"),
-            console=console
+            SpinnerColumn(), TextColumn("[progress.description]{task.description}"), console=console
         ) as progress:
             progress.add_task(f"Starting crawl job '{name}'...", total=None)
 
@@ -65,7 +69,7 @@ def crawl_start(name: str, urls: tuple, depth: int, domain: str | None, url_patt
                 max_depth=depth,
                 domain_filter=domain,
                 url_patterns=list(url_patterns) if url_patterns else None,
-                max_concurrent_crawls=concurrent
+                max_concurrent_crawls=concurrent,
             )
 
             if "error" in result:
@@ -111,7 +115,7 @@ def crawl_list():
                     job.status,
                     str(job.snippets_extracted or 0),
                     str(job.processed_pages or 0),
-                    job.updated_at.strftime('%Y-%m-%d %H:%M:%S') if job.updated_at else 'Never'
+                    job.updated_at.strftime("%Y-%m-%d %H:%M:%S") if job.updated_at else "Never",
                 )
 
             console.print(table)
@@ -120,21 +124,18 @@ def crawl_list():
 
 
 @cli.command()
-@click.argument('query')
-@click.option('--source', help='Optional library/source name filter')
-@click.option('--lang', help='Filter by language')
-@click.option('--limit', default=10, help='Maximum results')
+@click.argument("query")
+@click.option("--source", help="Optional library/source name filter")
+@click.option("--lang", help="Filter by language")
+@click.option("--limit", default=10, help="Maximum results")
 def search(query: str, source: str | None, lang: str | None, limit: int):
     """Search for code snippets."""
+
     async def run_search():
         tools = MCPTools()
 
         with console.status("[bold green]Searching..."):
-            results = await tools.get_content(
-                library_id=source or "",
-                query=query,
-                limit=limit
-            )
+            results = await tools.get_content(library_id=source or "", query=query, limit=limit)
 
         console.print(results)
 
@@ -145,6 +146,7 @@ def search(query: str, source: str | None, lang: str | None, limit: int):
 @click.argument('job_id')
 def crawl_status(job_id: str):
     """Check status of a crawl job."""
+
     async def check_status():
         tools = MCPTools()
         result = await tools.get_crawl_status(job_id)
@@ -166,6 +168,7 @@ def crawl_status(job_id: str):
 @click.argument('job_id')
 def crawl_cancel(job_id: str):
     """Cancel a running crawl job."""
+
     async def cancel_job():
         tools = MCPTools()
         result = await tools.cancel_crawl(job_id)
@@ -197,34 +200,31 @@ def upload(file_path: str, source_url: str | None, name: str | None):
         final_name = name if name else os.path.basename(file_path)
 
         # Determine content type from extension
-        content_type = 'markdown'
-        if file_path.endswith('.rst'):
-            content_type = 'restructuredtext'
-        elif file_path.endswith('.adoc'):
-            content_type = 'asciidoc'
-        elif file_path.endswith('.txt'):
-            content_type = 'text'
+        content_type = "markdown"
+        if file_path.endswith(".rst"):
+            content_type = "restructuredtext"
+        elif file_path.endswith(".adoc"):
+            content_type = "asciidoc"
+        elif file_path.endswith(".txt"):
+            content_type = "text"
 
         processor = UploadProcessor()
 
         with Progress(
-            SpinnerColumn(),
-            TextColumn("[progress.description]{task.description}"),
-            console=console
+            SpinnerColumn(), TextColumn("[progress.description]{task.description}"), console=console
         ) as progress:
             task = progress.add_task(f"Uploading '{final_name}'...", total=None)
 
             config = UploadConfig(
                 name=final_name,
-                files=[{
-                    'content': content,
-                    'source_url': final_source_url,
-                    'content_type': content_type
-                }],
-                metadata={
-                    'uploaded_via': 'cli',
-                    'original_path': file_path
-                }
+                files=[
+                    {
+                        "content": content,
+                        "source_url": final_source_url,
+                        "content_type": content_type,
+                    }
+                ],
+                metadata={"uploaded_via": "cli", "original_path": file_path},
             )
 
             job_id = await processor.process_upload(config)
@@ -240,51 +240,132 @@ def upload(file_path: str, source_url: str | None, name: str | None):
             while True:
                 await asyncio.sleep(1)
                 status = processor.get_job_status(job_id)
-                if status and status['status'] in ['completed', 'failed']:
+                if status and status["status"] in ["completed", "failed"]:
                     break
 
-            if status['status'] == 'completed':
+            if status["status"] == "completed":
                 console.print("[green]✓[/green] Processing completed!")
                 console.print(f"Snippets extracted: {status.get('snippets_extracted', 0)}")
             else:
-                console.print(f"[red]✗[/red] Processing failed: {status.get('error_message', 'Unknown error')}")
+                console.print(
+                    f"[red]✗[/red] Processing failed: {status.get('error_message', 'Unknown error')}"
+                )
 
     asyncio.run(run_upload())
 
 
+@cli.command("upload-repo")
+@click.argument("repo_url")
+@click.option("--name", help="Name for this documentation source")
+@click.option("--path", help="Specific path within the repository to process")
+@click.option("--branch", default="main", help="Git branch to clone (default: main)")
+@click.option(
+    "--token", envvar="GITHUB_TOKEN", help="GitHub personal access token for private repos"
+)
+@click.option("--include", multiple=True, help='Include file patterns (e.g., "docs/**/*.md")')
+@click.option("--exclude", multiple=True, help='Exclude file patterns (e.g., "**/test/*.md")')
+@click.option("--no-cleanup", is_flag=True, help="Keep cloned repository after processing")
+def upload_repo(repo_url, name, path, branch, token, include, exclude, no_cleanup):
+    """Upload markdown documentation from a GitHub repository."""
+    from src.crawler.github_processor import GitHubProcessor, GitHubRepoConfig
 
+    async def run_upload_repo():
+        with Progress(
+            SpinnerColumn(),
+            TextColumn("[progress.description]{task.description}"),
+            console=console,
+        ) as progress:
+            task = progress.add_task("Cloning repository...", total=None)
+
+            # Auto-generate name from repo URL if not provided
+            if not name:
+                import re
+
+                match = re.search(r"/([^/]+?)(?:\.git)?$", repo_url)
+                name = match.group(1) if match else "Repository Documentation"
+
+            config = GitHubRepoConfig(
+                repo_url=repo_url,
+                name=name,
+                path=path,
+                branch=branch,
+                token=token,
+                include_patterns=list(include) if include else None,
+                exclude_patterns=list(exclude) if exclude else None,
+                cleanup=not no_cleanup,
+            )
+
+            processor = GitHubProcessor()
+
+            try:
+                job_id = await processor.process_repository(config)
+
+                console.print("[green]✓[/green] Repository processing started!")
+                console.print(f"Job ID: [cyan]{job_id}[/cyan]")
+                console.print(f"Repository: {repo_url}")
+                console.print(f"Name: {name}")
+                if path:
+                    console.print(f"Path: {path}")
+                console.print(f"Branch: {branch}")
+
+                # Wait for completion
+                progress.update(task, description="Processing markdown files...")
+
+                while True:
+                    await asyncio.sleep(1)
+                    status = processor.upload_processor.get_job_status(job_id)
+                    if status and status["status"] in ["completed", "failed"]:
+                        break
+
+                if status["status"] == "completed":
+                    console.print("[green]✓[/green] Processing completed!")
+                    console.print(f"Files processed: {status.get('processed_files', 0)}")
+                    console.print(f"Snippets extracted: {status.get('snippets_extracted', 0)}")
+                else:
+                    console.print(
+                        f"[red]✗[/red] Processing failed: {status.get('error_message', 'Unknown error')}"
+                    )
+
+            except Exception as e:
+                console.print(f"[red]✗[/red] Failed to process repository: {e}")
+                sys.exit(1)
+            finally:
+                if not no_cleanup:
+                    await processor.cleanup_all()
+
+    asyncio.run(run_upload_repo())
 
 
 @cli.command()
-@click.option('--coverage', is_flag=True, help='Run with coverage report')
-@click.option('--verbose', is_flag=True, help='Verbose test output')
-@click.option('--unit', is_flag=True, help='Run unit tests only')
-@click.option('--integration', is_flag=True, help='Run integration tests only')
-@click.argument('pattern', required=False)
+@click.option("--coverage", is_flag=True, help="Run with coverage report")
+@click.option("--verbose", is_flag=True, help="Verbose test output")
+@click.option("--unit", is_flag=True, help="Run unit tests only")
+@click.option("--integration", is_flag=True, help="Run integration tests only")
+@click.argument("pattern", required=False)
 def test(coverage: bool, verbose: bool, unit: bool, integration: bool, pattern: str | None):
     """Run the test suite."""
     import subprocess
 
-    cmd = ['pytest']
+    cmd = ["pytest"]
 
     if coverage:
-        cmd.extend(['--cov=src', '--cov-report=html', '--cov-report=term'])
+        cmd.extend(["--cov=src", "--cov-report=html", "--cov-report=term"])
         console.print("[bold green]Running tests with coverage...[/bold green]")
     else:
         console.print("[bold green]Running tests...[/bold green]")
 
     if verbose:
-        cmd.append('-vv')
+        cmd.append("-vv")
 
     if unit:
-        cmd.extend(['-m', 'not integration'])
+        cmd.extend(["-m", "not integration"])
     elif integration:
-        cmd.extend(['-m', 'integration'])
+        cmd.extend(["-m", "integration"])
 
     if pattern:
-        cmd.extend(['-k', pattern])
+        cmd.extend(["-k", pattern])
 
-    cmd.append('tests/')
+    cmd.append("tests/")
 
     try:
         result = subprocess.run(cmd, check=True)
@@ -299,8 +380,8 @@ def test(coverage: bool, verbose: bool, unit: bool, integration: bool, pattern: 
 
 
 @cli.command()
-@click.option('--api', is_flag=True, help='Start API server only (no UI)')
-@click.option('--mcp', is_flag=True, help='Start MCP stdio server only')
+@click.option("--api", is_flag=True, help="Start API server only (no UI)")
+@click.option("--mcp", is_flag=True, help="Start MCP stdio server only")
 def serve(api: bool, mcp: bool):
     """Start CodeDox services (default: API + Web UI)."""
     import concurrent.futures
@@ -314,6 +395,7 @@ def serve(api: bool, mcp: bool):
     # Handle MCP stdio server mode
     if mcp:
         from src.mcp_server import MCPServer
+
         console.print("[bold green]Starting MCP stdio server...[/bold green]")
         server = MCPServer()
         server.run()
@@ -330,7 +412,7 @@ def serve(api: bool, mcp: bool):
             "src.api.main:app",
             host=settings.api.host,
             port=settings.api.port,
-            reload=settings.debug
+            reload=settings.debug,
         )
         return
 
@@ -351,17 +433,17 @@ def serve(api: bool, mcp: bool):
             "src.api.main:app",
             host=settings.api.host,
             port=settings.api.port,
-            reload=False  # Don't use reload in multi-process mode
+            reload=False,  # Don't use reload in multi-process mode
         )
 
     def run_ui_server():
         """Run the UI development server."""
-        frontend_dir = os.path.join(os.path.dirname(__file__), 'frontend')
+        frontend_dir = os.path.join(os.path.dirname(__file__), "frontend")
 
         # Check if node_modules exists
-        if not os.path.exists(os.path.join(frontend_dir, 'node_modules')):
+        if not os.path.exists(os.path.join(frontend_dir, "node_modules")):
             console.print("[yellow]Installing frontend dependencies...[/yellow]")
-            subprocess.run(['npm', 'install'], cwd=frontend_dir, check=True)
+            subprocess.run(["npm", "install"], cwd=frontend_dir, check=True)
 
         console.print("[blue]✓[/blue] Starting Web UI on http://0.0.0.0:5173")
 
@@ -369,11 +451,7 @@ def serve(api: bool, mcp: bool):
         process_env = os.environ.copy()
         process_env["VITE_API_PROXY_TARGET"] = api_url
 
-        process = subprocess.Popen(
-            ['npm', 'run', 'dev'],
-            cwd=frontend_dir,
-            env=process_env
-        )
+        process = subprocess.Popen(["npm", "run", "dev"], cwd=frontend_dir, env=process_env)
         processes.append(process)
         return process.wait()
 
@@ -417,6 +495,7 @@ def serve(api: bool, mcp: bool):
 @click.argument('job_id')
 def crawl_resume(job_id: str):
     """Resume a failed or stalled crawl job."""
+
     async def run_resume():
         manager = CrawlManager()
         success = await manager.resume_failed_job(job_id)
@@ -430,7 +509,7 @@ def crawl_resume(job_id: str):
     asyncio.run(run_resume())
 
 
-@crawl.command('health')
+@crawl.command("health")
 def crawl_health():
     """Check health status of all running crawl jobs."""
     from src.crawler.health_monitor import get_health_monitor
@@ -479,8 +558,5 @@ def crawl_health():
         console.print(table)
 
 
-
-
-
-if __name__ == '__main__':
+if __name__ == "__main__":
     cli()

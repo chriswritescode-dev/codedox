@@ -38,6 +38,8 @@ CodeDox is built with a modular architecture focusing on scalability and maintai
 
 ## Data Flow
 
+### Web Crawling Flow
+
 ```
 Documentation Site
        ↓
@@ -61,14 +63,18 @@ Documentation Site
 ```
 codedox/
 ├── src/
-│   ├── api/           # FastAPI routes
-│   ├── crawler/       # Crawling logic
-│   ├── database/      # DB models and queries
-│   ├── extraction/    # Code extraction
-│   └── mcp_server/    # MCP implementation
-├── frontend/          # React application
-├── tests/            # Test suites
-└── docs/             # Documentation
+│   ├── api/                # FastAPI routes
+│   ├── crawler/            # Crawling logic
+│   │   ├── crawl_manager.py
+│   │   ├── page_crawler.py
+│   │   ├── github_processor.py  # GitHub repo processing
+│   │   └── upload_processor.py  # File upload handling
+│   ├── database/           # DB models and queries
+│   ├── extraction/         # Code extraction
+│   └── mcp_server/         # MCP implementation
+├── frontend/               # React application
+├── tests/                  # Test suites
+└── docs/                   # Documentation
 ```
 
 ## Key Design Decisions

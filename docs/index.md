@@ -47,6 +47,7 @@ CodeDox solves this by:
 
 - **Batch File Upload**: Upload multiple markdown/text files simultaneously
 - **Directory Processing**: Recursive directory scanning with progress tracking
+- **GitHub Repository Support**: Clone and process entire repositories or specific folders
 - **Smart Deduplication**: Content-hash based duplicate detection across uploads and crawls
 - **Mixed Sources**: Seamlessly search across crawled and uploaded content
 
@@ -74,6 +75,12 @@ CodeDox solves this by:
 - **Performance Analytics**: Detailed statistics and crawl health metrics
 
 ## What's New in Latest Version
+
+### GitHub Repository Processing
+- **Direct Repository Clone**: Process documentation without manual download
+- **Selective Processing**: Target specific folders within repositories  
+- **Private Repository Support**: Token authentication for private repos
+- **Pattern Filtering**: Include/exclude files based on patterns
 
 ### Advanced File Upload System
 - **Batch Upload**: Upload multiple markdown files simultaneously with progress tracking
@@ -142,6 +149,12 @@ python cli.py upload /path/to/docs.md --name "My Docs"
 
 # Process entire documentation directory
 python cli.py upload ./docs-directory --name "Local Documentation"
+
+# Process GitHub repository
+python cli.py upload-repo https://github.com/user/repo --name "Repository Docs"
+
+# Process specific folder in repository
+python cli.py upload-repo https://github.com/user/repo --path docs
 ```
 
 ### 3. Search and Explore Content

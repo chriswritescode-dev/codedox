@@ -8,6 +8,7 @@ build/
 develop-eggs/
 demo/
 dist/
+site/
 downloads/
 eggs/
 .eggs/
@@ -39,6 +40,7 @@ env/
 
 # Environment variables
 .env
+.env.bk
 .env.local
 .env.*.local
 

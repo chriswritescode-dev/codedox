@@ -3,7 +3,6 @@
 import asyncio
 import hashlib
 import logging
-import os
 from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Any
@@ -24,9 +23,11 @@ settings = get_settings()
 @dataclass
 class UploadConfig:
     """Configuration for an upload job."""
+
     name: str
     files: list[dict[str, Any]]  # List of {path, content, source_url}
     metadata: dict[str, Any] = field(default_factory=dict)
+    version: str | None = None
     extract_code_only: bool = True
     use_llm: bool = True
 
@@ -34,6 +35,7 @@ class UploadConfig:
 @dataclass
 class UploadResult:
     """Result from processing an uploaded file."""
+
     source_url: str
     title: str
     content_hash: str
@@ -62,10 +64,10 @@ class UploadProcessor:
     async def process_upload(self, config: UploadConfig) -> str:
         """
         Process an upload job.
-        
+
         Args:
             config: Upload configuration
-            
+
         Returns:
             Job ID
         """
@@ -78,23 +80,48 @@ class UploadProcessor:
         return job_id
 
     def _create_upload_job(self, config: UploadConfig) -> str:
-        """Create a new upload job in the database."""
+        """Create a new upload job in the database, reusing existing job if name/version match."""
         import uuid
 
         from ..database import UploadJob
 
         with self.db_manager.session_scope() as session:
-            job = UploadJob(
-                id=str(uuid.uuid4()),
-                name=config.name,
-                file_count=len(config.files),
-                status='running',
-                config=config.metadata,
+            # Check for existing job with same name and version
+            existing_job = (
+                session.query(UploadJob).filter_by(name=config.name, version=config.version).first()
             )
-            session.add(job)
-            session.commit()
 
-            return str(job.id)
+            if existing_job:
+                # Reuse existing job - reset it for new upload
+                logger.info(
+                    f"Reusing existing upload job '{config.name}' (v{config.version}): {existing_job.id}"
+                )
+
+                existing_job.file_count = len(config.files)
+                existing_job.processed_files = 0
+                existing_job.snippets_extracted = 0
+                existing_job.status = "running"
+                existing_job.error_message = None
+                existing_job.started_at = datetime.utcnow()
+                existing_job.completed_at = None
+                existing_job.config = config.metadata
+                session.commit()
+
+                return str(existing_job.id)
+            else:
+                # Create new job
+                job = UploadJob(
+                    id=str(uuid.uuid4()),
+                    name=config.name,
+                    version=config.version,
+                    file_count=len(config.files),
+                    status="running",
+                    config=config.metadata,
+                )
+                session.add(job)
+                session.commit()
+
+                return str(job.id)
 
     async def _execute_upload(self, job_id: str, config: UploadConfig) -> None:
         """Execute the upload job."""
@@ -109,9 +136,9 @@ class UploadProcessor:
             for file_info in config.files:
                 # Extract code blocks
                 result = await self._process_file(
-                    file_info['content'],
-                    file_info['source_url'],
-                    file_info.get('content_type', 'markdown')
+                    file_info["content"],
+                    file_info["source_url"],
+                    file_info.get("content_type", "markdown"),
                 )
 
                 if result.error:
@@ -121,10 +148,10 @@ class UploadProcessor:
                 # Generate LLM descriptions if enabled
                 if config.use_llm and self.description_generator and result.code_blocks:
                     try:
-                        result.code_blocks = await self.description_generator.generate_titles_and_descriptions_batch(
-                            result.code_blocks,
-                            result.source_url,
-                            max_concurrent=5
+                        result.code_blocks = (
+                            await self.description_generator.generate_titles_and_descriptions_batch(
+                                result.code_blocks, result.source_url, max_concurrent=5
+                            )
                         )
                     except Exception as e:
                         logger.warning(f"LLM description generation failed: {e}")
@@ -142,7 +169,7 @@ class UploadProcessor:
                     total_pages=len(config.files),
                     snippets_extracted=total_snippets,
                     documents_crawled=processed_files,
-                    send_notification=True
+                    send_notification=True,
                 )
 
             # Complete job
@@ -165,13 +192,15 @@ class UploadProcessor:
             # Extract title from content or URL
             title = self._extract_title(content, source_url)
 
+            # Initialize code blocks list
+            code_blocks = []
+
             # Extract code blocks based on content type
-            if content_type == 'html':
+            if content_type == "html":
                 # Pass HTML content directly to extractor (it creates soup internally)
                 extracted_blocks = self.html_extractor.extract_code_blocks(content, source_url)
 
                 # Convert to SimpleCodeBlock format
-                code_blocks = []
                 for block in extracted_blocks:
                     simple_block = SimpleCodeBlock(
                         code=block.code,
@@ -180,11 +209,14 @@ class UploadProcessor:
                         description=block.description,
                         context_before=block.context_before,
                         metadata={
-                            'container_type': block.container_type,
-                            'extraction_method': 'html'
-                        }
+                            "container_type": block.container_type,
+                            "extraction_method": "html",
+                        },
                     )
                     code_blocks.append(simple_block)
+            else:
+                # For markdown and other text formats, extract code blocks
+                code_blocks = self._extract_markdown_code_blocks(content)
 
             return UploadResult(
                 source_url=source_url,
@@ -192,7 +224,7 @@ class UploadProcessor:
                 content_hash=content_hash,
                 code_blocks=code_blocks,
                 content=content,
-                metadata={'content_type': content_type}
+                metadata={"content_type": content_type},
             )
 
         except Exception as e:
@@ -203,7 +235,7 @@ class UploadProcessor:
                 content_hash="",
                 code_blocks=[],
                 content=None,
-                error=str(e)
+                error=str(e),
             )
 
     def update_job_progress(self, job_id: str, **kwargs) -> bool:
@@ -215,10 +247,10 @@ class UploadProcessor:
                     return False
 
                 # Update fields if provided
-                if 'processed_pages' in kwargs:
-                    job.processed_files = kwargs['processed_pages']
-                if 'snippets_extracted' in kwargs:
-                    job.snippets_extracted = kwargs['snippets_extracted']
+                if "processed_pages" in kwargs:
+                    job.processed_files = kwargs["processed_pages"]
+                if "snippets_extracted" in kwargs:
+                    job.snippets_extracted = kwargs["snippets_extracted"]
 
                 job.updated_at = datetime.utcnow()
                 session.commit()
@@ -229,18 +261,22 @@ class UploadProcessor:
 
     def _extract_title(self, content: str, source_url: str) -> str:
         """Extract title from content or use filename."""
-        # Try to extract from first heading
-        lines = content.split('\n')
-        for line in lines[:10]:  # Check first 10 lines
-            if line.startswith('# '):
-                return line[2:].strip()
+        from src.api.routes.upload_utils import TitleExtractor
 
-        # Use filename from source URL
-        if source_url.startswith('file://'):
-            filename = os.path.basename(source_url[7:])
-            return filename
+        return TitleExtractor.resolve(None, content, source_url)
 
-        return "Untitled Document"
+    def _extract_markdown_code_blocks(self, content: str) -> list[SimpleCodeBlock]:
+        """Extract code blocks from markdown content.
+
+        Args:
+            content: Markdown content
+
+        Returns:
+            List of SimpleCodeBlock objects
+        """
+        from src.api.routes.upload_utils import MarkdownCodeExtractor
+
+        return MarkdownCodeExtractor.extract_blocks(content)
 
     async def _store_result(self, result: UploadResult, job_id: str) -> tuple[int, int]:
         """Store upload result in database."""
@@ -273,9 +309,9 @@ class UploadProcessor:
                     content_hash=result.content_hash,
                     markdown_content=remove_markdown_links(result.content),
                     upload_job_id=job_id,  # Link to upload job instead of crawl job
-                    source_type='upload',  # Mark as upload source
+                    source_type="upload",  # Mark as upload source
                     crawl_depth=0,
-                    meta_data=result.metadata
+                    meta_data=result.metadata,
                 )
                 session.add(doc)
 
@@ -287,12 +323,12 @@ class UploadProcessor:
                 code_blocks_data = []
                 for block in result.code_blocks:
                     block_dict = {
-                        'code': block.code,
-                        'language': block.language,
-                        'title': block.title or f"Code Block in {block.language or 'Unknown'}",
-                        'description': block.description or f"Code block from {result.title}",
-                        'metadata': block.metadata or {},
-                        'filename': None
+                        "code": block.code,
+                        "language": block.language,
+                        "title": block.title or f"Code Block in {block.language or 'Unknown'}",
+                        "description": block.description or f"Code block from {result.title}",
+                        "metadata": block.metadata or {},
+                        "filename": None,
                     }
                     code_blocks_data.append(block_dict)
 
@@ -304,15 +340,20 @@ class UploadProcessor:
             session.commit()
             return int(doc.id), snippet_count
 
-    def _complete_job(self, job_id: str, success: bool, error_message: str | None = None,
-                      snippets_extracted: int = 0) -> None:
+    def _complete_job(
+        self,
+        job_id: str,
+        success: bool,
+        error_message: str | None = None,
+        snippets_extracted: int = 0,
+    ) -> None:
         """Mark upload job as completed."""
         from ..database import UploadJob
 
         with self.db_manager.session_scope() as session:
             job = session.query(UploadJob).filter_by(id=job_id).first()
             if job:
-                job.status = 'completed' if success else 'failed'
+                job.status = "completed" if success else "failed"
                 job.completed_at = datetime.utcnow()
                 job.error_message = error_message
                 job.snippets_extracted = snippets_extracted

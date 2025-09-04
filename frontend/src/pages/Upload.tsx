@@ -1,5 +1,5 @@
-import { useState, useCallback } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useState, useCallback, useEffect } from 'react'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 import {
   Upload as UploadIcon,
   AlertCircle,
@@ -8,121 +8,173 @@ import {
   X,
   FileCode,
   Folder,
+  GitBranch,
+  Github,
 } from "lucide-react";
-import { uploadMarkdown, uploadFiles, api } from '../lib/api'
+import {
+  uploadMarkdown,
+  uploadFiles,
+  uploadGitHubRepo,
+  getGitHubUploadStatus,
+  getUploadStatus,
+  api,
+} from "../lib/api";
 import { ConfirmationDialog } from '../components/ConfirmationDialog'
 
 const MAX_TOTAL_SIZE = 500 * 1024 * 1024 // 500MB total size limit
 const BATCH_SIZE = 100 // Upload files in batches of 100
 
 export default function Upload() {
-  const navigate = useNavigate()
-  const [isDragging, setIsDragging] = useState(false)
-  const [uploading, setUploading] = useState(false)
-  const [error, setError] = useState<string | null>(null)
-  const [success, setSuccess] = useState<string | null>(null)
+  const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
+  
+  // Get active tab from URL params, default to "files"
+  const tabParam = searchParams.get("tab");
+  const activeTab = (tabParam === "github" ? "github" : "files") as "files" | "github";
+  
+  // Function to set active tab in URL
+  const setActiveTab = (tab: "files" | "github") => {
+    setSearchParams({ tab });
+  };
+  
+  // Ensure valid tab parameter
+  useEffect(() => {
+    if (tabParam && tabParam !== "files" && tabParam !== "github") {
+      setSearchParams({ tab: "files" });
+    }
+  }, [tabParam, setSearchParams]);
+  
+  const [isDragging, setIsDragging] = useState(false);
+  const [uploading, setUploading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [success, setSuccess] = useState<string | null>(null);
   const [uploadProgress, setUploadProgress] = useState<string | null>(null);
   const [uploadedCount, setUploadedCount] = useState(0);
-  
-  const [title, setTitle] = useState('')
-  const [pastedContent, setPastedContent] = useState('')
-  const [selectedFiles, setSelectedFiles] = useState<File[]>([])
+
+  const [title, setTitle] = useState("");
+  const [version, setVersion] = useState("");
+  const [pastedContent, setPastedContent] = useState("");
+  const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
   const [directoryStructure, setDirectoryStructure] = useState<
     Map<string, File[]>
   >(new Map());
-  
+
+  // GitHub repo state
+  const [repoUrl, setRepoUrl] = useState("");
+  const [repoPath, setRepoPath] = useState("");
+  const [repoBranch, setRepoBranch] = useState("main");
+  const [repoToken, setRepoToken] = useState("");
+  const [repoIncludePatterns, setRepoIncludePatterns] = useState("");
+  const [repoExcludePatterns, setRepoExcludePatterns] = useState("");
+
   // Confirmation dialog state
-  const [showConfirmDialog, setShowConfirmDialog] = useState(false)
+  const [showConfirmDialog, setShowConfirmDialog] = useState(false);
   const [existingSourceInfo, setExistingSourceInfo] = useState<{
-    name: string
-    snippetCount: number
-    documentCount: number
-  } | null>(null)
-  const [pendingUpload, setPendingUpload] = useState<(() => Promise<void>) | null>(null)
-  const [checkingSource, setCheckingSource] = useState(false)
+    name: string;
+    version?: string;
+    snippetCount: number;
+    documentCount: number;
+  } | null>(null);
+  const [pendingUpload, setPendingUpload] = useState<
+    (() => Promise<void>) | null
+  >(null);
+  const [checkingSource, setCheckingSource] = useState(false);
 
   const handleDragEnter = useCallback((e: React.DragEvent) => {
-    e.preventDefault()
-    e.stopPropagation()
-    setIsDragging(true)
-  }, [])
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragging(true);
+  }, []);
 
   const handleDragLeave = useCallback((e: React.DragEvent) => {
-    e.preventDefault()
-    e.stopPropagation()
-    setIsDragging(false)
-  }, [])
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragging(false);
+  }, []);
 
   const handleDragOver = useCallback((e: React.DragEvent) => {
-    e.preventDefault()
-    e.stopPropagation()
-  }, [])
+    e.preventDefault();
+    e.stopPropagation();
+  }, []);
 
-  const handleDrop = useCallback((e: React.DragEvent) => {
-    e.preventDefault()
-    e.stopPropagation()
-    setIsDragging(false)
-    
-    const files = Array.from(e.dataTransfer.files)
-    const validFiles = files.filter(file => 
-      file.type === 'text/markdown' || 
-      file.type === 'text/plain' || 
-      file.name.endsWith('.md') ||
-      file.name.endsWith('.txt') ||
-      file.name.endsWith('.markdown')
-    )
-    
-    if (validFiles.length > 0) {
-      // Check total size limit
-      const currentSize = selectedFiles.reduce((sum, f) => sum + f.size, 0)
-      const newSize = validFiles.reduce((sum, f) => sum + f.size, 0)
-      const totalSize = currentSize + newSize
-      if (totalSize > MAX_TOTAL_SIZE) {
-        setError(`Total file size exceeds ${formatFileSize(MAX_TOTAL_SIZE)} limit. Current total: ${formatFileSize(totalSize)}`)
-        return
-      }
-      
-      setSelectedFiles(prev => [...prev, ...validFiles])
-      if (!title && validFiles.length === 1) {
-        setTitle(validFiles[0].name.replace(/\.(md|txt|markdown)$/, ''))
-      }
-    } else {
-      setError('Please upload markdown (.md, .markdown) or text (.txt) files')
-    }
-  }, [title])
+  const handleDrop = useCallback(
+    (e: React.DragEvent) => {
+      e.preventDefault();
+      e.stopPropagation();
+      setIsDragging(false);
 
-  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const files = e.target.files
-    if (files && files.length > 0) {
-      const validFiles = Array.from(files).filter(file => 
-        file.type === 'text/markdown' || 
-        file.type === 'text/plain' || 
-        file.name.endsWith('.md') ||
-        file.name.endsWith('.txt') ||
-        file.name.endsWith('.markdown')
-      )
-      
+      const files = Array.from(e.dataTransfer.files);
+      const validFiles = files.filter(
+        (file) =>
+          file.type === "text/markdown" ||
+          file.type === "text/plain" ||
+          file.name.endsWith(".md") ||
+          file.name.endsWith(".txt") ||
+          file.name.endsWith(".markdown"),
+      );
+
       if (validFiles.length > 0) {
         // Check total size limit
-        const currentSize = selectedFiles.reduce((sum, f) => sum + f.size, 0)
-        const newSize = validFiles.reduce((sum, f) => sum + f.size, 0)
-        const totalSize = currentSize + newSize
+        const currentSize = selectedFiles.reduce((sum, f) => sum + f.size, 0);
+        const newSize = validFiles.reduce((sum, f) => sum + f.size, 0);
+        const totalSize = currentSize + newSize;
         if (totalSize > MAX_TOTAL_SIZE) {
-          setError(`Total file size exceeds ${formatFileSize(MAX_TOTAL_SIZE)} limit. Current total: ${formatFileSize(totalSize)}`)
-          return
+          setError(
+            `Total file size exceeds ${formatFileSize(MAX_TOTAL_SIZE)} limit. Current total: ${formatFileSize(totalSize)}`,
+          );
+          return;
         }
-        
-        setSelectedFiles(prev => [...prev, ...validFiles])
-        // Set title from first file if not already set
+
+        setSelectedFiles((prev) => [...prev, ...validFiles]);
         if (!title && validFiles.length === 1) {
-          setTitle(validFiles[0].name.replace(/\.(md|txt|markdown)$/, ''))
+          setTitle(validFiles[0].name.replace(/\.(md|txt|markdown)$/, ""));
         }
       } else {
-        setError('Please upload markdown (.md, .markdown) or text (.txt) files')
+        setError(
+          "Please upload markdown (.md, .markdown) or text (.txt) files",
+        );
+      }
+    },
+    [title],
+  );
+
+  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files;
+    if (files && files.length > 0) {
+      const validFiles = Array.from(files).filter(
+        (file) =>
+          file.type === "text/markdown" ||
+          file.type === "text/plain" ||
+          file.name.endsWith(".md") ||
+          file.name.endsWith(".txt") ||
+          file.name.endsWith(".markdown"),
+      );
+
+      if (validFiles.length > 0) {
+        // Check total size limit
+        const currentSize = selectedFiles.reduce((sum, f) => sum + f.size, 0);
+        const newSize = validFiles.reduce((sum, f) => sum + f.size, 0);
+        const totalSize = currentSize + newSize;
+        if (totalSize > MAX_TOTAL_SIZE) {
+          setError(
+            `Total file size exceeds ${formatFileSize(MAX_TOTAL_SIZE)} limit. Current total: ${formatFileSize(totalSize)}`,
+          );
+          return;
+        }
+
+        setSelectedFiles((prev) => [...prev, ...validFiles]);
+        // Set title from first file if not already set
+        if (!title && validFiles.length === 1) {
+          setTitle(validFiles[0].name.replace(/\.(md|txt|markdown)$/, ""));
+        }
+      } else {
+        setError(
+          "Please upload markdown (.md, .markdown) or text (.txt) files",
+        );
       }
     }
-  }
-  
+  };
+
   const handleDirectorySelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files;
     if (files && files.length > 0) {
@@ -136,14 +188,16 @@ export default function Upload() {
 
       if (validFiles.length > 0) {
         // Check total size limit
-        const currentSize = selectedFiles.reduce((sum, f) => sum + f.size, 0)
-        const newSize = validFiles.reduce((sum, f) => sum + f.size, 0)
-        const totalSize = currentSize + newSize
+        const currentSize = selectedFiles.reduce((sum, f) => sum + f.size, 0);
+        const newSize = validFiles.reduce((sum, f) => sum + f.size, 0);
+        const totalSize = currentSize + newSize;
         if (totalSize > MAX_TOTAL_SIZE) {
-          setError(`Total file size exceeds ${formatFileSize(MAX_TOTAL_SIZE)} limit. Current total: ${formatFileSize(totalSize)}`)
-          return
+          setError(
+            `Total file size exceeds ${formatFileSize(MAX_TOTAL_SIZE)} limit. Current total: ${formatFileSize(totalSize)}`,
+          );
+          return;
         }
-        
+
         // Group files by directory
         const dirMap = new Map<string, File[]>();
         validFiles.forEach((file) => {
@@ -177,181 +231,334 @@ export default function Upload() {
       }
     }
   };
-  
+
   const removeFile = (index: number) => {
-    setSelectedFiles(prev => prev.filter((_, i) => i !== index))
-  }
-  
+    setSelectedFiles((prev) => prev.filter((_, i) => i !== index));
+  };
+
   const clearAllFiles = () => {
     setSelectedFiles([]);
     setDirectoryStructure(new Map());
   };
-  
-  const formatFileSize = (bytes: number) => {
-    if (bytes < 1024) return bytes + ' B'
-    if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB'
-    return (bytes / (1024 * 1024)).toFixed(1) + ' MB'
-  }
 
-  const checkForExistingSource = async (name: string): Promise<boolean> => {
-    setCheckingSource(true)
+  const formatFileSize = (bytes: number) => {
+    if (bytes < 1024) return bytes + " B";
+    if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + " KB";
+    return (bytes / (1024 * 1024)).toFixed(1) + " MB";
+  };
+
+  const checkForExistingSource = async (name: string, checkVersion?: string): Promise<boolean> => {
+    setCheckingSource(true);
     try {
-      const result = await api.searchSources({ query: name, limit: 100 })
-      // Look for exact match (case-insensitive)
+      const result = await api.searchSources({ query: name, limit: 100 });
+      // Look for exact match on name AND version (case-insensitive for name)
       const exactMatch = result.sources.find(
-        source => source.name.toLowerCase() === name.toLowerCase()
-      )
-      
+        (source) => {
+          const nameMatches = source.name.toLowerCase() === name.toLowerCase();
+          // If no version specified in either the source or the check, only match on name
+          // If version is specified, both must match
+          const versionMatches = (!checkVersion && !source.version) || 
+                                (checkVersion && source.version === checkVersion);
+          return nameMatches && versionMatches;
+        }
+      );
+
       if (exactMatch) {
         setExistingSourceInfo({
           name: exactMatch.name,
+          version: exactMatch.version || undefined,
           snippetCount: exactMatch.snippets_count || 0,
-          documentCount: exactMatch.documents_count || 0
-        })
-        return true
+          documentCount: exactMatch.documents_count || 0,
+        });
+        return true;
       }
-      return false
+      return false;
     } catch (error) {
-      console.error('Error checking for existing source:', error)
+      console.error("Error checking for existing source:", error);
       // If we can't check, proceed without confirmation
-      return false
+      return false;
     } finally {
-      setCheckingSource(false)
+      setCheckingSource(false);
     }
-  }
+  };
 
-  const performUpload = async () => {
-    setUploading(true)
-    setError(null)
-    setSuccess(null)
-    setUploadProgress(null);
-    
+  const performGitHubUpload = async () => {
+    setUploading(true);
+    setError(null);
+    setSuccess(null);
+    setUploadProgress("Cloning repository...");
+
     try {
-      let jobId = null
-      let uploadMessage = ''
-      
-      // Generate a name from title or date if not provided
-      const uploadName = title || `Upload ${new Date().toISOString().split('T')[0]}`
-      
-      // Upload files in batches
-      if (selectedFiles.length > 0) {
-        const fileCount = selectedFiles.length;
-        const dirCount = directoryStructure.size;
-        const batches = Math.ceil(fileCount / BATCH_SIZE);
-        
-        let totalSnippets = 0;
-        let processedFiles = 0;
-        
-        for (let i = 0; i < batches; i++) {
-          const start = i * BATCH_SIZE;
-          const end = Math.min(start + BATCH_SIZE, fileCount);
-          const batch = selectedFiles.slice(start, end);
-          
-          // Update progress
-          if (batches > 1) {
-            setUploadProgress(
-              `Uploading batch ${i + 1}/${batches} (files ${start + 1}-${end} of ${fileCount})...`
-            );
-          } else if (dirCount > 0) {
-            setUploadProgress(
-              `Uploading ${fileCount} files from ${dirCount} ${dirCount === 1 ? "directory" : "directories"}...`
-            );
-          } else {
-            setUploadProgress(
-              `Uploading ${fileCount} ${fileCount === 1 ? "file" : "files"}...`
-            );
-          }
-          
-          try {
-            const result = await uploadFiles(batch, uploadName, title || undefined);
-            jobId = result.job_id;
-            processedFiles += result.file_count;
-            totalSnippets += parseInt(result.message.match(/\d+(?= code snippets)/)?.[0] || '0');
-            setUploadedCount(processedFiles);
-          } catch (err) {
-            // If a batch fails, show which batch failed
-            const errorMsg = err instanceof Error ? err.message : 'Upload failed';
-            throw new Error(`Batch ${i + 1}/${batches} failed: ${errorMsg}`);
-          }
-        }
-        
-        uploadMessage = `Successfully processed ${processedFiles} files with ${totalSnippets} code snippets extracted`;
+      // Parse patterns from comma-separated strings
+      const includePatterns = repoIncludePatterns
+        ? repoIncludePatterns
+            .split(",")
+            .map((p) => p.trim())
+            .filter((p) => p)
+        : undefined;
+      const excludePatterns = repoExcludePatterns
+        ? repoExcludePatterns
+            .split(",")
+            .map((p) => p.trim())
+            .filter((p) => p)
+        : undefined;
+
+      // Extract repo name from URL if no title provided
+      let uploadName = title;
+      if (!uploadName) {
+        const match = repoUrl.match(/\/([^/]+?)(?:\.git)?$/);
+        uploadName = match ? match[1] : "Repository Documentation";
       }
-      
-      // Upload pasted content if any
-      if (pastedContent.trim()) {
-        const result = await uploadMarkdown({
-          content: pastedContent,
-          name: uploadName,
-          title: title || 'Pasted Content'
-        })
-        if (jobId) {
-          uploadMessage += ` and pasted content with ${result.snippets_count} snippets`
-        } else {
-          uploadMessage = `Successfully uploaded content with ${result.snippets_count} code snippets extracted`
+
+      const result = await uploadGitHubRepo({
+        repo_url: repoUrl,
+        name: uploadName,
+        version: version || undefined,
+        path: repoPath || undefined,
+        branch: repoBranch || "main",
+        token: repoToken || undefined,
+        include_patterns: includePatterns,
+        exclude_patterns: excludePatterns,
+      });
+
+      const jobId = result.job_id;
+      setUploadProgress("Processing markdown files...");
+
+      // Poll for status
+      let status = null;
+      while (true) {
+        await new Promise((resolve) => setTimeout(resolve, 2000));
+        status = await getGitHubUploadStatus(jobId);
+
+        if (status.processed_files > 0) {
+          setUploadProgress(
+            `Processing files: ${status.processed_files}/${status.file_count}`,
+          );
+          setUploadedCount(status.processed_files);
+        }
+
+        if (status.status === "completed" || status.status === "failed") {
+          break;
         }
       }
-      
-      setSuccess(uploadMessage)
-      setUploadProgress(null);
-      
-      // Clear form after successful upload
-      setTimeout(() => {
-        navigate('/sources')
-      }, 2000)
+
+      if (status.status === "completed") {
+        setSuccess(
+          `Successfully processed ${status.processed_files} files with ${status.snippets_extracted} code snippets extracted`,
+        );
+        setTimeout(() => {
+          navigate("/sources");
+        }, 2000);
+      } else {
+        setError(status.error_message || "Repository processing failed");
+      }
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Upload failed')
+      setError(err instanceof Error ? err.message : "GitHub upload failed");
     } finally {
-      setUploading(false)
+      setUploading(false);
       setUploadProgress(null);
       setUploadedCount(0);
     }
-  }
+  };
+
+  const performUpload = async () => {
+    setUploading(true);
+    setError(null);
+    setSuccess(null);
+    setUploadProgress(null);
+
+    try {
+      // Generate a name from title or date if not provided
+      const uploadName =
+        title || `Upload ${new Date().toISOString().split("T")[0]}`;
+
+      // Upload files (now async like GitHub)
+      if (selectedFiles.length > 0) {
+        const fileCount = selectedFiles.length;
+        const dirCount = directoryStructure.size;
+
+        // Show initial upload progress
+        if (dirCount > 0) {
+          setUploadProgress(
+            `Uploading ${fileCount} files from ${dirCount} ${dirCount === 1 ? "directory" : "directories"}...`,
+          );
+        } else {
+          setUploadProgress(
+            `Uploading ${fileCount} ${fileCount === 1 ? "file" : "files"}...`,
+          );
+        }
+
+        // Upload all files at once (server will handle batching internally)
+        const result = await uploadFiles(
+          selectedFiles,
+          uploadName,
+          title || undefined,
+          version || undefined,
+        );
+
+        const jobId = result.job_id;
+        setUploadProgress("Processing files...");
+
+        // Poll for status (same as GitHub upload)
+        let status = null;
+        while (true) {
+          await new Promise((resolve) => setTimeout(resolve, 2000));
+          status = await getUploadStatus(jobId);
+
+          if (status.processed_files > 0) {
+            setUploadProgress(
+              `Processing files: ${status.processed_files}/${status.file_count}`,
+            );
+            setUploadedCount(status.processed_files);
+          }
+
+          if (status.status === "completed" || status.status === "failed") {
+            break;
+          }
+        }
+
+        if (status.status === "completed") {
+          setSuccess(
+            `Successfully processed ${status.processed_files} files with ${status.snippets_extracted} code snippets extracted`,
+          );
+          setTimeout(() => {
+            navigate("/sources");
+          }, 2000);
+        } else {
+          setError(status.error_message || "File processing failed");
+        }
+      }
+
+      // Upload pasted content if any (this remains synchronous for now)
+      if (!selectedFiles.length && pastedContent.trim()) {
+        const result = await uploadMarkdown({
+          content: pastedContent,
+          name: uploadName,
+          title: title || "Pasted Content",
+        });
+        setSuccess(
+          `Successfully uploaded content with ${result.snippets_count} code snippets extracted`,
+        );
+        setTimeout(() => {
+          navigate("/sources");
+        }, 2000);
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Upload failed");
+    } finally {
+      setUploading(false);
+      setUploadProgress(null);
+      setUploadedCount(0);
+    }
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault()
-    
-    if (selectedFiles.length === 0 && !pastedContent.trim()) {
-      setError('Please select files to upload or paste content')
-      return
-    }
-    
-    // Generate a name from title or date if not provided
-    const uploadName = title || `Upload ${new Date().toISOString().split('T')[0]}`
-    
-    // Check if a source with this name already exists
-    const hasExisting = await checkForExistingSource(uploadName)
-    
-    if (hasExisting) {
-      // Store the upload function to execute after confirmation
-      setPendingUpload(() => performUpload)
-      setShowConfirmDialog(true)
+    e.preventDefault();
+
+    if (activeTab === "github") {
+      // Validate GitHub input
+      if (!repoUrl) {
+        setError("Please enter a GitHub repository URL");
+        return;
+      }
+
+      // Generate a name from title or repo URL if not provided
+      const uploadName =
+        title ||
+        (() => {
+          const match = repoUrl.match(/\/([^/]+?)(?:\.git)?$/);
+          return match ? match[1] : "Repository Documentation";
+        })();
+
+      // Check if a source with this name and version already exists
+      const hasExisting = await checkForExistingSource(uploadName, version || undefined);
+
+      if (hasExisting) {
+        // Store the upload function to execute after confirmation
+        setPendingUpload(() => performGitHubUpload);
+        setShowConfirmDialog(true);
+      } else {
+        // No existing source, proceed directly
+        await performGitHubUpload();
+      }
     } else {
-      // No existing source, proceed directly
-      await performUpload()
+      // File upload
+      if (selectedFiles.length === 0 && !pastedContent.trim()) {
+        setError("Please select files to upload or paste content");
+        return;
+      }
+
+      // Generate a name from title or date if not provided
+      const uploadName =
+        title || `Upload ${new Date().toISOString().split("T")[0]}`;
+
+      // Check if a source with this name and version already exists
+      const hasExisting = await checkForExistingSource(uploadName, version || undefined);
+
+      if (hasExisting) {
+        // Store the upload function to execute after confirmation
+        setPendingUpload(() => performUpload);
+        setShowConfirmDialog(true);
+      } else {
+        // No existing source, proceed directly
+        await performUpload();
+      }
     }
-  }
-  
+  };
+
   const handleConfirmUpload = async () => {
-    setShowConfirmDialog(false)
+    setShowConfirmDialog(false);
     if (pendingUpload) {
-      await pendingUpload()
+      await pendingUpload();
     }
-  }
-  
+  };
+
   const handleCancelUpload = () => {
-    setShowConfirmDialog(false)
-    setExistingSourceInfo(null)
-    setPendingUpload(null)
-  }
+    setShowConfirmDialog(false);
+    setExistingSourceInfo(null);
+    setPendingUpload(null);
+  };
 
   return (
     <div className="space-y-6 mb-8">
       <div>
         <h1 className="text-3xl font-bold">Upload Documentation</h1>
         <p className="mt-2 text-muted-foreground">
-          Upload markdown or text files to extract code snippets with AI
+          Upload markdown files or clone GitHub repositories to extract code
+          snippets
         </p>
+      </div>
+
+      {/* Tab Navigation */}
+      <div className="border-b border-border">
+        <nav className="-mb-px flex space-x-8">
+          <button
+            onClick={() => setActiveTab("files")}
+            className={`py-2 px-1 border-b-2 font-medium text-sm ${
+              activeTab === "files"
+                ? "border-primary text-primary"
+                : "border-transparent text-muted-foreground hover:text-foreground hover:border-border"
+            }`}
+          >
+            <div className="flex items-center gap-2">
+              <FileCode className="h-4 w-4" />
+              Files Upload
+            </div>
+          </button>
+          <button
+            onClick={() => setActiveTab("github")}
+            className={`py-2 px-1 border-b-2 font-medium text-sm ${
+              activeTab === "github"
+                ? "border-primary text-primary"
+                : "border-transparent text-muted-foreground hover:text-foreground hover:border-border"
+            }`}
+          >
+            <div className="flex items-center gap-2">
+              <Github className="h-4 w-4" />
+              GitHub Repository
+            </div>
+          </button>
+        </nav>
       </div>
       {/* Upload Progress */}
       {uploadProgress && (
@@ -397,226 +604,386 @@ export default function Upload() {
       )}
 
       <form onSubmit={handleSubmit} className="space-y-6 mb-20">
-        {/* Title Input */}
-        <div className="flex items-center gap-4">
-          <div>
-            <label htmlFor="title" className="block text-sm font-medium">
-              Collection Name{" "}
-              <span className="text-muted-foreground text-xs">(optional)</span>
-            </label>
-            <input
-              type="text"
-              id="title"
-              value={title}
-              onChange={(e) => setTitle(e.target.value)}
-              placeholder="Name for this upload collection"
-              className="mt-1 w-full px-3 py-2 bg-secondary border border-input rounded-md focus:outline-none focus:ring-2 focus:ring-primary"
-            />
-            <p className="mt-1 text-sm text-muted-foreground">
-              Give your uploaded files a collection name for easier organization
-            </p>
-          </div>
-          <div className="flex justify-end">
-            <button
-              type="submit"
-              disabled={
-                uploading ||
-                (selectedFiles.length === 0 && !pastedContent.trim())
-              }
-              className="flex items-center justify-center px-4 py-2 bg-primary text-primary-foreground rounded-md hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              {uploading ? (
-                <>
-                  <Loader2 className="animate-spin -ml-1 mr-2 h-4 w-4" />
-                  Uploading...
-                </>
-              ) : (
-                <>
-                  <UploadIcon className="-ml-1 mr-2 h-4 w-4" />
-                  Upload
-                </>
-              )}
-            </button>
-          </div>
-        </div>
-
-        {/* File Upload / Drag & Drop */}
+        {/* Title Input - Common for both tabs */}
         <div>
-          <label className="block text-sm font-medium mb-2">Upload Files</label>
-
-          <div
-            className={`relative border-2 border-dashed rounded-lg p-6 ${
-              isDragging ? "border-primary bg-primary/5" : "border-border"
-            }`}
-            onDragEnter={handleDragEnter}
-            onDragOver={handleDragOver}
-            onDragLeave={handleDragLeave}
-            onDrop={handleDrop}
-          >
-            <div className="text-center">
-              <UploadIcon className="mx-auto h-12 w-12 text-muted-foreground" />
-              <div className="mt-2">
-                <label htmlFor="file-upload" className="cursor-pointer">
-                  <span className="text-primary hover:text-primary/80">
-                    Choose files
-                  </span>
-                  <input
-                    id="file-upload"
-                    name="file-upload"
-                    type="file"
-                    className="sr-only"
-                    accept=".md,.txt,.markdown,text/markdown,text/plain"
-                    onChange={handleFileSelect}
-                    multiple
-                  />
-                </label>
-                <span className="text-muted-foreground"> or </span>
-                <label htmlFor="dir-upload" className="cursor-pointer">
-                  <span className="text-primary hover:text-primary/80">
-                    choose directory
-                  </span>
-                  <input
-                    id="dir-upload"
-                    name="dir-upload"
-                    type="file"
-                    className="sr-only"
-                    // @ts-ignore - webkitdirectory is not in the type but works
-                    webkitdirectory=""
-                    directory=""
-                    multiple
-                    onChange={handleDirectorySelect}
-                  />
-                </label>
-                <span className="text-muted-foreground"> or drag and drop</span>
-              </div>
-              <p className="text-xs text-muted-foreground mt-1">
-                Markdown (.md, .markdown) or text (.txt) files
-              </p>
-            </div>
-          </div>
-
-          {/* Selected Files List */}
-          {selectedFiles.length > 0 && (
-            <div className="mt-4 space-y-2">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm font-medium">
-                    Selected files ({selectedFiles.length}):
-                  </p>
-                  <p className="text-xs text-muted-foreground">
-                    Total size:{" "}
-                    {formatFileSize(
-                      selectedFiles.reduce((sum, f) => sum + f.size, 0),
-                    )}{" "}
-                    / {formatFileSize(MAX_TOTAL_SIZE)}
-                  </p>
-                </div>
-                {selectedFiles.length > 1 && (
-                  <button
-                    type="button"
-                    onClick={clearAllFiles}
-                    className="text-sm text-muted-foreground hover:text-foreground"
-                  >
-                    Clear all
-                  </button>
-                )}
-              </div>
-
-              {/* Show directory structure if files are from directory upload */}
-              {directoryStructure.size > 0 ? (
-                <div className="space-y-2">
-                  {Array.from(directoryStructure.entries()).map(
-                    ([dir, files]) => (
-                      <div
-                        key={dir}
-                        className="border border-border rounded-md p-2"
-                      >
-                        <div className="flex items-center space-x-2 mb-1">
-                          <Folder className="h-4 w-4 text-muted-foreground" />
-                          <span className="text-sm font-medium">
-                            {dir === "/" ? "Root" : dir}
-                          </span>
-                          <span className="text-xs text-muted-foreground">
-                            ({files.length} files)
-                          </span>
-                        </div>
-                        <div className="ml-6 space-y-1">
-                          {files.map((file, fileIndex) => {
-                            const globalIndex = selectedFiles.indexOf(file);
-                            return (
-                              <div
-                                key={fileIndex}
-                                className="flex items-center justify-between p-1 bg-secondary rounded-md"
-                              >
-                                <div className="flex items-center space-x-2">
-                                  <FileCode className="h-3 w-3 text-muted-foreground" />
-                                  <span className="text-xs">{file.name}</span>
-                                  <span className="text-xs text-muted-foreground">
-                                    ({formatFileSize(file.size)})
-                                  </span>
-                                </div>
-                                <button
-                                  type="button"
-                                  onClick={() => removeFile(globalIndex)}
-                                  className="text-muted-foreground hover:text-foreground"
-                                >
-                                  <X className="h-3 w-3" />
-                                </button>
-                              </div>
-                            );
-                          })}
-                        </div>
-                      </div>
-                    ),
-                  )}
-                </div>
-              ) : (
-                <div className="space-y-1">
-                  {selectedFiles.map((file, index) => (
-                    <div
-                      key={index}
-                      className="flex items-center justify-between p-2 bg-secondary rounded-md"
-                    >
-                      <div className="flex items-center space-x-2">
-                        <FileCode className="h-4 w-4 text-muted-foreground" />
-                        <span className="text-sm">{file.name}</span>
-                        <span className="text-xs text-muted-foreground">
-                          ({formatFileSize(file.size)})
-                        </span>
-                      </div>
-                      <button
-                        type="button"
-                        onClick={() => removeFile(index)}
-                        className="text-muted-foreground hover:text-foreground"
-                      >
-                        <X className="h-4 w-4" />
-                      </button>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-          )}
-        </div>
-
-        {/* Manual Content Input */}
-        <div>
-          <label htmlFor="content" className="block text-sm font-medium">
-            Or Paste Content Directly
+          <label htmlFor="title" className="block text-sm font-medium">
+            Collection Name{" "}
+            <span className="text-muted-foreground text-xs">(optional)</span>
           </label>
-          <textarea
-            id="content"
-            rows={10}
-            value={pastedContent}
-            onChange={(e) => setPastedContent(e.target.value)}
-            placeholder="Paste your markdown content here..."
-            className="mt-1 w-full px-3 py-2 bg-secondary border border-input rounded-md focus:outline-none focus:ring-2 focus:ring-primary font-mono"
+          <input
+            type="text"
+            id="title"
+            value={title}
+            onChange={(e) => setTitle(e.target.value)}
+            placeholder={
+              activeTab === "github"
+                ? "Name for this repository documentation"
+                : "Name for this upload collection"
+            }
+            className="mt-1 w-full px-3 py-2 bg-secondary border border-input rounded-md focus:outline-none focus:ring-2 focus:ring-primary"
           />
           <p className="mt-1 text-sm text-muted-foreground">
-            Paste markdown or code directly for quick uploads without creating a
-            file
+            {activeTab === "github"
+              ? "Give your repository documentation a collection name (defaults to repo name)"
+              : "Give your uploaded files a collection name for easier organization"}
           </p>
         </div>
+
+        {/* Version Input - Common for both tabs */}
+        <div>
+          <label htmlFor="version" className="block text-sm font-medium">
+            Version{" "}
+            <span className="text-muted-foreground text-xs">(optional)</span>
+          </label>
+          <input
+            type="text"
+            id="version"
+            value={version}
+            onChange={(e) => setVersion(e.target.value)}
+            placeholder="v1.0.0 or latest"
+            className="mt-1 w-full px-3 py-2 bg-secondary border border-input rounded-md focus:outline-none focus:ring-2 focus:ring-primary"
+          />
+          <p className="mt-1 text-sm text-muted-foreground">
+            Specify a version to maintain multiple versions of the same documentation
+          </p>
+        </div>
+
+        {/* Conditional Content based on active tab */}
+        {activeTab === "files" ? (
+          <>
+            {/* File Upload / Drag & Drop */}
+            <div>
+              <label className="block text-sm font-medium mb-2">
+                Upload Files
+              </label>
+
+              <div
+                className={`relative border-2 border-dashed rounded-lg p-6 ${
+                  isDragging ? "border-primary bg-primary/5" : "border-border"
+                }`}
+                onDragEnter={handleDragEnter}
+                onDragOver={handleDragOver}
+                onDragLeave={handleDragLeave}
+                onDrop={handleDrop}
+              >
+                <div className="text-center">
+                  <UploadIcon className="mx-auto h-12 w-12 text-muted-foreground" />
+                  <div className="mt-2">
+                    <label htmlFor="file-upload" className="cursor-pointer">
+                      <span className="text-primary hover:text-primary/80">
+                        Choose files
+                      </span>
+                      <input
+                        id="file-upload"
+                        name="file-upload"
+                        type="file"
+                        className="sr-only"
+                        accept=".md,.txt,.markdown,text/markdown,text/plain"
+                        onChange={handleFileSelect}
+                        multiple
+                      />
+                    </label>
+                    <span className="text-muted-foreground"> or </span>
+                    <label htmlFor="dir-upload" className="cursor-pointer">
+                      <span className="text-primary hover:text-primary/80">
+                        choose directory
+                      </span>
+                      <input
+                        id="dir-upload"
+                        name="dir-upload"
+                        type="file"
+                        className="sr-only"
+                        // @ts-ignore - webkitdirectory is not in the type but works
+                        webkitdirectory=""
+                        directory=""
+                        multiple
+                        onChange={handleDirectorySelect}
+                      />
+                    </label>
+                    <span className="text-muted-foreground">
+                      {" "}
+                      or drag and drop
+                    </span>
+                  </div>
+                  <p className="text-xs text-muted-foreground mt-1">
+                    Markdown (.md, .markdown) or text (.txt) files
+                  </p>
+                </div>
+              </div>
+
+              {/* Selected Files List */}
+              {selectedFiles.length > 0 && (
+                <div className="mt-4 space-y-2">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <p className="text-sm font-medium">
+                        Selected files ({selectedFiles.length}):
+                      </p>
+                      <p className="text-xs text-muted-foreground">
+                        Total size:{" "}
+                        {formatFileSize(
+                          selectedFiles.reduce((sum, f) => sum + f.size, 0),
+                        )}{" "}
+                        / {formatFileSize(MAX_TOTAL_SIZE)}
+                      </p>
+                    </div>
+                    {selectedFiles.length > 1 && (
+                      <button
+                        type="button"
+                        onClick={clearAllFiles}
+                        className="text-sm text-muted-foreground hover:text-foreground"
+                      >
+                        Clear all
+                      </button>
+                    )}
+                  </div>
+
+                  {/* Show directory structure if files are from directory upload */}
+                  {directoryStructure.size > 0 ? (
+                    <div className="space-y-2">
+                      {Array.from(directoryStructure.entries()).map(
+                        ([dir, files]) => (
+                          <div
+                            key={dir}
+                            className="border border-border rounded-md p-2"
+                          >
+                            <div className="flex items-center space-x-2 mb-1">
+                              <Folder className="h-4 w-4 text-muted-foreground" />
+                              <span className="text-sm font-medium">
+                                {dir === "/" ? "Root" : dir}
+                              </span>
+                              <span className="text-xs text-muted-foreground">
+                                ({files.length} files)
+                              </span>
+                            </div>
+                            <div className="ml-6 space-y-1">
+                              {files.map((file, fileIndex) => {
+                                const globalIndex = selectedFiles.indexOf(file);
+                                return (
+                                  <div
+                                    key={fileIndex}
+                                    className="flex items-center justify-between p-1 bg-secondary rounded-md"
+                                  >
+                                    <div className="flex items-center space-x-2">
+                                      <FileCode className="h-3 w-3 text-muted-foreground" />
+                                      <span className="text-xs">
+                                        {file.name}
+                                      </span>
+                                      <span className="text-xs text-muted-foreground">
+                                        ({formatFileSize(file.size)})
+                                      </span>
+                                    </div>
+                                    <button
+                                      type="button"
+                                      onClick={() => removeFile(globalIndex)}
+                                      className="text-muted-foreground hover:text-foreground"
+                                    >
+                                      <X className="h-3 w-3" />
+                                    </button>
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          </div>
+                        ),
+                      )}
+                    </div>
+                  ) : (
+                    <div className="space-y-1">
+                      {selectedFiles.map((file, index) => (
+                        <div
+                          key={index}
+                          className="flex items-center justify-between p-2 bg-secondary rounded-md"
+                        >
+                          <div className="flex items-center space-x-2">
+                            <FileCode className="h-4 w-4 text-muted-foreground" />
+                            <span className="text-sm">{file.name}</span>
+                            <span className="text-xs text-muted-foreground">
+                              ({formatFileSize(file.size)})
+                            </span>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => removeFile(index)}
+                            className="text-muted-foreground hover:text-foreground"
+                          >
+                            <X className="h-4 w-4" />
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+
+            {/* Manual Content Input */}
+            <div>
+              <label htmlFor="content" className="block text-sm font-medium">
+                Or Paste Content Directly
+              </label>
+              <textarea
+                id="content"
+                rows={10}
+                value={pastedContent}
+                onChange={(e) => setPastedContent(e.target.value)}
+                placeholder="Paste your markdown content here..."
+                className="mt-1 w-full px-3 py-2 bg-secondary border border-input rounded-md focus:outline-none focus:ring-2 focus:ring-primary font-mono"
+              />
+              <p className="mt-1 text-sm text-muted-foreground">
+                Paste markdown or code directly for quick uploads without
+                creating a file
+              </p>
+            </div>
+          </>
+        ) : (
+          <>
+            {/* GitHub Repository Form */}
+            <div className="space-y-4">
+              <div>
+                <label htmlFor="repo-url" className="block text-sm font-medium">
+                  Repository URL <span className="text-red-500">*</span>
+                </label>
+                <input
+                  type="text"
+                  id="repo-url"
+                  value={repoUrl}
+                  onChange={(e) => setRepoUrl(e.target.value)}
+                  placeholder="https://github.com/user/repository"
+                  className="mt-1 w-full px-3 py-2 bg-secondary border border-input rounded-md focus:outline-none focus:ring-2 focus:ring-primary"
+                />
+                <p className="mt-1 text-sm text-muted-foreground">
+                  Enter the GitHub repository URL containing markdown
+                  documentation
+                </p>
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label
+                    htmlFor="repo-path"
+                    className="block text-sm font-medium"
+                  >
+                    Path within Repository
+                  </label>
+                  <input
+                    type="text"
+                    id="repo-path"
+                    value={repoPath}
+                    onChange={(e) => setRepoPath(e.target.value)}
+                    placeholder="docs (optional)"
+                    className="mt-1 w-full px-3 py-2 bg-secondary border border-input rounded-md focus:outline-none focus:ring-2 focus:ring-primary"
+                  />
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    Process only this folder
+                  </p>
+                </div>
+
+                <div>
+                  <label
+                    htmlFor="repo-branch"
+                    className="block text-sm font-medium"
+                  >
+                    Branch
+                  </label>
+                  <input
+                    type="text"
+                    id="repo-branch"
+                    value={repoBranch}
+                    onChange={(e) => setRepoBranch(e.target.value)}
+                    placeholder="main"
+                    className="mt-1 w-full px-3 py-2 bg-secondary border border-input rounded-md focus:outline-none focus:ring-2 focus:ring-primary"
+                  />
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    Git branch to clone
+                  </p>
+                </div>
+              </div>
+
+              <div>
+                <label
+                  htmlFor="repo-token"
+                  className="block text-sm font-medium"
+                >
+                  Access Token
+                </label>
+                <input
+                  type="password"
+                  id="repo-token"
+                  value={repoToken}
+                  onChange={(e) => setRepoToken(e.target.value)}
+                  placeholder="ghp_... (for private repos)"
+                  className="mt-1 w-full px-3 py-2 bg-secondary border border-input rounded-md focus:outline-none focus:ring-2 focus:ring-primary"
+                />
+                <p className="mt-1 text-sm text-muted-foreground">
+                  GitHub personal access token for private repositories
+                </p>
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label
+                    htmlFor="repo-include"
+                    className="block text-sm font-medium"
+                  >
+                    Include Patterns
+                  </label>
+                  <input
+                    type="text"
+                    id="repo-include"
+                    value={repoIncludePatterns}
+                    onChange={(e) => setRepoIncludePatterns(e.target.value)}
+                    placeholder="docs/**/*.md, examples/**/*.md"
+                    className="mt-1 w-full px-3 py-2 bg-secondary border border-input rounded-md focus:outline-none focus:ring-2 focus:ring-primary"
+                  />
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    Comma-separated file patterns to include
+                  </p>
+                </div>
+
+                <div>
+                  <label
+                    htmlFor="repo-exclude"
+                    className="block text-sm font-medium"
+                  >
+                    Exclude Patterns
+                  </label>
+                  <input
+                    type="text"
+                    id="repo-exclude"
+                    value={repoExcludePatterns}
+                    onChange={(e) => setRepoExcludePatterns(e.target.value)}
+                    placeholder="**/test/*.md, **/node_modules/**"
+                    className="mt-1 w-full px-3 py-2 bg-secondary border border-input rounded-md focus:outline-none focus:ring-2 focus:ring-primary"
+                  />
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    Comma-separated file patterns to exclude
+                  </p>
+                </div>
+              </div>
+
+              {/* GitHub Info Box */}
+              <div className="rounded-md bg-blue-50 dark:bg-blue-900/20 p-4">
+                <div className="flex">
+                  <GitBranch className="h-5 w-5 text-blue-400 mt-0.5" />
+                  <div className="ml-3 text-sm">
+                    <p className="font-medium text-blue-800 dark:text-blue-200">
+                      Repository Processing
+                    </p>
+                    <ul className="mt-1 text-blue-700 dark:text-blue-300 space-y-1">
+                      <li>• The repository will be cloned temporarily</li>
+                      <li>• Only markdown files will be processed</li>
+                      <li>
+                        • Files are automatically cleaned up after processing
+                      </li>
+                      <li>• Source URLs will link back to GitHub</li>
+                    </ul>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </>
+        )}
 
         {/* Upload Progress */}
         {uploadProgress && (
@@ -665,13 +1032,20 @@ export default function Upload() {
         <div className="flex justify-end">
           <button
             type="submit"
-            disabled={uploading || checkingSource || (selectedFiles.length === 0 && !pastedContent.trim())}
+            disabled={
+              uploading ||
+              checkingSource ||
+              (activeTab === "files" &&
+                selectedFiles.length === 0 &&
+                !pastedContent.trim()) ||
+              (activeTab === "github" && !repoUrl)
+            }
             className="px-6 py-2 bg-primary text-primary-foreground rounded-md hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
           >
             {uploading ? (
               <>
                 <Loader2 className="animate-spin h-4 w-4" />
-                Uploading...
+                {activeTab === "github" ? "Processing..." : "Uploading..."}
               </>
             ) : checkingSource ? (
               <>
@@ -679,19 +1053,31 @@ export default function Upload() {
                 Checking...
               </>
             ) : (
-              'Upload Files'
+              <>
+                {activeTab === "github" ? (
+                  <>
+                    <Github className="h-4 w-4" />
+                    Process Repository
+                  </>
+                ) : (
+                  <>
+                    <UploadIcon className="h-4 w-4" />
+                    Upload Files
+                  </>
+                )}
+              </>
             )}
           </button>
         </div>
       </form>
-      
+
       {/* Confirmation Dialog */}
       <ConfirmationDialog
         isOpen={showConfirmDialog}
         title="Add to Existing Source?"
-        message={`A source named "${existingSourceInfo?.name}" already exists with ${existingSourceInfo?.documentCount} documents and ${existingSourceInfo?.snippetCount} code snippets. 
+        message={`A source named "${existingSourceInfo?.name}"${existingSourceInfo?.version ? ` (version ${existingSourceInfo.version})` : ''} already exists with ${existingSourceInfo?.documentCount} documents and ${existingSourceInfo?.snippetCount} code snippets. 
 
-Your new files will be added to this existing source, allowing you to build a comprehensive documentation library in one place.
+Your new files will be added to this existing source${existingSourceInfo?.version ? ' version' : ''}, allowing you to build a comprehensive documentation library in one place.
 
 Would you like to continue adding to this source?`}
         confirmText="Yes, Add to Existing Source"

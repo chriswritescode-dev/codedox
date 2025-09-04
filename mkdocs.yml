@@ -37,10 +37,14 @@ nav:
     - Installation: getting-started/installation.md
     - Quick Start: getting-started/quickstart.md
   - Features:
+    - Overview: FEATURES.md
     - Web UI: features/webui.md
     - Web Crawling: features/crawling.md
+    - GitHub Processing: features/github.md
+    - File Upload: upload-feature.md
     - Code Extraction: features/extraction.md
     - Search: features/search.md
+    - Markdown Search: features/markdown-fallback-search.md
     - MCP Integration: features/mcp.md
   - API Reference:
     - REST API: api/rest.md

@@ -18,7 +18,7 @@ class DatabaseManager:
 
     def __init__(self, database_url: str | None = None):
         """Initialize database manager.
-        
+
         Args:
             database_url: PostgreSQL connection URL. If not provided, uses settings.
         """
@@ -36,19 +36,15 @@ class DatabaseManager:
             max_overflow=30,  # Increased from 20
             pool_timeout=30,  # Wait max 30 seconds for connection
             pool_recycle=3600,  # Recycle connections after 1 hour
-            echo=False  # Set to True for SQL debugging
+            echo=False,  # Set to True for SQL debugging
         )
 
         # Create session factory
-        self.SessionLocal = sessionmaker(
-            autocommit=False,
-            autoflush=False,
-            bind=self.engine
-        )
+        self.SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=self.engine)
 
     def init_db(self, drop_existing: bool = False) -> None:
         """Initialize database schema.
-        
+
         Args:
             drop_existing: If True, drops all tables before creating.
         """
@@ -61,11 +57,13 @@ class DatabaseManager:
 
             # Check if tables already exist
             with self.engine.connect() as conn:
-                result = conn.execute(text("""
-                    SELECT COUNT(*) FROM information_schema.tables 
-                    WHERE table_schema = 'public' 
+                result = conn.execute(
+                    text("""
+                    SELECT COUNT(*) FROM information_schema.tables
+                    WHERE table_schema = 'public'
                     AND table_name IN ('crawl_jobs', 'documents', 'code_snippets')
-                """))
+                """)
+                )
                 table_count = result.scalar() or 0
 
                 if table_count > 0 and not drop_existing:
@@ -74,7 +72,8 @@ class DatabaseManager:
 
             # Check if schema.sql exists
             import os
-            schema_path = os.path.join(os.path.dirname(__file__), 'schema.sql')
+
+            schema_path = os.path.join(os.path.dirname(__file__), "schema.sql")
 
             if os.path.exists(schema_path):
                 if drop_existing:
@@ -122,7 +121,7 @@ class DatabaseManager:
 
     def execute_sql_file(self, filepath: str) -> None:
         """Execute SQL commands from a file.
-        
+
         Args:
             filepath: Path to SQL file
         """
@@ -136,28 +135,28 @@ class DatabaseManager:
             in_function = False
             in_generated_column = False
 
-            for line in sql_content.split('\n'):
+            for line in sql_content.split("\n"):
                 # Skip comments
-                if line.strip().startswith('--'):
+                if line.strip().startswith("--"):
                     continue
 
-                if 'CREATE OR REPLACE FUNCTION' in line or 'CREATE FUNCTION' in line:
+                if "CREATE OR REPLACE FUNCTION" in line or "CREATE FUNCTION" in line:
                     in_function = True
-                elif 'GENERATED ALWAYS AS' in line:
+                elif "GENERATED ALWAYS AS" in line:
                     in_generated_column = True
-                elif line.strip() == '$$ LANGUAGE plpgsql;':
+                elif line.strip() == "$$ LANGUAGE plpgsql;":
                     in_function = False
                     current.append(line)
-                    statements.append('\n'.join(current))
+                    statements.append("\n".join(current))
                     current = []
                     continue
-                elif in_generated_column and ') STORED' in line:
+                elif in_generated_column and ") STORED" in line:
                     in_generated_column = False
 
                 current.append(line)
 
-                if not in_function and not in_generated_column and line.strip().endswith(';'):
-                    statements.append('\n'.join(current))
+                if not in_function and not in_generated_column and line.strip().endswith(";"):
+                    statements.append("\n".join(current))
                     current = []
 
             # Execute each statement
@@ -174,7 +173,7 @@ class DatabaseManager:
 
     def test_connection(self) -> bool:
         """Test database connection.
-        
+
         Returns:
             True if connection successful, False otherwise.
         """

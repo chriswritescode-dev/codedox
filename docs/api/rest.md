@@ -58,7 +58,16 @@ POST /api/crawl-jobs/{job_id}/resume
 ### Upload
 Upload markdown documentation:
 ```bash
-POST /api/upload
+POST /api/upload/file        # Upload single file
+POST /api/upload/files       # Upload multiple files
+POST /api/upload/markdown    # Upload raw markdown content
+```
+
+### GitHub Repository
+Process GitHub repositories (via CLI):
+```bash
+# CLI command (uses upload system internally)
+python cli.py upload-repo https://github.com/user/repo
 ```
 
 ### Statistics

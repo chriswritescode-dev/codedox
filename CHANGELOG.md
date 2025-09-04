@@ -5,6 +5,23 @@ All notable changes to CodeDox will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+- **GitHub Repository Processing**: Direct cloning and processing of GitHub repositories
+  - Clone entire repositories or specific folders
+  - Support for private repositories with token authentication
+  - Branch selection support
+  - Include/exclude file patterns for selective processing
+  - Automatic cleanup after processing
+  - Source URL generation for each processed file
+- **New CLI Command**: `upload-repo` command for GitHub repository processing
+- **Comprehensive GitHub Documentation**: Added detailed documentation for GitHub features
+
+### Improved
+- **Documentation Structure**: Better organization with dedicated GitHub processing section
+- **Markdown Formatting**: Fixed list formatting issues for better mkdocs rendering
+
 ## [0.2.6] - 2025-01-01
 
 ### Added

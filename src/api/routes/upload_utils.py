@@ -2,6 +2,7 @@
 
 import hashlib
 import logging
+import os
 import re
 
 from fastapi import HTTPException, UploadFile
@@ -13,6 +14,15 @@ from src.database.models import CodeSnippet, Document
 
 logger = logging.getLogger(__name__)
 settings = get_settings()
+
+
+class FileValidationRules:
+    """Centralized file validation configuration."""
+
+    ALLOWED_EXTENSIONS = (".md", ".markdown", ".txt", ".mdx")
+    MAX_FILE_SIZE = 50 * 1024 * 1024  # 50MB
+    MAX_TOTAL_SIZE = 500 * 1024 * 1024  # 500MB
+    BINARY_CHECK_BYTES = 8192
 
 
 def is_binary_content(content: bytes, sample_size: int | None = None) -> bool:
@@ -31,44 +41,85 @@ def is_binary_content(content: bytes, sample_size: int | None = None) -> bool:
     return b"\x00" in content[:sample_size]
 
 
+class TitleExtractor:
+    """Centralized title extraction utilities."""
+
+    @staticmethod
+    def extract_from_content(content: str, max_lines: int | None = None) -> str | None:
+        """Extract title from markdown content (H1 heading).
+
+        Args:
+            content: Markdown content to search
+            max_lines: Maximum number of lines to search (default from config)
+
+        Returns:
+            The H1 title if found, None otherwise
+        """
+        if max_lines is None:
+            max_lines = getattr(settings.upload, "title_search_lines", 10)
+
+        lines = content.split("\n")[:max_lines]
+        for line in lines:
+            if line.strip().startswith("# "):
+                return line.strip()[2:].strip()
+        return None
+
+    @staticmethod
+    def extract_from_url(url: str) -> str:
+        """Extract title from URL path.
+
+        Args:
+            url: URL to extract title from
+
+        Returns:
+            Extracted title or 'Untitled Document'
+        """
+        if url.startswith("file://"):
+            return os.path.basename(url[7:])
+        elif url.startswith("upload://"):
+            parts = url[9:].split("/", 1)
+            if len(parts) > 1:
+                filename = parts[1]
+                if "." in filename:
+                    filename = filename.rsplit(".", 1)[0]
+                return filename
+            return parts[0] if parts else "Untitled Document"
+        return "Untitled Document"
+
+    @staticmethod
+    def resolve(explicit_title: str | None, content: str, url: str) -> str:
+        """Resolve title with priority: explicit -> H1 -> URL.
+
+        Args:
+            explicit_title: Explicitly provided title (highest priority)
+            content: Markdown content to search for H1
+            url: URL to extract fallback title from
+
+        Returns:
+            The resolved title
+        """
+        if explicit_title:
+            return explicit_title
+
+        content_title = TitleExtractor.extract_from_content(content)
+        if content_title:
+            return content_title
+
+        return TitleExtractor.extract_from_url(url)
+
+
+# Keep legacy functions for backward compatibility
 def extract_title_from_markdown(content: str, max_lines: int | None = None) -> str | None:
-    """Extract the first H1 title from markdown content.
-
-    Args:
-        content: Markdown content to search
-        max_lines: Maximum number of lines to search (default from config)
-
-    Returns:
-        The H1 title if found, None otherwise
-    """
-    if max_lines is None:
-        max_lines = settings.upload.title_search_lines
-
-    lines = content.split("\n")[:max_lines]
-
-    for line in lines:
-        if line.strip().startswith("# "):
-            return line.strip()[2:].strip()
-
-    return None
+    """Legacy function - use TitleExtractor.extract_from_content instead."""
+    return TitleExtractor.extract_from_content(content, max_lines)
 
 
 def resolve_document_title(explicit_title: str | None, content: str, fallback_name: str) -> str:
-    """Resolve document title with priority: explicit -> H1 from markdown -> fallback name.
-
-    Args:
-        explicit_title: Explicitly provided title (highest priority)
-        content: Markdown content to search for H1
-        fallback_name: Fallback name if no title found
-
-    Returns:
-        The resolved title
-    """
+    """Legacy function - use TitleExtractor.resolve instead."""
     if explicit_title:
         return explicit_title
-
-    extracted_title = extract_title_from_markdown(content)
-    return extracted_title or fallback_name
+    content_title = TitleExtractor.extract_from_content(content)
+    return content_title or fallback_name
 
 
 async def validate_and_read_file(
@@ -124,33 +175,142 @@ async def validate_and_read_file(
     return content, filename_without_ext
 
 
-def extract_code_blocks_from_markdown(content: str) -> list[SimpleCodeBlock]:
-    """Extract code blocks from markdown content.
+class MarkdownCodeExtractor:
+    """Centralized markdown code block extraction."""
 
-    Args:
-        content: Markdown content
+    # Support both backticks and tildes, with varying counts
+    FENCE_PATTERN = r"(`{3,}|~{3,})(\w*)\n(.*?)\1"
 
-    Returns:
-        List of CodeBlock objects
-    """
-    code_blocks = []
+    @classmethod
+    def extract_blocks(
+        cls,
+        content: str,
+        source_url: str | None = None,
+        include_context: bool = False,
+        metadata: dict | None = None,
+    ) -> list[SimpleCodeBlock]:
+        """Extract code blocks with optional context.
 
-    # Regex to match code blocks with optional language
-    pattern = r"```(\w+)?\n(.*?)```"
-    matches = re.findall(pattern, content, re.DOTALL)
+        Args:
+            content: Markdown content
+            source_url: Optional source URL for blocks
+            include_context: Whether to include surrounding context
+            metadata: Additional metadata to include
 
-    for language, code in matches:
-        if code.strip():
-            code_blocks.append(
-                SimpleCodeBlock(
-                    code=code.strip(),
-                    language=language or "text",
-                    title=None,
-                    description=None,
-                )
+        Returns:
+            List of SimpleCodeBlock objects
+        """
+        blocks = []
+        matches = re.finditer(cls.FENCE_PATTERN, content, re.DOTALL | re.MULTILINE)
+
+        for match in matches:
+            language = match.group(2) or None
+            code = match.group(3).strip()
+
+            if not code:
+                continue
+
+            block = SimpleCodeBlock(
+                code=code,
+                language=language or "text",
+                title=None,
+                description=None,
+                source_url=source_url,
+                metadata=metadata or {"extraction_method": "markdown"},
             )
 
-    return code_blocks
+            if include_context:
+                block.metadata["context_before"] = cls._extract_context(
+                    content, match.start(), before=True
+                )
+                block.metadata["context_after"] = cls._extract_context(
+                    content, match.end(), before=False
+                )
+
+            blocks.append(block)
+
+        return blocks
+
+    @classmethod
+    def _extract_context(
+        cls, content: str, position: int, before: bool = True, max_chars: int = 200
+    ) -> str:
+        """Extract context around a position."""
+        if before:
+            start = max(0, position - max_chars)
+            context = content[start:position].strip()
+        else:
+            end = min(len(content), position + max_chars)
+            context = content[position:end].strip()
+        return context
+
+
+# Keep legacy function for backward compatibility
+def extract_code_blocks_from_markdown(content: str) -> list[SimpleCodeBlock]:
+    """Legacy function - use MarkdownCodeExtractor.extract_blocks instead."""
+    return MarkdownCodeExtractor.extract_blocks(content)
+
+
+class GitHubURLParser:
+    """Centralized GitHub URL parsing utilities."""
+
+    @staticmethod
+    def parse_repo_url(url: str) -> tuple[str, str]:
+        """Extract owner and repo from GitHub URL.
+
+        Args:
+            url: GitHub repository URL
+
+        Returns:
+            Tuple of (owner, repo)
+
+        Raises:
+            ValueError: If URL is invalid
+        """
+        url = url.rstrip(".git")
+        if url.startswith("git@"):
+            url = url.replace("git@github.com:", "https://github.com/")
+
+        # Handle various GitHub URL formats
+        if "github.com" in url:
+            parts = url.split("github.com/")[-1].split("/")
+            if len(parts) >= 2:
+                return parts[0], parts[1].rstrip("/")
+
+        raise ValueError(f"Invalid GitHub URL: {url}")
+
+    @staticmethod
+    def generate_blob_url(repo_url: str, branch: str, path: str) -> str:
+        """Generate GitHub blob URL for a file.
+
+        Args:
+            repo_url: Repository URL
+            branch: Branch name
+            path: File path in repository
+
+        Returns:
+            GitHub blob URL
+        """
+        owner, repo = GitHubURLParser.parse_repo_url(repo_url)
+        # Ensure path doesn't start with /
+        path = path.lstrip("/")
+        return f"https://github.com/{owner}/{repo}/blob/{branch}/{path}"
+
+    @staticmethod
+    def generate_raw_url(repo_url: str, branch: str, path: str) -> str:
+        """Generate GitHub raw content URL.
+
+        Args:
+            repo_url: Repository URL
+            branch: Branch name
+            path: File path in repository
+
+        Returns:
+            GitHub raw content URL
+        """
+        owner, repo = GitHubURLParser.parse_repo_url(repo_url)
+        path = path.lstrip("/")
+        return f"https://raw.githubusercontent.com/{owner}/{repo}/{branch}/{path}"
 
 
 def process_code_snippets(
