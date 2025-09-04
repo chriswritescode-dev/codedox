@@ -12,7 +12,7 @@ interface SearchBarProps {
 
 export const SearchBar = forwardRef<HTMLInputElement, SearchBarProps>(
   ({ onChange, placeholder = "Search sources by name or URL", debounceMs = 300 }) => {
-    let [searchParams] = useSearchParams();
+    const [searchParams] = useSearchParams();
     const urlValue = searchParams.get("q") || "";
     const [localValue, setLocalValue] = useState(urlValue);
 

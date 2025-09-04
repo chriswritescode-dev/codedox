@@ -22,7 +22,6 @@ import {
 import { ConfirmationDialog } from '../components/ConfirmationDialog'
 
 const MAX_TOTAL_SIZE = 500 * 1024 * 1024 // 500MB total size limit
-const BATCH_SIZE = 100 // Upload files in batches of 100
 
 export default function Upload() {
   const navigate = useNavigate();
@@ -201,8 +200,7 @@ export default function Upload() {
         // Group files by directory
         const dirMap = new Map<string, File[]>();
         validFiles.forEach((file) => {
-          // @ts-ignore - webkitRelativePath is not in the File type but exists
-          const path = file.webkitRelativePath || file.name;
+          const path = (file as any).webkitRelativePath || file.name;
           const parts = path.split("/");
           const dirPath = parts.length > 1 ? parts.slice(0, -1).join("/") : "/";
 
@@ -217,8 +215,7 @@ export default function Upload() {
 
         // Set title from directory name if not already set
         if (!title && validFiles.length > 0) {
-          // @ts-ignore
-          const firstPath = validFiles[0].webkitRelativePath || "";
+          const firstPath = (validFiles[0] as any).webkitRelativePath || "";
           const rootDir = firstPath.split("/")[0];
           if (rootDir) {
             setTitle(rootDir);
@@ -326,7 +323,8 @@ export default function Upload() {
 
       // Poll for status
       let status = null;
-      while (true) {
+      let isProcessing = true;
+      while (isProcessing) {
         await new Promise((resolve) => setTimeout(resolve, 2000));
         status = await getGitHubUploadStatus(jobId);
 
@@ -338,19 +336,19 @@ export default function Upload() {
         }
 
         if (status.status === "completed" || status.status === "failed") {
-          break;
+          isProcessing = false;
         }
       }
 
-      if (status.status === "completed") {
+      if (status?.status === "completed") {
         setSuccess(
-          `Successfully processed ${status.processed_files} files with ${status.snippets_extracted} code snippets extracted`,
+          `Successfully processed ${status?.processed_files} files with ${status?.snippets_extracted} code snippets extracted`,
         );
         setTimeout(() => {
           navigate("/sources");
         }, 2000);
       } else {
-        setError(status.error_message || "Repository processing failed");
+        setError(status?.error_message || "Repository processing failed");
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : "GitHub upload failed");
@@ -401,7 +399,7 @@ export default function Upload() {
 
         // Poll for status (same as GitHub upload)
         let status = null;
-        while (true) {
+      while (status?.status !== "completed" && status?.status !== "failed") {
           await new Promise((resolve) => setTimeout(resolve, 2000));
           status = await getUploadStatus(jobId);
 
@@ -693,9 +691,7 @@ export default function Upload() {
                         name="dir-upload"
                         type="file"
                         className="sr-only"
-                        // @ts-ignore - webkitdirectory is not in the type but works
-                        webkitdirectory=""
-                        directory=""
+                        {...{ webkitdirectory: "" } as any}
                         multiple
                         onChange={handleDirectorySelect}
                       />

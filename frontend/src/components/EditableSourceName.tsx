@@ -139,7 +139,7 @@ export const EditableSourceName: React.FC<EditableSourceNameProps> = ({
 
   return (
     <div className={`inline-flex items-center gap-2 group ${className}`}>
-			  <Link 
+      <Link 
           to={`/sources/${id}`} 
           className="text-md text-primary hover:text-primary/80 hover:underline"
           onClick={(e) => e.stopPropagation()}
