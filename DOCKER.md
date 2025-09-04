@@ -149,6 +149,60 @@ docker-compose exec api /bin/bash
 docker-compose logs -f --tail=100
 ```
 
+## Upgrading CodeDox
+
+### Pulling Latest Changes
+
+When updating to a new version of CodeDox:
+
+```bash
+# 1. Stop running containers
+docker-compose down
+
+# 2. Pull latest code
+git pull origin master
+
+# 3. Rebuild images to include new code
+docker-compose build --no-cache
+
+# 4. Start services (migrations run automatically)
+docker-compose up -d
+```
+
+The Docker entrypoint automatically runs database migrations on startup, so schema changes are applied automatically.
+
+### Manual Migration (if needed)
+
+If automatic migration fails or you need to run migrations manually:
+
+```bash
+# Run migrations inside the API container
+docker-compose exec api python migrate.py
+
+# Or run migrations directly against the database
+docker-compose exec api python migrate.py --force
+```
+
+### Checking Migration Status
+
+```bash
+# Check current migration status
+docker-compose exec api python migrate.py status
+```
+
+### Resetting Database (Development Only)
+
+If you encounter persistent issues and need a fresh start:
+
+```bash
+# WARNING: This deletes all data!
+# 1. Stop and remove containers and volumes
+docker-compose down -v
+
+# 2. Start fresh
+docker-compose up -d
+```
+
 ## Testing
 
 Run the automated test script:

@@ -19,14 +19,22 @@ python3 -c 'import psycopg, os; conn = psycopg.connect(host=os.environ["DB_HOST"
   echo "Database initialization complete!"
 }
 
+# Run migrations to handle schema updates
+echo "Checking for schema updates..."
+if [ -f "migrate.py" ]; then
+  echo "Running database migrations..."
+  python migrate.py || {
+    echo "WARNING: Migration failed but continuing. Check logs if issues occur."
+  }
+else
+  echo "No migration script found, skipping migrations."
+fi
+
 # Check for required environment variables
 if [ -z "$CODE_LLM_API_KEY" ]; then
   echo "WARNING: No API key found. Please set CODE_LLM_API_KEY in .env"
   echo "The system will start but LLM features won't work without an API key."
 fi
-
-# Run any pending migrations (if we add migration support in the future)
-# python -m alembic upgrade head
 
 echo "Starting application..."
 exec "$@"
