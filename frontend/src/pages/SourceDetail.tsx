@@ -20,12 +20,11 @@ import { PaginationControls } from "../components/PaginationControls";
 
 export default function SourceDetail() {
   const { id } = useParams<{ id: string }>();
+  const state = useSourceDetail(id || '');
   
   if (!id) {
     return <div>Error: Missing source ID</div>;
   }
-  
-  const state = useSourceDetail(id);
   
   const handleConfirmDelete = () => {
     state.deleteMutation.mutate();

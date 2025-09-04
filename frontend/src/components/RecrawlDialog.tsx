@@ -65,7 +65,7 @@ export function RecrawlDialog({
                   Force regenerate all content
                 </p>
                 <p className="text-xs text-muted-foreground mt-1">
-                  Ignore content hash and regenerate all LLM descriptions even if the page content hasn't changed.
+                  Ignore content hash and regenerate all LLM descriptions even if the page content hasn&apos;t changed.
                 </p>
               </div>
             </label>

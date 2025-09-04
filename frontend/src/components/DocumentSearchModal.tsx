@@ -146,7 +146,7 @@ export const DocumentSearchModal: React.FC<DocumentSearchModalProps> = ({
               </div>
             ) : query && !loading ? (
               <div className="p-8 text-center text-gray-500 dark:text-gray-400">
-                No documents found for "{query}"
+                No documents found for &ldquo;{query}&rdquo;
               </div>
             ) : !query ? (
               <div className="p-8 text-center text-gray-500 dark:text-gray-400">
