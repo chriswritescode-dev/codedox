@@ -36,6 +36,7 @@ nav:
   - Getting Started:
     - Installation: getting-started/installation.md
     - Quick Start: getting-started/quickstart.md
+    - Upgrade Guide: getting-started/upgrade.md
   - Features:
     - Overview: FEATURES.md
     - Web UI: features/webui.md
