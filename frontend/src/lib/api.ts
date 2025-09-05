@@ -593,6 +593,7 @@ class APIClient {
   async getUploadConfig(): Promise<{
     max_file_size: number
     max_total_size: number
+    batch_size: number
   }> {
     return this.fetch('/upload/config')
   }
