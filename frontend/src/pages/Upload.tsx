@@ -51,6 +51,7 @@ export default function Upload() {
       .then(config => {
         setMaxTotalSize(config.max_total_size);
         setMaxFileSize(config.max_file_size);
+        setBatchSize(config.batch_size || 500);
         setConfigLoaded(true);
       })
       .catch(error => {
@@ -70,6 +71,7 @@ export default function Upload() {
   // Upload configuration
   const [maxTotalSize, setMaxTotalSize] = useState<number>(1024 * 1024 * 1024); // 1GB default
   const [maxFileSize, setMaxFileSize] = useState<number>(10 * 1024 * 1024); // 10MB default
+  const [batchSize, setBatchSize] = useState<number>(500); // Files per batch
   const [configLoaded, setConfigLoaded] = useState(false);
 
   const [title, setTitle] = useState("");
@@ -435,10 +437,14 @@ export default function Upload() {
       const uploadName =
         title || `Upload ${new Date().toISOString().split("T")[0]}`;
 
-      // Upload files (now async like GitHub)
+      // Upload files in batches to avoid server limits
       if (selectedFiles.length > 0) {
         const fileCount = selectedFiles.length;
         const dirCount = directoryStructure.size;
+        
+        let totalProcessedFiles = 0;
+        let totalSnippetsExtracted = 0;
+        let jobIds = [];
 
         // Show initial upload progress
         if (dirCount > 0) {
@@ -451,45 +457,60 @@ export default function Upload() {
           );
         }
 
-        // Upload all files at once (server will handle batching internally)
-        const result = await uploadFiles(
-          selectedFiles,
-          uploadName,
-          title || undefined,
-          version || undefined,
-        );
-
-        const jobId = result.job_id;
-        setUploadProgress("Processing files...");
-
-        // Poll for status (same as GitHub upload)
-        let status = null;
-      while (status?.status !== "completed" && status?.status !== "failed") {
-          await new Promise((resolve) => setTimeout(resolve, 2000));
-          status = await getUploadStatus(jobId);
-
-          if (status.processed_files > 0) {
-            setUploadProgress(
-              `Processing files: ${status.processed_files}/${status.file_count}`,
-            );
-            setUploadedCount(status.processed_files);
-          }
-
-          if (status.status === "completed" || status.status === "failed") {
-            break;
-          }
-        }
-
-        if (status.status === "completed") {
-          setSuccess(
-            `Successfully processed ${status.processed_files} files with ${status.snippets_extracted} code snippets extracted`,
+        // Process files in batches
+        for (let i = 0; i < selectedFiles.length; i += batchSize) {
+          const batch = selectedFiles.slice(i, Math.min(i + batchSize, selectedFiles.length));
+          const batchNumber = Math.floor(i / batchSize) + 1;
+          const totalBatches = Math.ceil(selectedFiles.length / batchSize);
+          
+          setUploadProgress(
+            `Uploading batch ${batchNumber}/${totalBatches} (${batch.length} files)...`
           );
-          setTimeout(() => {
-            navigate("/sources");
-          }, 2000);
-        } else {
-          setError(status.error_message || "File processing failed");
+
+          // Upload this batch
+          const result = await uploadFiles(
+            batch,
+            uploadName,
+            title || undefined,
+            version || undefined,
+          );
+
+          jobIds.push(result.job_id);
+          
+          // Poll for this batch's status
+          let status = null;
+          while (status?.status !== "completed" && status?.status !== "failed") {
+            await new Promise((resolve) => setTimeout(resolve, 2000));
+            status = await getUploadStatus(result.job_id);
+
+            if (status.processed_files > 0) {
+              setUploadProgress(
+                `Batch ${batchNumber}/${totalBatches}: Processing ${status.processed_files}/${batch.length} files...`,
+              );
+              setUploadedCount(totalProcessedFiles + status.processed_files);
+            }
+
+            if (status.status === "completed" || status.status === "failed") {
+              break;
+            }
+          }
+
+          if (status.status === "completed") {
+            totalProcessedFiles += status.processed_files;
+            totalSnippetsExtracted += status.snippets_extracted;
+          } else {
+            setError(`Batch ${batchNumber} failed: ${status.error_message || "File processing failed"}`);
+            return;
+          }
         }
+
+        // All batches completed successfully
+        setSuccess(
+          `Successfully processed ${totalProcessedFiles} files with ${totalSnippetsExtracted} code snippets extracted`,
+        );
+        setTimeout(() => {
+          navigate("/sources");
+        }, 2000);
       }
 
       // Upload pasted content if any (this remains synchronous for now)

@@ -35,6 +35,7 @@ async def get_upload_config() -> dict[str, int]:
     return {
         "max_file_size": settings.upload.max_file_size,
         "max_total_size": settings.upload.max_total_size,
+        "batch_size": 500,  # Recommended batch size for file uploads
     }
 
 
@@ -247,7 +248,11 @@ async def upload_files(
     version: str | None = Form(None),
     db: Session = Depends(get_db),
 ) -> dict[str, Any]:
-    """Upload multiple markdown files and process them using the unified UploadProcessor."""
+    """Upload multiple markdown files and process them using the unified UploadProcessor.
+
+    Note: Files should be sent in batches of 500 or less to avoid server limits.
+    The frontend handles automatic batching for larger file sets.
+    """
     try:
         settings = get_settings()
 
