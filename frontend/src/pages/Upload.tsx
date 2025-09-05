@@ -17,11 +17,11 @@ import {
   uploadGitHubRepo,
   getGitHubUploadStatus,
   getUploadStatus,
+  getUploadConfig,
   api,
 } from "../lib/api";
 import { ConfirmationDialog } from '../components/ConfirmationDialog'
 
-const MAX_TOTAL_SIZE = 500 * 1024 * 1024 // 500MB total size limit
 const allowedFileExtensions = ['md', 'txt', 'markdown', 'html', 'htm'];
 
 
@@ -44,6 +44,21 @@ export default function Upload() {
       setSearchParams({ tab: "files" });
     }
   }, [tabParam, setSearchParams]);
+
+  // Fetch upload configuration on mount
+  useEffect(() => {
+    getUploadConfig()
+      .then(config => {
+        setMaxTotalSize(config.max_total_size);
+        setMaxFileSize(config.max_file_size);
+        setConfigLoaded(true);
+      })
+      .catch(error => {
+        console.error("Failed to fetch upload config:", error);
+        // Keep default values if fetch fails but allow uploads
+        setConfigLoaded(true);
+      });
+  }, []);
   
   const [isDragging, setIsDragging] = useState(false);
   const [uploading, setUploading] = useState(false);
@@ -51,6 +66,11 @@ export default function Upload() {
   const [success, setSuccess] = useState<string | null>(null);
   const [uploadProgress, setUploadProgress] = useState<string | null>(null);
   const [uploadedCount, setUploadedCount] = useState(0);
+  
+  // Upload configuration
+  const [maxTotalSize, setMaxTotalSize] = useState<number>(1024 * 1024 * 1024); // 1GB default
+  const [maxFileSize, setMaxFileSize] = useState<number>(10 * 1024 * 1024); // 10MB default
+  const [configLoaded, setConfigLoaded] = useState(false);
 
   const [title, setTitle] = useState("");
   const [version, setVersion] = useState("");
@@ -81,6 +101,33 @@ export default function Upload() {
   >(null);
   const [checkingSource, setCheckingSource] = useState(false);
 
+  // Validation helper functions
+  const validateFileSize = useCallback((files: File[]): { valid: File[]; oversized: File[] } => {
+    const valid: File[] = [];
+    const oversized: File[] = [];
+    
+    files.forEach(file => {
+      if (file.size > maxFileSize) {
+        oversized.push(file);
+      } else {
+        valid.push(file);
+      }
+    });
+    
+    return { valid, oversized };
+  }, [maxFileSize]);
+
+  const validateTotalSize = useCallback((newFiles: File[]): string | null => {
+    const currentSize = selectedFiles.reduce((sum, f) => sum + f.size, 0);
+    const newSize = newFiles.reduce((sum, f) => sum + f.size, 0);
+    const totalSize = currentSize + newSize;
+    
+    if (totalSize > maxTotalSize) {
+      return `Total file size exceeds ${formatFileSize(maxTotalSize)} limit. Current total: ${formatFileSize(totalSize)}`;
+    }
+    return null;
+  }, [selectedFiles, maxTotalSize]);
+
   const handleDragEnter = useCallback((e: React.DragEvent) => {
     e.preventDefault();
     e.stopPropagation();
@@ -105,22 +152,29 @@ export default function Upload() {
       setIsDragging(false);
 
       const files = Array.from(e.dataTransfer.files);
-      const validFiles = files.filter(
+      const validExtFiles = files.filter(
         (file) =>
           file.type === "text/markdown" ||
           file.type === "text/plain" || file.type === "text/html" ||
           allowedFileExtensions.some(ext => file.name.endsWith(`.${ext}`))
       );
 
-      if (validFiles.length > 0) {
-        // Check total size limit
-        const currentSize = selectedFiles.reduce((sum, f) => sum + f.size, 0);
-        const newSize = validFiles.reduce((sum, f) => sum + f.size, 0);
-        const totalSize = currentSize + newSize;
-        if (totalSize > MAX_TOTAL_SIZE) {
+      if (validExtFiles.length > 0) {
+        // Check individual file sizes
+        const { valid: validFiles, oversized } = validateFileSize(validExtFiles);
+        
+        if (oversized.length > 0) {
+          const oversizedNames = oversized.map(f => `${f.name} (${formatFileSize(f.size)})`).join(', ');
           setError(
-            `Total file size exceeds ${formatFileSize(MAX_TOTAL_SIZE)} limit. Current total: ${formatFileSize(totalSize)}`,
+            `The following files exceed the ${formatFileSize(maxFileSize)} file size limit: ${oversizedNames}`
           );
+          return;
+        }
+
+        // Check total size limit
+        const sizeError = validateTotalSize(validFiles);
+        if (sizeError) {
+          setError(sizeError);
           return;
         }
 
@@ -134,13 +188,13 @@ export default function Upload() {
         );
       }
     },
-    [title],
+    [title, selectedFiles, maxTotalSize, maxFileSize, validateFileSize, validateTotalSize],
   );
 
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files;
     if (files && files.length > 0) {
-      const validFiles = Array.from(files).filter(
+      const validExtFiles = Array.from(files).filter(
         (file) =>
           file.type === "text/markdown" ||
           file.type === "text/plain" ||
@@ -148,15 +202,22 @@ export default function Upload() {
           allowedFileExtensions.some(ext => file.name.endsWith(`.${ext}`))
       );
 
-      if (validFiles.length > 0) {
-        // Check total size limit
-        const currentSize = selectedFiles.reduce((sum, f) => sum + f.size, 0);
-        const newSize = validFiles.reduce((sum, f) => sum + f.size, 0);
-        const totalSize = currentSize + newSize;
-        if (totalSize > MAX_TOTAL_SIZE) {
+      if (validExtFiles.length > 0) {
+        // Check individual file sizes
+        const { valid: validFiles, oversized } = validateFileSize(validExtFiles);
+        
+        if (oversized.length > 0) {
+          const oversizedNames = oversized.map(f => `${f.name} (${formatFileSize(f.size)})`).join(', ');
           setError(
-            `Total file size exceeds ${formatFileSize(MAX_TOTAL_SIZE)} limit. Current total: ${formatFileSize(totalSize)}`,
+            `The following files exceed the ${formatFileSize(maxFileSize)} file size limit: ${oversizedNames}`
           );
+          return;
+        }
+
+        // Check total size limit
+        const sizeError = validateTotalSize(validFiles);
+        if (sizeError) {
+          setError(sizeError);
           return;
         }
 
@@ -177,20 +238,27 @@ export default function Upload() {
     const files = e.target.files;
     if (files && files.length > 0) {
       const fileArray = Array.from(files);
-      const validFiles = fileArray.filter(
+      const validExtFiles = fileArray.filter(
         (file) =>
           allowedFileExtensions.some(ext => file.name.endsWith(`.${ext}`))
       );
 
-      if (validFiles.length > 0) {
-        // Check total size limit
-        const currentSize = selectedFiles.reduce((sum, f) => sum + f.size, 0);
-        const newSize = validFiles.reduce((sum, f) => sum + f.size, 0);
-        const totalSize = currentSize + newSize;
-        if (totalSize > MAX_TOTAL_SIZE) {
+      if (validExtFiles.length > 0) {
+        // Check individual file sizes
+        const { valid: validFiles, oversized } = validateFileSize(validExtFiles);
+        
+        if (oversized.length > 0) {
+          const oversizedNames = oversized.map(f => `${f.name} (${formatFileSize(f.size)})`).join(', ');
           setError(
-            `Total file size exceeds ${formatFileSize(MAX_TOTAL_SIZE)} limit. Current total: ${formatFileSize(totalSize)}`,
+            `The following files exceed the ${formatFileSize(maxFileSize)} file size limit: ${oversizedNames}`
           );
+          return;
+        }
+
+        // Check total size limit
+        const sizeError = validateTotalSize(validFiles);
+        if (sizeError) {
+          setError(sizeError);
           return;
         }
 
@@ -676,6 +744,7 @@ export default function Upload() {
                         accept=".md,.txt,.markdown,.html,.htm,text/markdown,text/plain,text/html"
                         onChange={handleFileSelect}
                         multiple
+                        disabled={!configLoaded}
                       />
                     </label>
                     <span className="text-muted-foreground"> or </span>
@@ -691,6 +760,7 @@ export default function Upload() {
                         {...{ webkitdirectory: "" } as any}
                         multiple
                         onChange={handleDirectorySelect}
+                        disabled={!configLoaded}
                       />
                     </label>
                     <span className="text-muted-foreground">
@@ -717,7 +787,7 @@ export default function Upload() {
                         {formatFileSize(
                           selectedFiles.reduce((sum, f) => sum + f.size, 0),
                         )}{" "}
-                        / {formatFileSize(MAX_TOTAL_SIZE)}
+                        / {formatFileSize(maxTotalSize)}
                       </p>
                     </div>
                     {selectedFiles.length > 1 && (
@@ -1026,6 +1096,7 @@ export default function Upload() {
           <button
             type="submit"
             disabled={
+              !configLoaded ||
               uploading ||
               checkingSource ||
               (activeTab === "files" &&
