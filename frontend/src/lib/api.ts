@@ -491,7 +491,8 @@ class APIClient {
   async uploadFile(
     file: File,
     name: string,
-    title?: string
+    title?: string,
+    maxConcurrent?: number
   ): Promise<{
     status: string
     document_id: string
@@ -502,6 +503,7 @@ class APIClient {
     formData.append('file', file)
     if (name) formData.append('name', name)
     if (title) formData.append('title', title)
+    if (maxConcurrent) formData.append('max_concurrent', maxConcurrent.toString())
 
     return this.fetch('/upload/file', {
       method: 'POST',
@@ -513,7 +515,8 @@ class APIClient {
     files: File[],
     name: string,
     title?: string,
-    version?: string
+    version?: string,
+    maxConcurrent?: number
   ): Promise<{
     status: string
     job_id: string
@@ -527,6 +530,7 @@ class APIClient {
     formData.append('name', name) // Always append name to ensure consistent source
     if (title) formData.append('title', title)
     if (version) formData.append('version', version)
+    if (maxConcurrent) formData.append('max_concurrent', maxConcurrent.toString())
 
     return this.fetch('/upload/files', {
       method: 'POST',
@@ -543,6 +547,7 @@ class APIClient {
     token?: string
     include_patterns?: string[]
     exclude_patterns?: string[]
+    max_concurrent?: number
   }): Promise<{
     status: string
     job_id: string

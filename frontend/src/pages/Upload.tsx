@@ -10,6 +10,7 @@ import {
   Folder,
   GitBranch,
   Github,
+  ArrowUp,
 } from "lucide-react";
 import {
   uploadMarkdown,
@@ -45,6 +46,22 @@ export default function Upload() {
     }
   }, [tabParam, setSearchParams]);
 
+  // Scroll detection for back-to-top button
+  useEffect(() => {
+    const handleScroll = () => {
+      const scrollTop = window.scrollY || document.documentElement.scrollTop;
+      setShowBackToTop(scrollTop > 100);
+    };
+
+    window.addEventListener('scroll', handleScroll);
+    // Initial check
+    handleScroll();
+
+    return () => {
+      window.removeEventListener('scroll', handleScroll);
+    };
+  }, []);
+
   // Fetch upload configuration on mount
   useEffect(() => {
     getUploadConfig()
@@ -73,6 +90,7 @@ export default function Upload() {
   const [maxFileSize, setMaxFileSize] = useState<number>(10 * 1024 * 1024); // 10MB default
   const [batchSize, setBatchSize] = useState<number>(500); // Files per batch
   const [configLoaded, setConfigLoaded] = useState(false);
+  const [maxConcurrent, setMaxConcurrent] = useState<number>(10); // Default concurrent file processing
 
   const [title, setTitle] = useState("");
   const [version, setVersion] = useState("");
@@ -102,6 +120,8 @@ export default function Upload() {
     (() => Promise<void>) | null
   >(null);
   const [checkingSource, setCheckingSource] = useState(false);
+  
+  const [showBackToTop, setShowBackToTop] = useState(false);
 
   // Validation helper functions
   const validateFileSize = useCallback((files: File[]): { valid: File[]; oversized: File[] } => {
@@ -383,6 +403,7 @@ export default function Upload() {
         token: repoToken || undefined,
         include_patterns: includePatterns,
         exclude_patterns: excludePatterns,
+        max_concurrent: maxConcurrent,
       });
 
       const jobId = result.job_id;
@@ -473,6 +494,7 @@ export default function Upload() {
             uploadName,
             title || undefined,
             version || undefined,
+            maxConcurrent,
           );
 
           jobIds.push(result.job_id);
@@ -603,6 +625,13 @@ export default function Upload() {
     setPendingUpload(null);
   };
 
+  const scrollToTop = () => {
+    window.scrollTo({
+      top: 0,
+      behavior: 'smooth'
+    });
+  };
+
   return (
     <div className="space-y-6 mb-8">
       <div>
@@ -687,7 +716,79 @@ export default function Upload() {
         </div>
       )}
 
-      <form onSubmit={handleSubmit} className="space-y-6 mb-20">
+      <form 
+  onSubmit={handleSubmit} 
+  className="space-y-6 mb-20"
+        >
+        {/* Sticky Upload Header */}
+        <div className="sticky top-0 z-10 bg-background border-b border-border py-4 -mx-6 px-6">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-4">
+              <div>
+                <h2 className="text-lg font-semibold">
+                  {activeTab === "files" ? "Files Upload" : "GitHub Repository"}
+                </h2>
+                <p className="text-sm text-muted-foreground">
+                  {activeTab === "files" 
+                    ? `${selectedFiles.length} file${selectedFiles.length !== 1 ? 's' : ''} selected`
+                    : "Configure repository settings"
+                  }
+                </p>
+              </div>
+              {/* Back to top button - only visible when scrolled */}
+              {showBackToTop && (
+                <button
+                  type="button"
+                  onClick={scrollToTop}
+                  className="p-2 text-black hover:text-foreground bg-gray-100 transition-colors rounded-md hover:bg-secondary"
+                  title="Back to top"
+                >
+                  <ArrowUp className="h-4 w-4" />
+                </button>
+              )}
+            </div>
+            <button
+              type="submit"
+              disabled={
+                !configLoaded ||
+                uploading ||
+                checkingSource ||
+                (activeTab === "files" &&
+                  selectedFiles.length === 0 &&
+                  !pastedContent.trim()) ||
+                (activeTab === "github" && !repoUrl)
+              }
+              className="px-6 py-2 bg-primary text-primary-foreground rounded-md hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+            >
+              {uploading ? (
+                <>
+                  <Loader2 className="animate-spin h-4 w-4" />
+                  {activeTab === "github" ? "Processing..." : "Uploading..."}
+                </>
+              ) : checkingSource ? (
+                <>
+                  <Loader2 className="animate-spin h-4 w-4" />
+                  Checking...
+                </>
+              ) : (
+                <>
+                  {activeTab === "github" ? (
+                    <>
+                      <Github className="h-4 w-4" />
+                      Process Repository
+                    </>
+                  ) : (
+                    <>
+                      <UploadIcon className="h-4 w-4" />
+                      Upload Files
+                    </>
+                  )}
+                </>
+              )}
+            </button>
+          </div>
+        </div>
+
         {/* Title Input - Common for both tabs */}
         <div>
           <label htmlFor="title" className="block text-sm font-medium">
@@ -729,6 +830,31 @@ export default function Upload() {
           />
           <p className="mt-1 text-sm text-muted-foreground">
             Specify a version to maintain multiple versions of the same documentation
+          </p>
+        </div>
+
+        {/* Concurrent Files Input - Common for both tabs */}
+        <div>
+          <label htmlFor="maxConcurrent" className="block text-sm font-medium">
+            Concurrent File Processing{" "}
+            <span className="text-muted-foreground text-xs">(advanced)</span>
+          </label>
+          <input
+            type="number"
+            id="maxConcurrent"
+            min="1"
+            max="50"
+            value={maxConcurrent}
+            onChange={(e) => {
+              const value = parseInt(e.target.value);
+              if (!isNaN(value) && value >= 1 && value <= 50) {
+                setMaxConcurrent(value);
+              }
+            }}
+            className="mt-1 w-full px-3 py-2 bg-secondary border border-input rounded-md focus:outline-none focus:ring-2 focus:ring-primary"
+          />
+          <p className="mt-1 text-sm text-muted-foreground">
+            Number of files to process simultaneously. Higher values speed up processing but use more resources (default: 10)
           </p>
         </div>
 
@@ -1111,49 +1237,6 @@ export default function Upload() {
             </div>
           </div>
         )}
-
-        {/* Submit Button */}
-        <div className="flex justify-end">
-          <button
-            type="submit"
-            disabled={
-              !configLoaded ||
-              uploading ||
-              checkingSource ||
-              (activeTab === "files" &&
-                selectedFiles.length === 0 &&
-                !pastedContent.trim()) ||
-              (activeTab === "github" && !repoUrl)
-            }
-            className="px-6 py-2 bg-primary text-primary-foreground rounded-md hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
-          >
-            {uploading ? (
-              <>
-                <Loader2 className="animate-spin h-4 w-4" />
-                {activeTab === "github" ? "Processing..." : "Uploading..."}
-              </>
-            ) : checkingSource ? (
-              <>
-                <Loader2 className="animate-spin h-4 w-4" />
-                Checking...
-              </>
-            ) : (
-              <>
-                {activeTab === "github" ? (
-                  <>
-                    <Github className="h-4 w-4" />
-                    Process Repository
-                  </>
-                ) : (
-                  <>
-                    <UploadIcon className="h-4 w-4" />
-                    Upload Files
-                  </>
-                )}
-              </>
-            )}
-          </button>
-        </div>
       </form>
 
       {/* Confirmation Dialog */}
