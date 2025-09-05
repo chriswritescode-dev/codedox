@@ -216,7 +216,7 @@ class UploadConfig(BaseSettings):
         description="Maximum file size in bytes",
     )
     max_total_size: int = Field(
-        default=500 * 1024 * 1024,  # 500MB
+        default=1024 * 1024 * 1024,  # 1GB
         description="Maximum total size for batch uploads in bytes",
     )
     title_search_lines: int = Field(

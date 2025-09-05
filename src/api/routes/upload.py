@@ -28,6 +28,16 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/upload", tags=["upload"])
 
 
+@router.get("/config")
+async def get_upload_config() -> dict[str, int]:
+    """Get upload configuration limits."""
+    settings = get_settings()
+    return {
+        "max_file_size": settings.upload.max_file_size,
+        "max_total_size": settings.upload.max_total_size,
+    }
+
+
 class UploadMarkdownRequest(BaseModel):
     """Request model for uploading markdown content."""
 
@@ -177,39 +187,41 @@ async def upload_file(
     """Upload a markdown or HTML file for processing."""
     try:
         content_str, filename_without_ext = await validate_and_read_file(file)
-        
+
         # Determine content type based on file extension
         content_type = "markdown"
         if file.filename:
             ext = os.path.splitext(file.filename)[1].lower()
             if ext in [".html", ".htm"]:
                 content_type = "html"
-        
+
         # For HTML files, use the UploadProcessor
         if content_type == "html":
             from ...crawler.upload_processor import UploadConfig, UploadProcessor
-            
+
             processor = UploadProcessor()
             config = UploadConfig(
                 name=name or title or filename_without_ext,
-                files=[{
-                    "path": file.filename or "upload.html",
-                    "content": content_str,
-                    "source_url": f"upload://{file.filename or 'upload.html'}",
-                    "content_type": "html"
-                }],
-                use_llm=True
+                files=[
+                    {
+                        "path": file.filename or "upload.html",
+                        "content": content_str,
+                        "source_url": f"upload://{file.filename or 'upload.html'}",
+                        "content_type": "html",
+                    }
+                ],
+                use_llm=True,
             )
-            
+
             job_id = await processor.process_upload(config)
-            
+
             # Wait for completion or return job ID
             return {
                 "status": "processing",
                 "job_id": job_id,
-                "message": f"HTML file upload started for {name or filename_without_ext}"
+                "message": f"HTML file upload started for {name or filename_without_ext}",
             }
-        
+
         # Process markdown files as before
         final_name = name or title or filename_without_ext
         request = UploadMarkdownRequest(
@@ -248,7 +260,7 @@ async def upload_files(
             if file.size and file.size > settings.upload.max_file_size:
                 raise HTTPException(
                     status_code=400,
-                    detail=f"File '{file.filename}' exceeds {settings.upload.max_file_size / (1024 * 1024):.0f}MB limit",
+                    detail=f"File '{file.filename}' exceeds {settings.upload.max_file_size / (1024 * 1024):.1f}MB limit",
                 )
             if file.size:
                 total_size += file.size
@@ -256,7 +268,7 @@ async def upload_files(
         if total_size > settings.upload.max_total_size:
             raise HTTPException(
                 status_code=400,
-                detail=f"Total file size ({total_size / (1024 * 1024):.1f}MB) exceeds {settings.upload.max_total_size / (1024 * 1024):.0f}MB limit",
+                detail=f"Total file size ({total_size / (1024 * 1024):.1f}MB) exceeds {settings.upload.max_total_size / (1024 * 1024):.1f}MB limit",
             )
 
         # Prepare files data for UploadProcessor

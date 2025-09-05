@@ -589,6 +589,13 @@ class APIClient {
     // Legacy method - redirects to unified status endpoint
     return this.getUploadStatus(jobId)
   }
+
+  async getUploadConfig(): Promise<{
+    max_file_size: number
+    max_total_size: number
+  }> {
+    return this.fetch('/upload/config')
+  }
 }
 
 export const api = new APIClient()
@@ -600,3 +607,4 @@ export const uploadFiles = api.uploadFiles.bind(api)
 export const uploadGitHubRepo = api.uploadGitHubRepo.bind(api)
 export const getUploadStatus = api.getUploadStatus.bind(api)
 export const getGitHubUploadStatus = api.getGitHubUploadStatus.bind(api)
+export const getUploadConfig = api.getUploadConfig.bind(api)
