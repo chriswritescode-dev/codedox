@@ -29,6 +29,7 @@ class GitHubRepoConfig:
     include_patterns: list[str] | None = None
     exclude_patterns: list[str] | None = None
     cleanup: bool = True
+    max_concurrent: int | None = None
 
     def __post_init__(self):
         """Parse GitHub URL to extract branch and path if present."""
@@ -137,6 +138,7 @@ class GitHubProcessor:
                 },
                 extract_code_only=True,
                 use_llm=True,
+                max_concurrent_files=config.max_concurrent,
             )
 
             job_id = await self.upload_processor.process_upload(upload_config)

@@ -34,6 +34,7 @@ class UploadConfig:
     version: str | None = None
     extract_code_only: bool = True
     use_llm: bool = True
+    max_concurrent_files: int | None = None
 
 
 @dataclass
@@ -136,47 +137,138 @@ class UploadProcessor:
             # Start tracking
             await self.progress_tracker.start_tracking(job_id)
 
+            # Determine concurrent processing limit
+            max_concurrent = (
+                config.max_concurrent_files or self.settings.crawling.max_concurrent_crawls
+            )
+            semaphore = asyncio.Semaphore(max_concurrent)
+            logger.info(
+                f"Processing {len(config.files)} files with max_concurrent={max_concurrent}"
+            )
+
+            # Thread-safe counters for progress tracking
             total_snippets = 0
             processed_files = 0
+            skipped_files = 0
+            progress_lock = asyncio.Lock()
 
-            # Process each file
-            for file_info in config.files:
-                # Extract code blocks
-                result = await self._process_file(
-                    file_info["content"],
-                    file_info["source_url"],
-                    file_info.get("content_type", "markdown"),
-                )
+            async def process_single_file(file_info: dict[str, Any]) -> tuple[int, int]:
+                """Process a single file and return (doc_id, snippet_count)."""
+                nonlocal total_snippets, processed_files, skipped_files
 
-                if result.error:
-                    logger.error(f"Failed to process {file_info['source_url']}: {result.error}")
-                    continue
-
-                # Generate LLM descriptions if enabled
-                if config.use_llm and self.description_generator and result.code_blocks:
+                async with semaphore:
                     try:
-                        result.code_blocks = (
-                            await self.description_generator.generate_titles_and_descriptions_batch(
-                                result.code_blocks, result.source_url, max_concurrent=5
+                        source_url = file_info["source_url"]
+
+                        # Calculate content hash first to check for duplicates
+                        content_hash = hashlib.md5(file_info["content"].encode()).hexdigest()
+
+                        # Check if this file has already been processed
+                        with self.db_manager.session_scope() as session:
+                            from ..database import check_content_hash
+
+                            content_unchanged, existing_snippet_count = check_content_hash(
+                                session, source_url, content_hash
                             )
+
+                            if content_unchanged:
+                                logger.info(
+                                    f"Content unchanged for {source_url} (hash: {content_hash[:8]}...), skipping processing. Using {existing_snippet_count} existing snippets."
+                                )
+
+                                # Update counters for skipped file
+                                async with progress_lock:
+                                    total_snippets += existing_snippet_count
+                                    processed_files += 1
+                                    skipped_files += 1
+
+                                    # Update progress
+                                    await self.progress_tracker.update_progress(
+                                        job_id,
+                                        processed_pages=processed_files,
+                                        total_pages=len(config.files),
+                                        snippets_extracted=total_snippets,
+                                        documents_crawled=processed_files,
+                                        send_notification=True,
+                                    )
+
+                                return 0, existing_snippet_count
+
+                        # Content is new or changed, process it
+                        result = await self._process_file(
+                            file_info["content"],
+                            source_url,
+                            file_info.get("content_type", "markdown"),
                         )
+
+                        if result.error:
+                            logger.error(f"Failed to process {source_url}: {result.error}")
+                            return 0, 0
+
+                        # Generate LLM descriptions if enabled
+                        if config.use_llm and self.description_generator and result.code_blocks:
+                            try:
+                                result.code_blocks = await self.description_generator.generate_titles_and_descriptions_batch(
+                                    result.code_blocks, result.source_url, max_concurrent=5
+                                )
+                            except Exception as e:
+                                logger.warning(
+                                    f"LLM description generation failed for {source_url}: {e}"
+                                )
+
+                        # Store in database
+                        doc_id, snippet_count = await self._store_result(result, job_id)
+
+                        # Update counters thread-safely
+                        async with progress_lock:
+                            total_snippets += snippet_count
+                            processed_files += 1
+
+                            # Update progress
+                            await self.progress_tracker.update_progress(
+                                job_id,
+                                processed_pages=processed_files,
+                                total_pages=len(config.files),
+                                snippets_extracted=total_snippets,
+                                documents_crawled=processed_files,
+                                send_notification=True,
+                            )
+
+                        return doc_id, snippet_count
+
                     except Exception as e:
-                        logger.warning(f"LLM description generation failed: {e}")
+                        logger.error(f"Failed to process file {file_info['source_url']}: {e}")
+                        async with progress_lock:
+                            processed_files += 1
+                            # Update progress even on failure
+                            await self.progress_tracker.update_progress(
+                                job_id,
+                                processed_pages=processed_files,
+                                total_pages=len(config.files),
+                                snippets_extracted=total_snippets,
+                                documents_crawled=processed_files,
+                                send_notification=True,
+                            )
+                        return 0, 0
 
-                # Store in database
-                doc_id, snippet_count = await self._store_result(result, job_id)
+            # Process all files concurrently
+            tasks = [process_single_file(file_info) for file_info in config.files]
+            results = await asyncio.gather(*tasks, return_exceptions=True)
 
-                total_snippets += snippet_count
-                processed_files += 1
+            # Log any exceptions that occurred during processing
+            for i, result in enumerate(results):
+                if isinstance(result, Exception):
+                    logger.error(
+                        f"Exception processing file {config.files[i]['source_url']}: {result}"
+                    )
 
-                # Update progress
-                await self.progress_tracker.update_progress(
-                    job_id,
-                    processed_pages=processed_files,
-                    total_pages=len(config.files),
-                    snippets_extracted=total_snippets,
-                    documents_crawled=processed_files,
-                    send_notification=True,
+            # Log efficiency if any files were skipped
+            if skipped_files > 0:
+                efficiency_pct = (
+                    (skipped_files / processed_files) * 100 if processed_files > 0 else 0
+                )
+                logger.info(
+                    f"[UPLOAD EFFICIENCY] Skipped {skipped_files}/{processed_files} files ({efficiency_pct:.1f}%) as unchanged. Total snippets: {total_snippets}"
                 )
 
             # Complete job

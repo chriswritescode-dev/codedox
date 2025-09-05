@@ -24,6 +24,7 @@ from .upload_utils import (
 )
 
 logger = logging.getLogger(__name__)
+settings = get_settings()
 
 router = APIRouter(prefix="/upload", tags=["upload"])
 
@@ -181,8 +182,9 @@ async def upload_markdown(
 @router.post("/file")
 async def upload_file(
     file: UploadFile = File(...),
-    name: str | None = Form(None, description="Name for this upload batch"),
-    title: str | None = Form(None, description="Optional title"),
+    name: str | None = Form(None),
+    title: str | None = Form(None),
+    max_concurrent: int | None = Form(None),
     db: Session = Depends(get_db),
 ) -> dict[str, Any]:
     """Upload a markdown or HTML file for processing."""
@@ -212,6 +214,7 @@ async def upload_file(
                     }
                 ],
                 use_llm=True,
+                max_concurrent_files=max_concurrent or settings.crawling.max_concurrent_crawls,
             )
 
             job_id = await processor.process_upload(config)
@@ -246,6 +249,7 @@ async def upload_files(
     name: str | None = Form(None),
     title: str | None = Form(None),
     version: str | None = Form(None),
+    max_concurrent: int | None = Form(None),
     db: Session = Depends(get_db),
 ) -> dict[str, Any]:
     """Upload multiple markdown files and process them using the unified UploadProcessor.
@@ -342,6 +346,7 @@ async def upload_files(
             },
             extract_code_only=True,
             use_llm=True,
+            max_concurrent_files=max_concurrent or settings.crawling.max_concurrent_crawls,
         )
 
         # Process upload asynchronously (returns job_id immediately)
@@ -373,6 +378,9 @@ class UploadGitHubRepoRequest(BaseModel):
     token: str | None = Field(None, description="GitHub personal access token for private repos")
     include_patterns: list[str] | None = Field(None, description="Include file patterns")
     exclude_patterns: list[str] | None = Field(None, description="Exclude file patterns")
+    max_concurrent: int | None = Field(
+        None, description="Maximum number of files to process concurrently"
+    )
 
 
 @router.post("/github")
@@ -400,6 +408,7 @@ async def upload_github_repo(
             include_patterns=request.include_patterns,
             exclude_patterns=request.exclude_patterns,
             cleanup=True,
+            max_concurrent=request.max_concurrent,
         )
 
         processor = GitHubProcessor()
