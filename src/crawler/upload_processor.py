@@ -7,8 +7,12 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Any
 
+from crawl4ai import AsyncWebCrawler, CacheMode, CrawlerRunConfig
+from crawl4ai.markdown_generation_strategy import DefaultMarkdownGenerator
+
 from ..config import get_settings
 from ..database import CodeSnippet, Document, UploadJob, get_db_manager
+from .config import create_browser_config
 from .extraction_models import SimpleCodeBlock
 from .html_code_extractor import HTMLCodeExtractor
 from .llm_retry import LLMDescriptionGenerator
@@ -55,6 +59,9 @@ class UploadProcessor:
         self.html_extractor = HTMLCodeExtractor()
         self.result_processor = ResultProcessor()
         self.progress_tracker = ProgressTracker(self)
+
+        # Initialize browser config for HTML processing
+        self.browser_config = create_browser_config()
 
         # Initialize LLM generator if API key is available
         self.description_generator = None
@@ -186,21 +193,62 @@ class UploadProcessor:
     async def _process_file(self, content: str, source_url: str, content_type: str) -> UploadResult:
         """Process a single file and extract code blocks."""
         try:
-            # Calculate content hash
+            # Calculate content hash from original content
             content_hash = hashlib.md5(content.encode()).hexdigest()
 
-            # Extract title from content or URL
-            title = self._extract_title(content, source_url)
+            # Initialize metadata
+            metadata = {"content_type": content_type}
 
-            # Initialize code blocks list
-            code_blocks = []
-
-            # Extract code blocks based on content type
+            # Process based on content type
             if content_type == "html":
-                # Pass HTML content directly to extractor (it creates soup internally)
-                extracted_blocks = self.html_extractor.extract_code_blocks(content, source_url)
+                # Process HTML through Crawl4AI for consistent extraction
+                # Use the same approach as the page crawler
+
+                # Create crawler config with markdown generation
+                crawler_config = CrawlerRunConfig(
+                    cache_mode=CacheMode.BYPASS,
+                    verbose=False,
+                    markdown_generator=DefaultMarkdownGenerator(
+                        content_source="raw_html", options={"ignore_links": False}
+                    ),
+                )
+
+                # Process HTML through Crawl4AI using raw: prefix
+                async with AsyncWebCrawler(config=self.browser_config) as crawler:
+                    # Use raw: prefix to process HTML content directly
+                    raw_url = f"raw:{content}"
+                    result = await crawler.arun(url=raw_url, config=crawler_config)
+
+                    if not result.success:
+                        error_msg = f"Crawl4AI processing failed for {source_url}"
+                        logger.error(error_msg)
+                        raise ValueError(error_msg)
+
+                    # Extract markdown content from result
+                    if hasattr(result, "markdown"):
+                        if hasattr(result.markdown, "raw_markdown"):
+                            markdown_content = result.markdown.raw_markdown
+                        elif hasattr(result.markdown, "markdown_v2"):
+                            markdown_content = result.markdown.markdown_v2.raw_markdown
+                        else:
+                            markdown_content = str(result.markdown) if result.markdown else ""
+                    else:
+                        markdown_content = ""
+
+                    # Get title from metadata or extract from content
+                    title = None
+                    if hasattr(result, "metadata") and result.metadata:
+                        title = result.metadata.get("title", "")
+
+                    if not title:
+                        title = self._extract_title(markdown_content, source_url)
+
+                    # Extract code blocks from the original HTML content
+                    # (not the cleaned version from Crawl4AI which might lose language classes)
+                    extracted_blocks = self.html_extractor.extract_code_blocks(content, source_url)
 
                 # Convert to SimpleCodeBlock format
+                code_blocks = []
                 for block in extracted_blocks:
                     simple_block = SimpleCodeBlock(
                         code=block.code,
@@ -214,8 +262,11 @@ class UploadProcessor:
                         },
                     )
                     code_blocks.append(simple_block)
+
             else:
-                # For markdown and other text formats, extract code blocks
+                # For markdown and other text formats
+                markdown_content = content
+                title = self._extract_title(content, source_url)
                 code_blocks = self._extract_markdown_code_blocks(content)
 
             return UploadResult(
@@ -223,8 +274,8 @@ class UploadProcessor:
                 title=title,
                 content_hash=content_hash,
                 code_blocks=code_blocks,
-                content=content,
-                metadata={"content_type": content_type},
+                content=markdown_content,
+                metadata=metadata,
             )
 
         except Exception as e:

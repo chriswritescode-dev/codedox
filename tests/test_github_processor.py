@@ -228,7 +228,7 @@ class TestGitHubProcessor:
             (temp_path / "docs" / "code.py").write_text("print('hello')")
 
             with patch.object(processor, "_clone_repository", return_value=temp_path):
-                with pytest.raises(ValueError, match="No markdown files found"):
+                with pytest.raises(ValueError, match="No markdown or HTML files found"):
                     await processor.process_repository(sample_config)
 
     @pytest.mark.asyncio
@@ -247,3 +247,32 @@ class TestGitHubProcessor:
             with patch.object(processor, "_clone_repository", return_value=temp_path):
                 with pytest.raises(FileNotFoundError, match="Path 'nonexistent/path' not found"):
                     await processor.process_repository(config)
+
+    def test_github_url_parsing(self):
+        """Test parsing of GitHub URLs with tree/blob paths."""
+        # Test URL with tree and path
+        config = GitHubRepoConfig(
+            repo_url="https://github.com/sgl-project/sgl-project.github.io/tree/main/references/multi_node",
+            name="Test",
+        )
+        assert config.repo_url == "https://github.com/sgl-project/sgl-project.github.io"
+        assert config.branch == "main"
+        assert config.path == "references/multi_node"
+
+        # Test URL with blob (single file)
+        config = GitHubRepoConfig(
+            repo_url="https://github.com/owner/repo/blob/develop/README.md",
+            name="Test",
+        )
+        assert config.repo_url == "https://github.com/owner/repo"
+        assert config.branch == "develop"
+        assert config.path == "README.md"
+
+        # Test regular URL without path
+        config = GitHubRepoConfig(
+            repo_url="https://github.com/owner/repo",
+            name="Test",
+        )
+        assert config.repo_url == "https://github.com/owner/repo"
+        assert config.branch == "main"  # Default branch
+        assert config.path is None

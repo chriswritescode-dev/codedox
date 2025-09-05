@@ -22,6 +22,8 @@ import {
 import { ConfirmationDialog } from '../components/ConfirmationDialog'
 
 const MAX_TOTAL_SIZE = 500 * 1024 * 1024 // 500MB total size limit
+const allowedFileExtensions = ['md', 'txt', 'markdown', 'html', 'htm'];
+
 
 export default function Upload() {
   const navigate = useNavigate();
@@ -106,10 +108,8 @@ export default function Upload() {
       const validFiles = files.filter(
         (file) =>
           file.type === "text/markdown" ||
-          file.type === "text/plain" ||
-          file.name.endsWith(".md") ||
-          file.name.endsWith(".txt") ||
-          file.name.endsWith(".markdown"),
+          file.type === "text/plain" || file.type === "text/html" ||
+          allowedFileExtensions.some(ext => file.name.endsWith(`.${ext}`))
       );
 
       if (validFiles.length > 0) {
@@ -126,11 +126,11 @@ export default function Upload() {
 
         setSelectedFiles((prev) => [...prev, ...validFiles]);
         if (!title && validFiles.length === 1) {
-          setTitle(validFiles[0].name.replace(/\.(md|txt|markdown)$/, ""));
+          setTitle(validFiles[0].name.replace(/\.(md|txt|markdown|html|htm)$/, ""));
         }
       } else {
         setError(
-          "Please upload markdown (.md, .markdown) or text (.txt) files",
+          "Please upload markdown (.md, .markdown), HTML (.html, .htm), or text (.txt) files",
         );
       }
     },
@@ -144,9 +144,8 @@ export default function Upload() {
         (file) =>
           file.type === "text/markdown" ||
           file.type === "text/plain" ||
-          file.name.endsWith(".md") ||
-          file.name.endsWith(".txt") ||
-          file.name.endsWith(".markdown"),
+          file.type === "text/html" ||
+          allowedFileExtensions.some(ext => file.name.endsWith(`.${ext}`))
       );
 
       if (validFiles.length > 0) {
@@ -164,11 +163,11 @@ export default function Upload() {
         setSelectedFiles((prev) => [...prev, ...validFiles]);
         // Set title from first file if not already set
         if (!title && validFiles.length === 1) {
-          setTitle(validFiles[0].name.replace(/\.(md|txt|markdown)$/, ""));
+          setTitle(validFiles[0].name.replace(/\.(md|txt|markdown|html|htm)$/, ""));
         }
       } else {
         setError(
-          "Please upload markdown (.md, .markdown) or text (.txt) files",
+          "Please upload markdown (.md, .markdown), HTML (.html, .htm), or text (.txt) files",
         );
       }
     }
@@ -180,9 +179,7 @@ export default function Upload() {
       const fileArray = Array.from(files);
       const validFiles = fileArray.filter(
         (file) =>
-          file.name.endsWith(".md") ||
-          file.name.endsWith(".txt") ||
-          file.name.endsWith(".markdown"),
+          allowedFileExtensions.some(ext => file.name.endsWith(`.${ext}`))
       );
 
       if (validFiles.length > 0) {
@@ -223,7 +220,7 @@ export default function Upload() {
         }
       } else {
         setError(
-          "No markdown (.md, .markdown) or text (.txt) files found in the selected directory",
+          "No markdown (.md, .markdown), HTML (.html, .htm), or text (.txt) files found in the selected directory",
         );
       }
     }
@@ -676,7 +673,7 @@ export default function Upload() {
                         name="file-upload"
                         type="file"
                         className="sr-only"
-                        accept=".md,.txt,.markdown,text/markdown,text/plain"
+                        accept=".md,.txt,.markdown,.html,.htm,text/markdown,text/plain,text/html"
                         onChange={handleFileSelect}
                         multiple
                       />
@@ -702,7 +699,7 @@ export default function Upload() {
                     </span>
                   </div>
                   <p className="text-xs text-muted-foreground mt-1">
-                    Markdown (.md, .markdown) or text (.txt) files
+                    Markdown (.md, .markdown), HTML (.html, .htm), or text (.txt) files
                   </p>
                 </div>
               </div>
