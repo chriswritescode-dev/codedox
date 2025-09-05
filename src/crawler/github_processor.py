@@ -30,6 +30,34 @@ class GitHubRepoConfig:
     exclude_patterns: list[str] | None = None
     cleanup: bool = True
 
+    def __post_init__(self):
+        """Parse GitHub URL to extract branch and path if present."""
+        # Parse URLs like:
+        # https://github.com/owner/repo/tree/main/path/to/dir
+        # https://github.com/owner/repo/blob/main/path/to/file.md
+        if "/tree/" in self.repo_url or "/blob/" in self.repo_url:
+            parts = self.repo_url.split("/")
+
+            # Find the tree or blob index
+            tree_idx = -1
+            for i, part in enumerate(parts):
+                if part in ["tree", "blob"]:
+                    tree_idx = i
+                    break
+
+            if tree_idx > 0 and tree_idx + 1 < len(parts):
+                # Extract base repo URL
+                base_parts = parts[:tree_idx]
+                self.repo_url = "/".join(base_parts)
+
+                # Extract branch (next part after tree/blob)
+                self.branch = parts[tree_idx + 1]
+
+                # Extract path (everything after branch)
+                if tree_idx + 2 < len(parts):
+                    self.path = "/".join(parts[tree_idx + 2 :])
+                    logger.info(f"Extracted from URL - branch: {self.branch}, path: {self.path}")
+
 
 class GitHubProcessor:
     """Processes GitHub repositories to extract markdown documentation."""
@@ -67,7 +95,7 @@ class GitHubProcessor:
 
             if not markdown_files:
                 raise ValueError(
-                    f"No markdown files found in {'repository' if not config.path else config.path}"
+                    f"No markdown or HTML files found in {'repository' if not config.path else config.path}"
                 )
 
             logger.info(f"Found {len(markdown_files)} markdown files to process")
@@ -82,12 +110,17 @@ class GitHubProcessor:
                     config.repo_url, relative_path, config.branch
                 )
 
+                # Determine content type based on file extension
+                content_type = (
+                    "html" if file_path.suffix.lower() in {".html", ".htm"} else "markdown"
+                )
+
                 files_data.append(
                     {
                         "path": str(file_path),
                         "content": content,
                         "source_url": source_url,
-                        "content_type": "markdown",
+                        "content_type": content_type,
                     }
                 )
 
@@ -125,22 +158,38 @@ class GitHubProcessor:
             if parsed.scheme == "https":
                 repo_url = f"https://{config.token}@{parsed.netloc}{parsed.path}"
 
-        clone_cmd = [
-            "git",
-            "clone",
-            "--depth",
-            "1",
-            "--branch",
-            config.branch,
-            "--single-branch",
-            repo_url,
-            str(temp_dir),
-        ]
-
         if config.path:
-            clone_cmd.extend(["--sparse"])
+            # Use sparse checkout for partial clones
+            clone_cmd = [
+                "git",
+                "clone",
+                "--depth",
+                "1",
+                "--branch",
+                config.branch,
+                "--single-branch",
+                "--filter=blob:none",
+                "--sparse",
+                repo_url,
+                str(temp_dir),
+            ]
+        else:
+            # Full clone for entire repo
+            clone_cmd = [
+                "git",
+                "clone",
+                "--depth",
+                "1",
+                "--branch",
+                config.branch,
+                "--single-branch",
+                repo_url,
+                str(temp_dir),
+            ]
 
-        logger.info(f"Cloning repository: {config.repo_url}")
+        logger.info(
+            f"Cloning repository: {config.repo_url} (branch: {config.branch}, path: {config.path})"
+        )
 
         process = await asyncio.create_subprocess_exec(
             *clone_cmd, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE
@@ -154,6 +203,22 @@ class GitHubProcessor:
             raise RuntimeError(f"Failed to clone repository: {error_msg}")
 
         if config.path:
+            # Initialize sparse-checkout and set the path
+            init_cmd = [
+                "git",
+                "-C",
+                str(temp_dir),
+                "sparse-checkout",
+                "init",
+                "--cone",
+            ]
+
+            process = await asyncio.create_subprocess_exec(
+                *init_cmd, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE
+            )
+            await process.communicate()
+
+            # Set the specific path
             sparse_checkout_cmd = [
                 "git",
                 "-C",
@@ -178,8 +243,18 @@ class GitHubProcessor:
         include_patterns: list[str] | None = None,
         exclude_patterns: list[str] | None = None,
     ) -> list[Path]:
-        """Find all markdown files in a directory."""
-        markdown_extensions = {".md", ".markdown", ".mdx", ".mdown", ".mkd", ".mdwn"}
+        """Find all markdown and HTML files in a directory."""
+        # Support both markdown and HTML files
+        supported_extensions = {
+            ".md",
+            ".markdown",
+            ".mdx",
+            ".mdown",
+            ".mkd",
+            ".mdwn",  # Markdown
+            ".html",
+            ".htm",  # HTML
+        }
         markdown_files = []
 
         default_excludes = {
@@ -207,7 +282,7 @@ class GitHubProcessor:
             for file in files:
                 file_path = root_path / file
 
-                if file_path.suffix.lower() not in markdown_extensions:
+                if file_path.suffix.lower() not in supported_extensions:
                     continue
 
                 relative_path = file_path.relative_to(directory)

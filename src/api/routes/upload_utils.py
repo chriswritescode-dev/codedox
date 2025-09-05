@@ -19,7 +19,7 @@ settings = get_settings()
 class FileValidationRules:
     """Centralized file validation configuration."""
 
-    ALLOWED_EXTENSIONS = (".md", ".markdown", ".txt", ".mdx")
+    ALLOWED_EXTENSIONS = (".md", ".markdown", ".txt", ".mdx", ".html", ".htm")
     MAX_FILE_SIZE = 50 * 1024 * 1024  # 50MB
     MAX_TOTAL_SIZE = 500 * 1024 * 1024  # 500MB
     BINARY_CHECK_BYTES = 8192

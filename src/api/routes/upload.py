@@ -2,6 +2,7 @@
 
 import hashlib
 import logging
+import os
 from datetime import datetime
 from typing import Any
 from uuid import uuid4
@@ -173,16 +174,48 @@ async def upload_file(
     title: str | None = Form(None, description="Optional title"),
     db: Session = Depends(get_db),
 ) -> dict[str, Any]:
-    """Upload a markdown or text file for processing."""
+    """Upload a markdown or HTML file for processing."""
     try:
         content_str, filename_without_ext = await validate_and_read_file(file)
-
-        # Process using markdown upload endpoint
+        
+        # Determine content type based on file extension
+        content_type = "markdown"
+        if file.filename:
+            ext = os.path.splitext(file.filename)[1].lower()
+            if ext in [".html", ".htm"]:
+                content_type = "html"
+        
+        # For HTML files, use the UploadProcessor
+        if content_type == "html":
+            from ...crawler.upload_processor import UploadConfig, UploadProcessor
+            
+            processor = UploadProcessor()
+            config = UploadConfig(
+                name=name or title or filename_without_ext,
+                files=[{
+                    "path": file.filename or "upload.html",
+                    "content": content_str,
+                    "source_url": f"upload://{file.filename or 'upload.html'}",
+                    "content_type": "html"
+                }],
+                use_llm=True
+            )
+            
+            job_id = await processor.process_upload(config)
+            
+            # Wait for completion or return job ID
+            return {
+                "status": "processing",
+                "job_id": job_id,
+                "message": f"HTML file upload started for {name or filename_without_ext}"
+            }
+        
+        # Process markdown files as before
         final_name = name or title or filename_without_ext
         request = UploadMarkdownRequest(
             content=content_str,
             name=final_name,
-            title=title,  # Let the markdown processor handle H1 extraction
+            title=title,
         )
 
         return await upload_markdown(request, db)
@@ -240,7 +273,7 @@ async def upload_files(
                 from .upload_utils import FileValidationRules
 
                 if not file.filename.endswith(FileValidationRules.ALLOWED_EXTENSIONS):
-                    logger.warning(f"Skipping non-markdown file: {file.filename}")
+                    logger.warning(f"Skipping unsupported file: {file.filename}")
                     continue
 
                 # Read file content
@@ -255,6 +288,10 @@ async def upload_files(
                     logger.warning(f"Skipping file with invalid encoding: {file.filename}")
                     continue
 
+                # Determine content type based on file extension
+                ext = os.path.splitext(file.filename)[1].lower()
+                content_type = "html" if ext in [".html", ".htm"] else "markdown"
+
                 # Create URL for this file
                 file_url = f"upload://{source_name}/{file.filename}"
 
@@ -263,7 +300,7 @@ async def upload_files(
                         "path": file.filename,
                         "content": content_str,
                         "source_url": file_url,
-                        "content_type": "markdown",
+                        "content_type": content_type,
                     }
                 )
 
