@@ -32,7 +32,7 @@ CodeDox solves this by:
 ### Intelligent Code Extraction
 
 - **AI-Enhanced Processing**: LLM-powered language detection, title generation, and intelligent descriptions
-- **Multi-Format Support**: Extracts from Markdown, HTML, text files, and 20+ documentation frameworks
+- **Multi-Format Support**: Extracts from Markdown, HTML, text files
 - **Smart Context Preservation**: Maintains relationships and surrounding context for better code understanding
 - **Batch Processing**: Efficient parallel processing with configurable concurrency
 
