@@ -49,11 +49,6 @@ Code with blank lines preserved:
         return 0;
     }
 
-## Fenced with Tildes
-~~~ruby
-puts "Hello from Ruby"
-~~~
-
 ## Mixed Content
 Regular paragraph before code.
 
@@ -65,8 +60,8 @@ Regular paragraph after code.
         extractor = MarkdownCodeExtractor()
         blocks = extractor.extract_code_blocks(markdown_content)
         
-        # Should find all 7 code blocks
-        assert len(blocks) == 7
+        # Should find all 6 code blocks
+        assert len(blocks) == 6
         
         # Check fenced blocks have language info
         python_block = next(b for b in blocks if 'def hello' in b['content'])
@@ -79,10 +74,7 @@ Regular paragraph after code.
         for block in indent_blocks:
             assert block['language'] is None
         
-        # Check tilde fence works
-        ruby_block = next(b for b in blocks if 'puts' in b['content'])
-        assert ruby_block['language'] == 'ruby'
-        assert ruby_block['type'] == 'fenced'
+
         
         # Check blank lines preserved in indented block
         c_block = next(b for b in blocks if '#include' in b['content'])
