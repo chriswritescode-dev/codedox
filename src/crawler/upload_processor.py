@@ -303,7 +303,6 @@ class UploadProcessor:
                 crawler_config = CrawlerRunConfig(
                     cache_mode=CacheMode.BYPASS,
                     verbose=False,
-                    only_text=True,
                     markdown_generator=DefaultMarkdownGenerator(
                         content_source="raw_html", options={
             "ignore_links": True,
@@ -328,9 +327,6 @@ class UploadProcessor:
                     logger.info(f"[HTML] Result has markdown attr: {hasattr(result, 'markdown')}")
                     
                     if hasattr(result, "markdown"):
-                        logger.info("[HTML] Result has markdown attribute")
-                        logger.info(f"[HTML] Markdown type: {type(result.markdown)}")
-                        logger.info(f"[HTML] Markdown attrs: {dir(result.markdown) if result.markdown else 'None'}")
                         
                         if hasattr(result.markdown, "raw_markdown"):
                             logger.info(f"[HTML] Using raw_markdown, length: {len(result.markdown.raw_markdown) if result.markdown.raw_markdown else 0}")
