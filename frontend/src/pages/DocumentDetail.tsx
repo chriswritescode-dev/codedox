@@ -126,15 +126,13 @@ export default function DocumentDetail() {
           )}
           <span className="text-foreground">Document</span>
         </div>
-        
+
         {/* Document header */}
         <div className="bg-secondary/50 rounded-lg p-6">
           <div className="flex items-start gap-3 mb-4">
             <FileText className="h-8 w-8 text-muted-foreground mt-1" />
             <div className="flex-1">
-              <h1 className="text-2xl font-bold mb-2">
-                {data.document.title}
-              </h1>
+              <h1 className="text-2xl font-bold mb-2">{data.document.title}</h1>
               <a
                 href={data.document.url}
                 target="_blank"
@@ -147,23 +145,27 @@ export default function DocumentDetail() {
               <div className="flex items-center gap-4 mt-3 text-sm text-muted-foreground">
                 <span>Depth: {data.document.crawl_depth}</span>
                 <span>•</span>
-                <span>{new Date(data.document.created_at).toLocaleDateString()}</span>
+                <span>
+                  {new Date(data.document.created_at).toLocaleDateString()}
+                </span>
               </div>
             </div>
           </div>
-          
+
           {/* Stats */}
           <div className="flex items-center gap-6 pt-4 border-t border-border">
             <div className="flex items-center gap-4">
               <Code className="h-5 w-5 text-muted-foreground" />
-              <div className='flex items-center gap-2'>
+              <div className="flex items-center gap-2">
                 <div className="text-2xl font-semibold">{data.total}</div>
-                <div className="text-sm text-muted-foreground">Code Snippets</div>
+                <div className="text-sm text-muted-foreground">
+                  Code Snippets
+                </div>
               </div>
             </div>
           </div>
         </div>
-        
+
         {/* Search and filter */}
         <div className="flex gap-4">
           <div className="relative flex-1">
@@ -177,14 +179,14 @@ export default function DocumentDetail() {
             />
             {searchQuery && (
               <button
-                onClick={() => handleSearchChange('')}
+                onClick={() => handleSearchChange("")}
                 className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
               >
                 <X className="h-4 w-4" />
               </button>
             )}
           </div>
-          
+
           {languages.length > 0 && (
             <div className="flex items-center gap-2">
               <Filter className="h-4 w-4 text-muted-foreground" />
@@ -194,8 +196,10 @@ export default function DocumentDetail() {
                 className="px-3 py-2 bg-secondary border border-input rounded-md focus:outline-none focus:ring-2 focus:ring-primary"
               >
                 <option value="">All Languages</option>
-                {languages.map(lang => (
-                  <option key={lang} value={lang}>{lang}</option>
+                {languages.map((lang) => (
+                  <option key={lang} value={lang}>
+                    {lang}
+                  </option>
                 ))}
               </select>
             </div>
@@ -205,20 +209,19 @@ export default function DocumentDetail() {
 
       {/* Scrollable content area */}
       <div className="flex-1 min-h-0 overflow-auto pb-4">
-        <div className="max-w-6xl mx-auto w-full">
+        <div className="mx-auto w-full">
           {/* Snippets */}
           {data.snippets.length === 0 ? (
             <div className="text-center py-12 text-muted-foreground">
-            {debouncedSearchQuery || selectedLanguage 
-              ? 'No snippets match your filters.'
-              : 'No code snippets found in this document.'}
-          </div>
-        ) : (
-          <>
-            <SnippetList snippets={data.snippets} />
-            
-          </>
-        )}
+              {debouncedSearchQuery || selectedLanguage
+                ? "No snippets match your filters."
+                : "No code snippets found in this document."}
+            </div>
+          ) : (
+            <>
+              <SnippetList snippets={data.snippets} />
+            </>
+          )}
         </div>
       </div>
 
@@ -236,5 +239,5 @@ export default function DocumentDetail() {
         </div>
       )}
     </div>
-  )
+  );
 }

@@ -46,13 +46,14 @@ class TestGitHubProcessor:
 
             # Find all markdown files
             files = processor._find_markdown_files(temp_path)
-            assert len(files) == 3
+            assert len(files) == 4  # Now includes .txt files
 
             # Check file paths
             file_names = {f.name for f in files}
             assert "readme.md" in file_names
             assert "guide.MD" in file_names
             assert "api.markdown" in file_names
+            assert "test.txt" in file_names
 
     @pytest.mark.asyncio
     async def test_find_markdown_with_patterns(self, processor):

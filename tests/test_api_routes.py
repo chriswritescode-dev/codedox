@@ -33,7 +33,7 @@ class TestStatisticsEndpoint:
         assert data["total_documents"] == 0
         assert data["total_snippets"] == 0
         assert data["languages"] == {}
-        assert data["recent_crawls"] == []
+        assert data["recent_jobs"] == []
 
     def test_statistics_with_data(
         self, client, sample_crawl_job, sample_document, sample_code_snippets
@@ -54,15 +54,16 @@ class TestStatisticsEndpoint:
         assert data["languages"]["python"] == 1
         assert data["languages"]["javascript"] == 1
 
-        # Check recent crawls
-        assert len(data["recent_crawls"]) == 1
-        recent = data["recent_crawls"][0]
+        # Check recent jobs
+        assert len(data["recent_jobs"]) == 1
+        recent = data["recent_jobs"][0]
         assert recent["id"] == str(sample_crawl_job.id)
         assert recent["name"] == "Test Documentation"
         assert recent["status"] == "completed"
         assert recent["domain"] == "example.com"
         assert recent["snippets_extracted"] == 3
         assert recent["start_urls"] == ["https://example.com/docs"]
+        assert recent["job_type"] == "crawl"
 
 
 class TestSourcesEndpoints:
