@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from "react";
 import { Search, X, FileText, ExternalLink, Loader2 } from "lucide-react";
 import { api } from "../lib/api";
 import { FullPageModal } from "./FullPageModal";
+import { useKeyboardShortcut } from "../hooks/useKeyboardShortcut";
 
 interface DocumentSearchModalProps {
   isOpen: boolean;
@@ -33,6 +34,8 @@ export const DocumentSearchModal: React.FC<DocumentSearchModalProps> = ({
       setSelectedUrl(null);
     }
   }, [isOpen]);
+
+  useKeyboardShortcut("Escape", onClose, isOpen);
 
   const performSearch = async (searchQuery: string) => {
     if (!searchQuery.trim()) {
@@ -73,11 +76,7 @@ export const DocumentSearchModal: React.FC<DocumentSearchModalProps> = ({
     setFullPageModalOpen(true);
   };
 
-  const handleKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === "Escape") {
-      onClose();
-    }
-  };
+
 
   if (!isOpen) return null;
 
@@ -92,7 +91,6 @@ export const DocumentSearchModal: React.FC<DocumentSearchModalProps> = ({
               type="text"
               value={query}
               onChange={(e) => setQuery(e.target.value)}
-              onKeyDown={handleKeyDown}
               placeholder="Search pages by title, URL, or content..."
               className="flex-1 bg-transparent outline-none text-gray-900 dark:text-gray-100 placeholder-gray-500"
               autoFocus

@@ -124,9 +124,9 @@ class TestAPIConsistency:
         """Test that IDs are consistently formatted as strings."""
         # Check in statistics
         response = client.get("/api/statistics")
-        crawls = response.json()["recent_crawls"]
-        if crawls:
-            assert isinstance(crawls[0]["id"], str)
+        jobs = response.json()["recent_jobs"]
+        if jobs:
+            assert isinstance(jobs[0]["id"], str)
 
         # Check in sources
         response = client.get("/api/sources")

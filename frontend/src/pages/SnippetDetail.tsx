@@ -59,8 +59,8 @@ export default function SnippetDetail() {
       </div>
     )
   }
- console.log("Snippet Detail", snippet)
-  return (
+  
+	return (
     <div className="w-full">
       <div className="space-y-6 max-w-6xl mx-auto w-full">
         <div className="flex items-center gap-4">
@@ -106,7 +106,7 @@ export default function SnippetDetail() {
           </div>
         </div>
 
-        <div className="bg-secondary/50 rounded-lg overflow-hidden">
+        <div className="mb-10 bg-secondary/50 rounded-lg overflow-hidden">
           <div className="flex items-center justify-between px-4 py-2 bg-secondary border-b border-border">
             <span className="text-sm font-medium">Code</span>
             <div className="flex items-center gap-2">

@@ -9,9 +9,11 @@ import {
   Search,
   X,
   Trash2,
+  FileText,
+  Code,
+  Calendar,
 } from "lucide-react";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { SourceOverview } from "../components/SourceOverview";
 import { SourceDocumentsTab } from "../components/SourceDocumentsTab";
 import { SourceSnippetsTab } from "../components/SourceSnippetsTab";
 import { SourceActions } from "../components/SourceActions";
@@ -21,6 +23,8 @@ import { PaginationControls } from "../components/PaginationControls";
 export default function SourceDetail() {
   const { id } = useParams<{ id: string }>();
   const state = useSourceDetail(id || '');
+   const isUploadType = state.source?.source_type === "upload";
+
   
   if (!id) {
     return <div>Error: Missing source ID</div>;
@@ -65,6 +69,7 @@ export default function SourceDetail() {
     );
   }
 
+
   return (
     <div className="flex flex-col h-full min-h-0">
       {/* Fixed header section */}
@@ -80,7 +85,7 @@ export default function SourceDetail() {
         </div>
 
         <div className="bg-secondary/50 rounded-lg p-6">
-          <div className="flex items-start justify-between mb-6">
+          <div className="flex items-start justify-between mb-4">
             <div className="flex items-center gap-3">
               <Database className="h-8 w-8 text-muted-foreground" />
               <div>
@@ -91,14 +96,16 @@ export default function SourceDetail() {
                   onUpdate={handleUpdateSourceName}
                   className="text-2xl font-bold"
                 />
-                <a
-                  href={state.source.base_url}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="text-sm text-primary hover:underline"
-                >
-                  {state.source.base_url}
-                </a>
+                {!isUploadType && (
+                  <a
+                    href={state.source.base_url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-sm text-primary hover:underline ml-2"
+                  >
+                    {state.source.base_url}
+                  </a>
+                )}
               </div>
             </div>
             <SourceActions
@@ -113,18 +120,51 @@ export default function SourceDetail() {
             />
           </div>
 
+          {/* Overview Stats */}
+          <div className="grid grid-cols-3 gap-4 mb-6">
+            <div className="bg-background rounded-md p-3">
+              <div className="flex items-center text-muted-foreground mb-1">
+                <FileText className="h-4 w-4 mr-2" />
+                <span className="text-sm">Documents</span>
+              </div>
+              <p className="text-xl font-semibold">
+                {state.source.documents_count}
+              </p>
+            </div>
+
+            <div className="bg-background rounded-md p-3">
+              <div className="flex items-center text-muted-foreground mb-1">
+                <Code className="h-4 w-4 mr-2" />
+                <span className="text-sm">Code Snippets</span>
+              </div>
+              <p className="text-xl font-semibold">
+                {state.source.snippets_count}
+              </p>
+            </div>
+
+            <div className="bg-background rounded-md p-3">
+              <div className="flex items-center text-muted-foreground mb-1">
+                <Calendar className="h-4 w-4 mr-2" />
+                <span className="text-sm">Created</span>
+              </div>
+              <p className="text-sm font-medium">
+                {new Date(state.source.created_at).toLocaleDateString()}
+              </p>
+            </div>
+          </div>
+
           {/* Tabs */}
           <div className="border-b border-border">
             <nav className="-mb-px flex space-x-8">
               <button
-                onClick={() => state.handleTabChange("overview")}
+                onClick={() => state.handleTabChange("snippets")}
                 className={`py-2 px-1 border-b-2 font-medium text-sm cursor-pointer ${
-                  state.activeTab === "overview"
+                  state.activeTab === "snippets"
                     ? "border-primary text-foreground"
                     : "border-transparent text-muted-foreground hover:text-foreground"
                 }`}
               >
-                Overview
+                Code Snippets ({state.source.snippets_count})
               </button>
               <button
                 onClick={() => state.handleTabChange("documents")}
@@ -136,20 +176,10 @@ export default function SourceDetail() {
               >
                 Documents ({state.source.documents_count})
               </button>
-              <button
-                onClick={() => state.handleTabChange("snippets")}
-                className={`py-2 px-1 border-b-2 font-medium text-sm cursor-pointer ${
-                  state.activeTab === "snippets"
-                    ? "border-primary text-foreground"
-                    : "border-transparent text-muted-foreground hover:text-foreground"
-                }`}
-              >
-                Code Snippets ({state.source.snippets_count})
-              </button>
             </nav>
           </div>
         </div>
-        
+
         {/* Search/Filter controls for snippets tab */}
         {state.activeTab === "snippets" && (
           <div className="mt-4 px-2">
@@ -167,7 +197,9 @@ export default function SourceDetail() {
                   {state.snippetsSearch && (
                     <>
                       <span className="absolute right-12 top-1/2 -translate-y-1/2 text-sm text-muted-foreground">
-                        {state.snippets && state.snippets.total > 0 ? `(${state.snippets.total} matches)` : '(0 matches)'}
+                        {state.snippets && state.snippets.total > 0
+                          ? `(${state.snippets.total} matches)`
+                          : "(0 matches)"}
                       </span>
                       <button
                         onClick={() => state.setSnippetsSearch("")}
@@ -180,10 +212,13 @@ export default function SourceDetail() {
                 </div>
 
                 {state.languages && state.languages.languages.length > 0 && (
-                  <Select value={state.selectedLanguage || "all"} onValueChange={(value) => {
-                    state.setSelectedLanguage(value === "all" ? "" : value);
-                    state.setSnippetsPage(1);
-                  }}>
+                  <Select
+                    value={state.selectedLanguage || "all"}
+                    onValueChange={(value) => {
+                      state.setSelectedLanguage(value === "all" ? "" : value);
+                      state.setSnippetsPage(1);
+                    }}
+                  >
                     <SelectTrigger className="w-[180px] h-[42px]!">
                       <SelectValue placeholder="All Languages" />
                     </SelectTrigger>
@@ -198,10 +233,15 @@ export default function SourceDetail() {
                   </Select>
                 )}
               </div>
-              
+
               <button
                 onClick={() => state.setDeleteMatchesModalOpen(true)}
-                disabled={state.snippetsLoading || !state.snippets || state.snippets.total === 0 || !state.debouncedSnippetsSearch}
+                disabled={
+                  state.snippetsLoading ||
+                  !state.snippets ||
+                  state.snippets.total === 0 ||
+                  !state.debouncedSnippetsSearch
+                }
                 className="flex items-center gap-2 px-4 py-2 text-sm bg-destructive text-destructive-foreground rounded-md hover:bg-destructive/80 disabled:opacity-50 disabled:cursor-not-allowed min-w-[120px] justify-center h-10 cursor-pointer"
               >
                 <Trash2 className="h-4 w-4" />
@@ -215,10 +255,6 @@ export default function SourceDetail() {
       {/* Scrollable tab content */}
       <div className="flex-1 min-h-0 overflow-auto pb-4">
         <div className="px-2">
-          {state.activeTab === "overview" && (
-            <SourceOverview source={state.source} />
-          )}
-
           {state.activeTab === "documents" && (
             <SourceDocumentsTab
               documents={state.documents}
@@ -260,7 +296,7 @@ export default function SourceDetail() {
           />
         </div>
       )}
-      
+
       {state.activeTab === "snippets" && state.snippets && (
         <div className="pt-4 border-t border-border">
           <PaginationControls

@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { X } from 'lucide-react';
 import { useToast } from '../hooks/useToast';
+import { useKeyboardShortcut } from '../hooks/useKeyboardShortcut';
 
 interface NewCrawlDialogProps {
   isOpen: boolean;
@@ -38,6 +39,15 @@ export const NewCrawlDialog: React.FC<NewCrawlDialogProps> = ({
   
   const [maxConcurrentInput, setMaxConcurrentInput] = useState('5');
 
+  const handleClose = () => {
+    setFormData({ name: '', version: '', base_url: '', max_pages: undefined, max_depth: 1, domain_filter: '', url_patterns: '', max_concurrent_crawls: 5 });
+    setMaxConcurrentInput('5');
+    onClose();
+  };
+
+  // Handle Escape key to close dialog
+  useKeyboardShortcut('Escape', handleClose, { isEnabled: isOpen && !isSubmitting });
+
   if (!isOpen) return null;
 
   const handleSubmit = (e: React.FormEvent) => {
@@ -62,12 +72,6 @@ export const NewCrawlDialog: React.FC<NewCrawlDialogProps> = ({
       max_concurrent_crawls: Math.max(0, Math.min(100, finalMaxConcurrent)), // Clamp between 0-100
     };
     onSubmit(submitData);
-  };
-
-  const handleClose = () => {
-    setFormData({ name: '', version: '', base_url: '', max_pages: undefined, max_depth: 1, domain_filter: '', url_patterns: '', max_concurrent_crawls: 5 });
-    setMaxConcurrentInput('5');
-    onClose();
   };
 
   return (

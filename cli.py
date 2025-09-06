@@ -199,14 +199,12 @@ def upload(file_path: str, source_url: str | None, name: str | None):
         final_source_url = source_url if source_url else f"file://{os.path.abspath(file_path)}"
         final_name = name if name else os.path.basename(file_path)
 
-        # Determine content type from extension
-        content_type = "markdown"
-        if file_path.endswith(".rst"):
-            content_type = "restructuredtext"
-        elif file_path.endswith(".adoc"):
-            content_type = "asciidoc"
-        elif file_path.endswith(".txt"):
-            content_type = "text"
+        # Determine content type from extension using centralized config
+        from src.constants import get_content_type_for_extension
+        
+        content_type = get_content_type_for_extension(file_path)
+        if not content_type:
+            content_type = "text"  # Default fallback
 
         processor = UploadProcessor()
 
@@ -278,15 +276,16 @@ def upload_repo(repo_url, name, path, branch, token, include, exclude, no_cleanu
             task = progress.add_task("Cloning repository...", total=None)
 
             # Auto-generate name from repo URL if not provided
-            if not name:
+            repo_name = name
+            if not repo_name:
                 import re
 
                 match = re.search(r"/([^/]+?)(?:\.git)?$", repo_url)
-                name = match.group(1) if match else "Repository Documentation"
+                repo_name = match.group(1) if match else "Repository Documentation"
 
             config = GitHubRepoConfig(
                 repo_url=repo_url,
-                name=name,
+                name=repo_name,
                 path=path,
                 branch=branch,
                 token=token,
