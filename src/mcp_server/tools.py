@@ -573,7 +573,6 @@ class MCPTools:
         query: str | None = None,
         max_tokens: int | None = None,
         chunk_index: int | None = None,
-        chunk_size: int = 2048,
     ) -> dict[str, Any]:
         """Get full documentation markdown from a specific page URL.
 
@@ -590,7 +589,7 @@ class MCPTools:
         - After get_content(): Use SOURCE URL here to get full documentation
         - Search in page: get_page_markdown(url="...", query="specific term")
         - Get summary: get_page_markdown(url="...", max_tokens=500)
-        - Navigate chunks: get_page_markdown(url="...", chunk_index=0, chunk_size=2048)
+        - Navigate chunks: get_page_markdown(url="...", chunk_index=0, max_tokens=2048)
 
         Important notes:
         - This searches WITHIN a single document, not across all documents
@@ -600,9 +599,9 @@ class MCPTools:
         Args:
             url: The URL of the documentation page (typically from SOURCE in get_content)
             query: Optional search within THIS document only (highlights matches)
-            max_tokens: Limit response to first N tokens (useful for summaries)
-            chunk_index: Get specific chunk of large documents (0-based)
-            chunk_size: Size of each chunk in tokens (default: 2048)
+            max_tokens: Limit response to first N tokens (useful for summaries) or define chunk size when using chunk_index (default: 2048)
+            chunk_index: Get specific chunk of large documents (0-based, uses max_tokens for chunk size)
+
 
         Returns:
             Dictionary with markdown content, search highlights, token counts, and pagination info
@@ -684,7 +683,7 @@ class MCPTools:
                                 {
                                     "url": url,
                                     "query": query,
-                                    "max_words": min(chunk_size // 4, 500),  # Limit fragment size
+                                    "max_words": min((max_tokens or 2048) // 4, 500),  # Limit fragment size
                                 },
                             ).scalar()
 
@@ -717,7 +716,7 @@ class MCPTools:
                         content,
                         max_tokens=max_tokens,
                         chunk_index=chunk_index,
-                        chunk_size=chunk_size,
+                        chunk_size=max_tokens or 2048,
                     )
                     returned_tokens = self._estimate_tokens(content)
                 else:

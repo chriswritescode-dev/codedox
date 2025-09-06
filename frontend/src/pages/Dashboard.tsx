@@ -1,57 +1,25 @@
-import { useState } from 'react'
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import { useQuery } from "@tanstack/react-query";
 import { api } from '../lib/api'
-import { FileText, Code, Database, Clock, Plus } from 'lucide-react'
-import { Link, useNavigate } from 'react-router-dom'
+import { FileText, Code, Database, Clock } from "lucide-react";
+import { Link } from "react-router-dom";
 import QuickSearch from '../components/QuickSearch'
-import { NewCrawlDialog } from '../components/NewCrawlDialog'
-import { useToast } from '../hooks/useToast'
 
 export default function Dashboard() {
-  const [showNewCrawlDialog, setShowNewCrawlDialog] = useState(false)
-  const navigate = useNavigate()
-  const queryClient = useQueryClient()
-  const toast = useToast()
-  
-  
-  const { data: stats, isLoading, error } = useQuery({
-    queryKey: ['statistics'],
+  const {
+    data: stats,
+    isLoading,
+    error,
+  } = useQuery({
+    queryKey: ["statistics"],
     queryFn: () => api.getStatistics(),
-  })
-
-  const createCrawlMutation = useMutation({
-    mutationFn: (data: Parameters<typeof api.createCrawlJob>[0]) => api.createCrawlJob(data),
-    onSuccess: (data) => {
-      queryClient.invalidateQueries({ queryKey: ['statistics'] })
-      queryClient.invalidateQueries({ queryKey: ['crawl-jobs'] })
-      setShowNewCrawlDialog(false)
-      navigate(`/crawl/${data.id}`)
-    },
-    onError: (error) => {
-      console.error('Failed to create crawl job:', error)
-      toast.error(`Failed to create crawl job: ${error.message || 'Unknown error'}`)
-    },
-  })
-
-  const handleCreateCrawl = (formData: {
-    name?: string
-    base_url: string
-    max_depth: number
-    max_pages?: number
-    domain_filter?: string
-    url_patterns?: string[]
-    max_concurrent_crawls?: number
-  }) => {
-    createCrawlMutation.mutate(formData)
-  }
-  
+  });
 
   if (isLoading) {
     return (
       <div className="flex items-center justify-center h-64">
         <div className="text-muted-foreground">Loading statistics...</div>
       </div>
-    )
+    );
   }
 
   if (error) {
@@ -59,7 +27,7 @@ export default function Dashboard() {
       <div className="flex items-center justify-center h-64">
         <div className="text-destructive">Error loading statistics</div>
       </div>
-    )
+    );
   }
 
   return (
@@ -67,13 +35,6 @@ export default function Dashboard() {
       <div className="flex-1 space-y-6">
         <div className="flex items-center justify-between">
           <h1 className="text-3xl font-bold">CodeDox Dashboard</h1>
-          <button
-            onClick={() => setShowNewCrawlDialog(true)}
-            className="flex items-center gap-2 px-4 py-2 bg-primary text-primary-foreground rounded-md hover:bg-primary/90 transition-colors"
-          >
-            <Plus className="h-4 w-4" />
-            New Crawl
-          </button>
         </div>
 
         <QuickSearch />
@@ -187,13 +148,6 @@ export default function Dashboard() {
             </div>
           </div>
         )}
-
-        <NewCrawlDialog
-          isOpen={showNewCrawlDialog}
-          onClose={() => setShowNewCrawlDialog(false)}
-          onSubmit={handleCreateCrawl}
-          isSubmitting={createCrawlMutation.isPending}
-        />
       </div>
     </div>
   );

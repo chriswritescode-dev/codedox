@@ -152,7 +152,7 @@ export default function SourceDetail() {
         
         {/* Search/Filter controls for snippets tab */}
         {state.activeTab === "snippets" && (
-          <div className="mt-4 px-6">
+          <div className="mt-4 px-2">
             <div className="flex items-center justify-between mb-4 gap-2">
               <div className="flex gap-3 flex-1 min-w-0">
                 <div className="flex-1 relative min-w-[300px]">
@@ -214,7 +214,7 @@ export default function SourceDetail() {
 
       {/* Scrollable tab content */}
       <div className="flex-1 min-h-0 overflow-auto pb-4">
-        <div className="px-6">
+        <div className="px-2">
           {state.activeTab === "overview" && (
             <SourceOverview source={state.source} />
           )}

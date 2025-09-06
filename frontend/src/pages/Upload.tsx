@@ -90,7 +90,7 @@ export default function Upload() {
   const [maxFileSize, setMaxFileSize] = useState<number>(10 * 1024 * 1024); // 10MB default
   const [batchSize, setBatchSize] = useState<number>(500); // Files per batch
   const [configLoaded, setConfigLoaded] = useState(false);
-  const [maxConcurrent, setMaxConcurrent] = useState<number>(10); // Default concurrent file processing
+  const [maxConcurrent, setMaxConcurrent] = useState<number | string>(10); // Default concurrent file processing
 
   const [title, setTitle] = useState("");
   const [version, setVersion] = useState("");
@@ -403,7 +403,7 @@ export default function Upload() {
         token: repoToken || undefined,
         include_patterns: includePatterns,
         exclude_patterns: excludePatterns,
-        max_concurrent: maxConcurrent,
+        max_concurrent: typeof maxConcurrent === 'number' ? maxConcurrent : 10,
       });
 
       const jobId = result.job_id;
@@ -494,7 +494,7 @@ export default function Upload() {
             uploadName,
             title || undefined,
             version || undefined,
-            maxConcurrent,
+            typeof maxConcurrent === 'number' ? maxConcurrent : 10,
           );
 
           jobIds.push(result.job_id);
@@ -846,10 +846,30 @@ export default function Upload() {
             max="50"
             value={maxConcurrent}
             onChange={(e) => {
-              const value = parseInt(e.target.value);
-              if (!isNaN(value) && value >= 1 && value <= 50) {
-
-                setMaxConcurrent(value);
+              const inputValue = e.target.value;
+              
+              // Allow empty string for user to clear and type
+              if (inputValue === '') {
+                setMaxConcurrent('');
+                return;
+              }
+              
+              const value = parseInt(inputValue);
+              if (!isNaN(value)) {
+                // Clamp value between 1 and 50
+                if (value < 1) {
+                  setMaxConcurrent(1);
+                } else if (value > 50) {
+                  setMaxConcurrent(50);
+                } else {
+                  setMaxConcurrent(value);
+                }
+              }
+            }}
+            onBlur={() => {
+              // On blur, if empty or invalid, set to default
+              if (maxConcurrent === '' || typeof maxConcurrent === 'string') {
+                setMaxConcurrent(10);
               }
             }}
             className="mt-1 w-full px-3 py-2 bg-secondary border border-input rounded-md focus:outline-none focus:ring-2 focus:ring-primary"
