@@ -5,7 +5,7 @@ import { api, Source, PaginatedDocuments, PaginatedSnippets, LanguageStat } from
 import { useDebounce } from "./useDebounce";
 import { useToast } from "./useToast";
 
-type TabType = "overview" | "documents" | "snippets";
+type TabType = "documents" | "snippets";
 
 interface SourceDetailState {
   id: string;
@@ -66,9 +66,9 @@ export function useSourceDetail(id: string): SourceDetailState {
   // Tab management
   const tabFromUrl = searchParams.get("tab") as TabType | null;
   const [activeTab, setActiveTab] = useState<TabType>(
-    tabFromUrl && ["overview", "documents", "snippets"].includes(tabFromUrl)
+    tabFromUrl && ["documents", "snippets"].includes(tabFromUrl)
       ? tabFromUrl
-      : "overview"
+      : "snippets"
   );
 
   // Pagination settings
@@ -78,10 +78,10 @@ export function useSourceDetail(id: string): SourceDetailState {
   // Debounce search query
   const debouncedSnippetsSearch = useDebounce(snippetsSearch, 300);
 
-  // Initialize tab from URL or default to 'overview'
+  // Initialize tab from URL or default to 'snippets'
   const handleTabChange = (newTab: TabType) => {
     setActiveTab(newTab);
-    if (newTab === "overview") {
+    if (newTab === "snippets") {
       searchParams.delete("tab");
     } else {
       searchParams.set("tab", newTab);

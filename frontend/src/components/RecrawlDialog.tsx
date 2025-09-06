@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { X, RefreshCw, AlertTriangle } from "lucide-react";
+import { useKeyboardShortcut } from "../hooks/useKeyboardShortcut";
 
 interface RecrawlDialogProps {
   isOpen: boolean;
@@ -19,6 +20,9 @@ export function RecrawlDialog({
   isRecrawling,
 }: RecrawlDialogProps) {
   const [ignoreHash, setIgnoreHash] = useState(false);
+
+  // Handle Escape key to cancel
+  useKeyboardShortcut('Escape', onCancel, { isEnabled: isOpen && !isRecrawling });
 
   if (!isOpen) return null;
 

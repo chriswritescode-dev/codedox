@@ -10,6 +10,7 @@ from pathlib import Path
 from urllib.parse import urlparse
 
 from ..config import get_settings
+from ..constants import ALL_SUPPORTED_EXTENSIONS, get_content_type_for_extension
 from .upload_processor import UploadConfig, UploadProcessor
 
 logger = logging.getLogger(__name__)
@@ -111,10 +112,10 @@ class GitHubProcessor:
                     config.repo_url, relative_path, config.branch
                 )
 
-                # Determine content type based on file extension
-                content_type = (
-                    "html" if file_path.suffix.lower() in {".html", ".htm"} else "markdown"
-                )
+                # Determine content type using centralized config
+                content_type = get_content_type_for_extension(str(file_path))
+                if not content_type:
+                    content_type = "markdown"  # Default fallback
 
                 files_data.append(
                     {
@@ -245,18 +246,9 @@ class GitHubProcessor:
         include_patterns: list[str] | None = None,
         exclude_patterns: list[str] | None = None,
     ) -> list[Path]:
-        """Find all markdown and HTML files in a directory."""
-        # Support both markdown and HTML files
-        supported_extensions = {
-            ".md",
-            ".markdown",
-            ".mdx",
-            ".mdown",
-            ".mkd",
-            ".mdwn",  # Markdown
-            ".html",
-            ".htm",  # HTML
-        }
+        """Find all supported documentation files in a directory."""
+        # Use centralized supported extensions
+        supported_extensions = set(ALL_SUPPORTED_EXTENSIONS)
         markdown_files = []
 
         default_excludes = {

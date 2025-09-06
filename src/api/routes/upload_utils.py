@@ -3,12 +3,14 @@
 import hashlib
 import logging
 import os
-from typing import Any, Dict, List
+import re
+from typing import Any
 
 from fastapi import HTTPException, UploadFile
 from sqlalchemy.orm import Session
 
 from src.config import get_settings
+from src.constants import ALL_SUPPORTED_EXTENSIONS
 from src.crawler.extraction_models import SimpleCodeBlock
 from src.database.models import CodeSnippet, Document
 
@@ -19,7 +21,7 @@ settings = get_settings()
 class FileValidationRules:
     """Centralized file validation configuration."""
 
-    ALLOWED_EXTENSIONS = (".md", ".markdown", ".txt", ".mdx", ".html", ".htm")
+    ALLOWED_EXTENSIONS = ALL_SUPPORTED_EXTENSIONS
     MAX_FILE_SIZE = 50 * 1024 * 1024  # 50MB
     MAX_TOTAL_SIZE = 500 * 1024 * 1024  # 500MB
     BINARY_CHECK_BYTES = 8192
@@ -44,24 +46,71 @@ def is_binary_content(content: bytes, sample_size: int | None = None) -> bool:
 class TitleExtractor:
     """Centralized title extraction utilities."""
 
+    RST_MARKER_CHARS = "=-~`#*+^"
+
+    @staticmethod
+    def _is_rst_marker_line(line: str) -> tuple[bool, str | None]:
+        """Check if line is an RST section marker.
+        
+        Args:
+            line: Line to check
+            
+        Returns:
+            Tuple of (is_marker, marker_char) where marker_char is the character used
+        """
+        stripped = line.strip()
+        if not stripped:
+            return False, None
+        
+        if all(c in TitleExtractor.RST_MARKER_CHARS for c in stripped):
+            return True, stripped[0]
+        return False, None
+
     @staticmethod
     def extract_from_content(content: str, max_lines: int | None = None) -> str | None:
-        """Extract title from markdown content (H1 heading).
+        """Extract title from markdown or RST content.
 
         Args:
-            content: Markdown content to search
+            content: Markdown or RST content to search
             max_lines: Maximum number of lines to search (default from config)
 
         Returns:
-            The H1 title if found, None otherwise
+            The title if found, None otherwise
         """
         if max_lines is None:
             max_lines = getattr(settings.upload, "title_search_lines", 10)
 
         lines = content.split("\n")[:max_lines]
+        
+        # Check for Markdown H1 heading
         for line in lines:
             if line.strip().startswith("# "):
                 return line.strip()[2:].strip()
+        
+        # Check for RST title (text with overline and underline using =, -, ~, etc.)
+        for i in range(len(lines) - 2):
+            line1 = lines[i].strip()
+            line2 = lines[i + 1].strip()
+            line3 = lines[i + 2].strip() if i + 2 < len(lines) else ""
+            
+            # Check for RST title with overline and underline
+            is_marker1, char1 = TitleExtractor._is_rst_marker_line(line1)
+            is_marker3, char3 = TitleExtractor._is_rst_marker_line(line3)
+            
+            if (is_marker1 and is_marker3 and
+                char1 == char3 and
+                len(line1) >= len(line2) and
+                len(line3) >= len(line2) and
+                line2):
+                return line2.strip()
+            
+            # Check for RST title with just underline
+            is_marker2, _ = TitleExtractor._is_rst_marker_line(line2)
+            if (line1 and is_marker2 and
+                not line1.startswith("#") and  # Not a markdown heading
+                len(line2) >= len(line1)):
+                return line1.strip()
+        
         return None
 
     @staticmethod
@@ -88,11 +137,11 @@ class TitleExtractor:
 
     @staticmethod
     def resolve(explicit_title: str | None, content: str, url: str) -> str:
-        """Resolve title with priority: explicit -> H1 -> URL.
+        """Resolve title with priority: explicit -> content title -> URL.
 
         Args:
             explicit_title: Explicitly provided title (highest priority)
-            content: Markdown content to search for H1
+            content: Markdown or RST content to search for title
             url: URL to extract fallback title from
 
         Returns:
@@ -108,18 +157,6 @@ class TitleExtractor:
         return TitleExtractor.extract_from_url(url)
 
 
-# Keep legacy functions for backward compatibility
-def extract_title_from_markdown(content: str, max_lines: int | None = None) -> str | None:
-    """Legacy function - use TitleExtractor.extract_from_content instead."""
-    return TitleExtractor.extract_from_content(content, max_lines)
-
-
-def resolve_document_title(explicit_title: str | None, content: str, fallback_name: str) -> str:
-    """Legacy function - use TitleExtractor.resolve instead."""
-    if explicit_title:
-        return explicit_title
-    content_title = TitleExtractor.extract_from_content(content)
-    return content_title or fallback_name
 
 
 async def validate_and_read_file(
@@ -132,7 +169,7 @@ async def validate_and_read_file(
     Args:
         file: The uploaded file
         max_file_size: Maximum file size in bytes (default from config)
-        allowed_extensions: Tuple of allowed file extensions (default: .md, .markdown, .txt)
+        allowed_extensions: Tuple of allowed file extensions (default from constants)
 
     Returns:
         Tuple of (content, filename_without_ext)
@@ -144,7 +181,7 @@ async def validate_and_read_file(
         max_file_size = settings.upload.max_file_size
 
     if allowed_extensions is None:
-        allowed_extensions = (".md", ".markdown", ".txt")
+        allowed_extensions = ALL_SUPPORTED_EXTENSIONS
 
     # Check file extension
     if not file.filename or not file.filename.endswith(allowed_extensions):
@@ -173,6 +210,186 @@ async def validate_and_read_file(
     filename_without_ext = file.filename.rsplit(".", 1)[0]
 
     return content, filename_without_ext
+
+
+class RSTCodeExtractor:
+    """Extractor for reStructuredText code blocks."""
+    
+    @classmethod
+    def extract_blocks(
+        cls, content: str, source_url: str | None = None, include_context: bool = False
+    ) -> list[SimpleCodeBlock]:
+        """Extract code blocks from RST content.
+        
+        Supports:
+        - .. code-block:: language
+        - .. code:: language
+        - .. sourcecode:: language
+        - Literal blocks with ::
+        - Indented literal blocks
+        """
+        extractor = cls()
+        raw_blocks = extractor.extract_code_blocks(content)
+        
+        result = []
+        for block in raw_blocks:
+            metadata = {}
+            
+            if include_context:
+                block_start = content.find(block['content'])
+                if block_start > 0:
+                    context = cls._extract_context(content, block_start, before=True, max_chars=300)
+                    if context:
+                        metadata['context_before'] = context
+            
+            metadata['block_type'] = block.get('type', 'code')
+            
+            result.append(
+                SimpleCodeBlock(
+                    code=block['content'],
+                    language=block.get('language'),
+                    source_url=source_url,
+                    container_type=block.get('type', 'code'),
+                    metadata=metadata,
+                )
+            )
+        
+        return result
+    
+    def extract_code_blocks(self, content: str) -> list[dict[str, Any]]:
+        """Extract code blocks from RST content."""
+        blocks = []
+        lines = content.split('\n')
+        i = 0
+        
+        while i < len(lines):
+            # Check for .. code-block::, .. code::, or .. sourcecode:: directives
+            directive_match = re.match(r'^\.\.\s+(code-block|code|sourcecode)::\s*(.*)$', lines[i])
+            if directive_match:
+                directive_type = directive_match.group(1)
+                language = directive_match.group(2).strip() or None
+                
+                # Skip to the content (may have options first)
+                i += 1
+                # Skip any directive options (lines starting with :)
+                while i < len(lines) and lines[i].strip().startswith(':'):
+                    i += 1
+                
+                # Skip blank lines
+                while i < len(lines) and not lines[i].strip():
+                    i += 1
+                
+                if i >= len(lines):
+                    continue
+                
+                # Determine the indentation of the code block
+                first_line = lines[i]
+                if not first_line.strip():
+                    i += 1
+                    continue
+                    
+                base_indent = len(first_line) - len(first_line.lstrip())
+                if base_indent == 0:
+                    # No indentation, skip
+                    i += 1
+                    continue
+                
+                # Collect the code block
+                code_lines = []
+                while i < len(lines):
+                    line = lines[i]
+                    if line.strip():  # Non-empty line
+                        line_indent = len(line) - len(line.lstrip())
+                        if line_indent < base_indent:
+                            # End of code block
+                            break
+                        # Remove the base indentation
+                        code_lines.append(line[base_indent:])
+                    else:
+                        # Empty line within code block
+                        code_lines.append('')
+                    i += 1
+                
+                if code_lines:
+                    # Remove trailing empty lines
+                    while code_lines and not code_lines[-1].strip():
+                        code_lines.pop()
+                    
+                    if code_lines:
+                        blocks.append({
+                            'content': '\n'.join(code_lines),
+                            'language': language,
+                            'type': f'rst-{directive_type}'
+                        })
+                continue
+            
+            # Check for literal block marker (::)
+            if i > 0 and lines[i-1].rstrip().endswith('::'):
+                # Next indented block is a literal block
+                i += 1
+                
+                # Skip blank lines
+                while i < len(lines) and not lines[i].strip():
+                    i += 1
+                
+                if i >= len(lines):
+                    continue
+                
+                # Check if next line is indented
+                first_line = lines[i]
+                if not first_line.strip():
+                    continue
+                    
+                base_indent = len(first_line) - len(first_line.lstrip())
+                if base_indent == 0:
+                    # Not indented, not a literal block
+                    continue
+                
+                # Collect the literal block
+                code_lines = []
+                while i < len(lines):
+                    line = lines[i]
+                    if line.strip():  # Non-empty line
+                        line_indent = len(line) - len(line.lstrip())
+                        if line_indent < base_indent:
+                            # End of literal block
+                            break
+                        # Remove the base indentation
+                        code_lines.append(line[base_indent:])
+                    else:
+                        # Empty line within literal block
+                        code_lines.append('')
+                    i += 1
+                
+                if code_lines:
+                    # Remove trailing empty lines
+                    while code_lines and not code_lines[-1].strip():
+                        code_lines.pop()
+                    
+                    if code_lines:
+                        blocks.append({
+                            'content': '\n'.join(code_lines),
+                            'language': None,
+                            'type': 'rst-literal'
+                        })
+                continue
+            
+            i += 1
+        
+        return blocks
+    
+    @classmethod
+    def _extract_context(
+        cls, content: str, position: int, before: bool = True, max_chars: int = 200
+    ) -> str:
+        """Extract context around a position."""
+        if before:
+            start = max(0, position - max_chars)
+            context = content[start:position].strip()
+        else:
+            end = min(len(content), position + max_chars)
+            context = content[position:end].strip()
+        return context
 
 
 class MarkdownCodeExtractor:
@@ -221,7 +438,7 @@ class MarkdownCodeExtractor:
         
         return result
     
-    def extract_code_blocks(self, content: str) -> List[Dict[str, Any]]:
+    def extract_code_blocks(self, content: str) -> list[dict[str, Any]]:
         """Extract both fenced and indented code blocks from markdown content."""
         blocks = []
         lines = content.split('\n')
@@ -229,7 +446,7 @@ class MarkdownCodeExtractor:
         
         while i < len(lines):
             # Check for fenced code block (``` or ~~~)
-            if lines[i].startswith('```'): 
+            if lines[i].startswith('```'):
                 fence = lines[i][:3]
                 language = lines[i][3:].strip() or None
                 code_lines = []
@@ -272,7 +489,7 @@ class MarkdownCodeExtractor:
                     elif lines[i].strip() == '':
                         # Check if next line is also indented (blank line within code)
                         if i + 1 < len(lines) and (
-                            lines[i + 1].startswith('    ') or 
+                            lines[i + 1].startswith('    ') or
                             lines[i + 1].startswith('\t')
                         ):
                             code_lines.append('')  # Keep blank line
@@ -314,10 +531,29 @@ class MarkdownCodeExtractor:
         return context
 
 
-# Keep legacy function for backward compatibility
-def extract_code_blocks_from_markdown(content: str) -> list[SimpleCodeBlock]:
-    """Legacy function - use MarkdownCodeExtractor.extract_blocks instead."""
-    return MarkdownCodeExtractor.extract_blocks(content)
+
+
+
+def extract_code_blocks_by_type(
+    content: str, content_type: str, source_url: str | None = None
+) -> list[SimpleCodeBlock]:
+    """Extract code blocks based on content type.
+    
+    Args:
+        content: The content to extract from
+        content_type: The type of content (markdown, restructuredtext, etc.)
+        source_url: Optional source URL for the blocks
+        
+    Returns:
+        List of SimpleCodeBlock objects
+    """
+    if content_type == 'restructuredtext':
+        return RSTCodeExtractor.extract_blocks(content, source_url)
+    elif content_type in ('markdown', 'text'):
+        return MarkdownCodeExtractor.extract_blocks(content, source_url)
+    else:
+        # Default to markdown extractor for unknown types
+        return MarkdownCodeExtractor.extract_blocks(content, source_url)
 
 
 class GitHubURLParser:

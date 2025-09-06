@@ -13,6 +13,7 @@ export default function Dashboard() {
     queryKey: ["statistics"],
     queryFn: () => api.getStatistics(),
   });
+	console.log('Stats:', stats); // Debug log to see what's returned
 
   if (isLoading) {
     return (
@@ -113,10 +114,10 @@ export default function Dashboard() {
           </div>
         )}
 
-        {stats?.recent_crawls && stats.recent_crawls.length > 0 && (
+        {stats?.recent_jobs && stats.recent_jobs.length > 0 && (
           <div className="bg-secondary/50 rounded-lg p-6 mb-10">
             <div className="flex items-center justify-between mb-4">
-              <h2 className="text-lg font-semibold">Recent Crawls</h2>
+              <h2 className="text-lg font-semibold">Recent Jobs</h2>
               <Link
                 to="/crawl"
                 className="text-sm text-primary hover:underline"
@@ -125,26 +126,49 @@ export default function Dashboard() {
               </Link>
             </div>
             <div className="space-y-3 overflow-y-auto h-[450px] shadow-lg">
-              {stats.recent_crawls.map((crawl) => (
-                <Link
-                  key={crawl.id}
-                  to={`/crawl/${crawl.id}`}
-                  className="block p-3 bg-background rounded-md hover:bg-secondary transition-colors"
-                >
+              {stats.recent_jobs.map((job) => {
+                const jobType = 'job_type' in job ? job.job_type : ('base_url' in job ? 'crawl' : 'upload');
+                // Link to appropriate detail page based on job type
+                const linkPath = jobType === 'crawl' 
+                  ? `/crawl/${job.id}` 
+                  : `/sources/${job.id}`;  // Upload jobs go to source detail page
+                
+                const content = (
                   <div className="flex items-center justify-between">
                     <div>
-                      <p className="font-medium">{crawl.name}</p>
+                      <div className="flex items-center gap-2">
+                        <p className="font-medium">{job.name}</p>
+                        <span className="text-xs px-2 py-0.5 bg-primary/10 text-primary rounded-full">
+                          {jobType === 'crawl' ? 'Crawl' : 'Upload'}
+                        </span>
+                      </div>
                       <p className="text-sm text-muted-foreground">
-                        {crawl.snippets_extracted} snippets
+                        {job.snippets_extracted} snippets
+                        {jobType === 'crawl' && 'urls_crawled' in job && (
+                          <span> • {job.urls_crawled} pages</span>
+                        )}
+                        {jobType === 'upload' && 'file_count' in job && (
+                          <span> • {job.file_count} files</span>
+                        )}
                       </p>
                     </div>
                     <div className="flex items-center text-sm text-muted-foreground">
                       <Clock className="h-4 w-4 mr-1" />
-                      {new Date(crawl.created_at).toLocaleDateString()}
+                      {new Date(job.created_at).toLocaleDateString()}
                     </div>
                   </div>
-                </Link>
-              ))}
+                );
+
+                return (
+                  <Link
+                    key={job.id}
+                    to={linkPath}
+                    className="block p-3 bg-background rounded-md hover:bg-secondary transition-colors"
+                  >
+                    {content}
+                  </Link>
+                );
+              })}
             </div>
           </div>
         )}

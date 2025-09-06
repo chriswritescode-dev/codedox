@@ -14,6 +14,7 @@ import {
   StopCircle,
   PlayCircle,
   AlertCircle,
+  ExternalLink,
 } from "lucide-react";
 import CrawlProgress from "../components/CrawlProgress";
 import { ConfirmationDialog } from "../components/ConfirmationDialog";
@@ -176,7 +177,16 @@ export default function CrawlDetail() {
           <div className="flex items-center gap-3">
             <Briefcase className="h-8 w-8 text-muted-foreground" />
             <div>
-              <h1 className="text-2xl font-bold">{job.name}</h1>
+              {job.status === "completed" ? (
+                <Link
+                  to={`/sources/${job.id}`}
+                  className="text-2xl font-bold hover:text-primary transition-colors"
+                >
+                  {job.name}
+                </Link>
+              ) : (
+                <h1 className="text-2xl font-bold">{job.name}</h1>
+              )}
               <p className="text-sm text-muted-foreground">{job.base_url}</p>
             </div>
           </div>
@@ -188,6 +198,15 @@ export default function CrawlDetail() {
               </span>
             </div>
             <div className="flex items-center gap-2">
+              {job.status === "completed" && (
+                <Link
+                  to={`/sources/${job.id}`}
+                  className="flex items-center gap-2 px-3 py-1.5 text-foreground border border-border rounded-md hover:bg-secondary/50 transition-colors"
+                >
+                  <ExternalLink className="h-4 w-4" />
+                  View Source
+                </Link>
+              )}
               {(job.status === "running" || job.status === "paused") && (
                 <button
                   onClick={() => setCancelModalOpen(true)}
@@ -233,19 +252,26 @@ export default function CrawlDetail() {
             <p className="text-xl font-semibold">{job.snippets_extracted}</p>
           </div>
 
-          {job.failed_pages_count !== undefined && job.failed_pages_count > 0 && (
-            <div 
-              className="bg-orange-50 dark:bg-orange-900/20 rounded-md p-4 border border-orange-200 dark:border-orange-800 cursor-pointer hover:bg-orange-100 dark:hover:bg-orange-900/30 transition-colors"
-              onClick={() => setShowFailedPages(!showFailedPages)}
-            >
-              <p className="text-sm text-orange-700 dark:text-orange-300 mb-1">Failed Pages</p>
-              <div className="flex items-center justify-between">
-                <p className="text-xl font-semibold text-orange-900 dark:text-orange-100">{job.failed_pages_count}</p>
-                <AlertCircle className="h-5 w-5 text-orange-600 dark:text-orange-400" />
+          {job.failed_pages_count !== undefined &&
+            job.failed_pages_count > 0 && (
+              <div
+                className="bg-orange-50 dark:bg-orange-900/20 rounded-md p-4 border border-orange-200 dark:border-orange-800 cursor-pointer hover:bg-orange-100 dark:hover:bg-orange-900/30 transition-colors"
+                onClick={() => setShowFailedPages(!showFailedPages)}
+              >
+                <p className="text-sm text-orange-700 dark:text-orange-300 mb-1">
+                  Failed Pages
+                </p>
+                <div className="flex items-center justify-between">
+                  <p className="text-xl font-semibold text-orange-900 dark:text-orange-100">
+                    {job.failed_pages_count}
+                  </p>
+                  <AlertCircle className="h-5 w-5 text-orange-600 dark:text-orange-400" />
+                </div>
+                <p className="text-xs text-orange-600 dark:text-orange-400 mt-1">
+                  Click to view
+                </p>
               </div>
-              <p className="text-xs text-orange-600 dark:text-orange-400 mt-1">Click to view</p>
-            </div>
-          )}
+            )}
 
           <div className="bg-background rounded-md p-4">
             <p className="text-sm text-muted-foreground mb-1">Created</p>
@@ -277,24 +303,30 @@ export default function CrawlDetail() {
       )}
 
       {/* Failed Pages Section */}
-      {showFailedPages && job.failed_pages_count !== undefined && job.failed_pages_count > 0 && (
-        <div className="bg-secondary/50 rounded-lg p-6">
-          {isLoadingFailedPages ? (
-            <div className="flex items-center justify-center py-8">
-              <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
-              <span className="ml-2 text-muted-foreground">Loading failed pages...</span>
-            </div>
-          ) : failedPages && failedPages.length > 0 ? (
-            <FailedPagesList
-              pages={failedPages}
-              onRetrySelected={handleRetryFailedPages}
-              isRetrying={recrawlMutation.isPending}
-            />
-          ) : (
-            <p className="text-center text-muted-foreground py-8">No failed pages data available</p>
-          )}
-        </div>
-      )}
+      {showFailedPages &&
+        job.failed_pages_count !== undefined &&
+        job.failed_pages_count > 0 && (
+          <div className="bg-secondary/50 rounded-lg p-6">
+            {isLoadingFailedPages ? (
+              <div className="flex items-center justify-center py-8">
+                <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+                <span className="ml-2 text-muted-foreground">
+                  Loading failed pages...
+                </span>
+              </div>
+            ) : failedPages && failedPages.length > 0 ? (
+              <FailedPagesList
+                pages={failedPages}
+                onRetrySelected={handleRetryFailedPages}
+                isRetrying={recrawlMutation.isPending}
+              />
+            ) : (
+              <p className="text-center text-muted-foreground py-8">
+                No failed pages data available
+              </p>
+            )}
+          </div>
+        )}
 
       {/* Cancel Confirmation Dialog */}
       <ConfirmationDialog

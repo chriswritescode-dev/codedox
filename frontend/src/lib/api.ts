@@ -13,25 +13,53 @@ export interface Source {
 }
 
 export interface CrawlJob {
-  id: string
-  name: string
-  status: 'pending' | 'running' | 'completed' | 'failed' | 'cancelled' | 'paused'
-  base_url: string
-  max_depth: number
-  urls_crawled: number
-  total_pages: number
-  snippets_extracted: number
-  failed_pages_count?: number
-  crawl_phase?: 'crawling' | 'finalizing' | null
-  documents_crawled?: number
-  created_at: string
-  started_at?: string
-  completed_at?: string
-  error_message?: string
-  last_heartbeat?: string
-  retry_count?: number
-  crawl_progress?: number
+  id: string;
+  name: string;
+  status:
+    | "pending"
+    | "running"
+    | "completed"
+    | "failed"
+    | "cancelled"
+    | "paused";
+  job_type?: "crawl";
+  base_url: string;
+  max_depth: number;
+  urls_crawled: number;
+  total_pages: number;
+  snippets_extracted: number;
+  failed_pages_count?: number;
+  crawl_phase?: "crawling" | "finalizing" | null;
+  documents_crawled?: number;
+  created_at: string;
+  started_at?: string;
+  completed_at?: string;
+  error_message?: string;
+  last_heartbeat?: string;
+  retry_count?: number;
+  crawl_progress?: number;
 }
+
+export interface UploadJob {
+  id: string;
+  name: string;
+  version?: string;
+  job_type?: "upload";
+  source_type?: string;
+  file_count: number;
+  status: string;
+  processed_files: number;
+  snippets_extracted: number;
+  started_at: string | null;
+  completed_at: string | null;
+  error_message: string | null;
+  config?: object | null;
+  created_by?: string;
+  created_at: string;
+  updated_at?: string;
+}
+
+export type Job = CrawlJob | UploadJob;
 
 export interface CodeSnippet {
   id: string
@@ -91,11 +119,11 @@ export interface SearchResult {
 }
 
 export interface Statistics {
-  total_sources: number
-  total_documents: number
-  total_snippets: number
-  languages: { [key: string]: number }
-  recent_crawls: CrawlJob[]
+  total_sources: number;
+  total_documents: number;
+  total_snippets: number;
+  languages: { [key: string]: number };
+  recent_jobs?: Job[];
 }
 
 class APIClient {
@@ -618,4 +646,4 @@ export const uploadFiles = api.uploadFiles.bind(api)
 export const uploadGitHubRepo = api.uploadGitHubRepo.bind(api)
 export const getUploadStatus = api.getUploadStatus.bind(api)
 export const getGitHubUploadStatus = api.getGitHubUploadStatus.bind(api)
-export const getUploadConfig = api.getUploadConfig.bind(api)
+export const getUploadConfig = api.getUploadConfig.bind(api);
