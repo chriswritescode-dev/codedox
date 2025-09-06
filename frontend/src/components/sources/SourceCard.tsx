@@ -89,7 +89,7 @@ export const SourceCard = memo(({
       <div className="mb-4">
         <div 
           onClick={(e) => e.stopPropagation()}
-          className="inline-block w-full"
+          className="inline-block w-fit"
         >
           <EditableSourceName
             id={source.id}
