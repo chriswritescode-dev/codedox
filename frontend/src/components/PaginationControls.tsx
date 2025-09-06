@@ -68,7 +68,7 @@ export function PaginationControls({
           <ChevronLeft className="h-4 w-4" />
         </button>
 
-        <div className="flex items-center gap-1">
+        <div className="flex items-center gap-2">
           {getPageNumbers().map((page, index) => {
             if (page === '...') {
               return (

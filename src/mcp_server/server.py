@@ -67,7 +67,6 @@ class MCPServer:
                 query=arguments.get("query"),  # Add the missing query parameter!
                 max_tokens=arguments.get("max_tokens"),
                 chunk_index=arguments.get("chunk_index"),
-                chunk_size=arguments.get("chunk_size", 4000),
             )
         else:
             available_tools = [
@@ -270,7 +269,7 @@ class MCPServer:
                         },
                         "max_tokens": {
                             "type": "integer",
-                            "description": "Optional: Limit response to first N tokens (useful for summaries)",
+                            "description": "Optional: Limit response to first N tokens (useful for summaries) or define chunk size when using chunk_index (default: 2048)",
                             "minimum": 100,
                         },
                         "chunk_index": {
@@ -278,13 +277,7 @@ class MCPServer:
                             "description": "Optional: Get specific chunk of large document (0-based, use for pagination)",
                             "minimum": 0,
                         },
-                        "chunk_size": {
-                            "type": "integer",
-                            "description": "Size of each chunk in tokens when using chunk_index (default: 2048)",
-                            "default": 2048,
-                            "minimum": 500,
-                            "maximum": 10000,
-                        },
+
                     },
                     "required": ["url"],
                 },

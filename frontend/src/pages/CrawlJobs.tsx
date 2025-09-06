@@ -3,7 +3,6 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { api } from "../lib/api";
 import { Link, useNavigate } from "react-router-dom";
 import {
-  Plus,
   Clock,
   CheckCircle,
   XCircle,
@@ -17,12 +16,10 @@ import {
   PlayCircle,
 } from "lucide-react";
 import { ConfirmationDialog } from "../components/ConfirmationDialog";
-import { NewCrawlDialog } from "../components/NewCrawlDialog";
 import { PaginationControls } from "../components/PaginationControls";
 import { useToast } from "../hooks/useToast";
 
 export default function CrawlJobs() {
-  const [showModal, setShowModal] = useState(false);
   const [cancelModalOpen, setCancelModalOpen] = useState(false);
   const [jobToCancel, setJobToCancel] = useState<{
     id: string;
@@ -53,33 +50,6 @@ export default function CrawlJobs() {
     },
     refetchInterval: 5000, // Refresh every 5 seconds
   });
-
-  const createMutation = useMutation({
-    mutationFn: api.createCrawlJob.bind(api),
-    onSuccess: (data) => {
-      queryClient.invalidateQueries({ queryKey: ["crawl-jobs"] });
-      setShowModal(false);
-      navigate(`/crawl/${(data as { id: string }).id}`);
-    },
-    onError: (error) => {
-      console.error("Failed to create crawl job:", error);
-      toast.error(
-        "Failed to create crawl job: " +
-          (error instanceof Error ? error.message : "Unknown error")
-      );
-    },
-  });
-
-  const handleSubmit = (formData: {
-    name?: string;
-    base_url: string;
-    max_depth: number;
-    domain_filter?: string;
-    url_patterns?: string[];
-    max_concurrent_crawls?: number;
-  }) => {
-    createMutation.mutate(formData);
-  };
 
   const cancelMutation = useMutation({
     mutationFn: (jobId: string) => api.cancelCrawlJob(jobId),
@@ -346,20 +316,11 @@ export default function CrawlJobs() {
     <div className="flex flex-col h-full min-h-0">
       {/* Fixed header section */}
       <div className="space-y-4 pb-4">
-        <div className="flex items-center justify-between">
-          <div>
-            <h1 className="text-3xl font-bold">Crawl Jobs</h1>
-            <p className="text-muted-foreground mt-2">
-              Monitor and manage documentation crawls
-            </p>
-          </div>
-          <button
-            onClick={() => setShowModal(true)}
-            className="flex items-center px-4 py-2 bg-primary text-primary-foreground rounded-md hover:bg-primary/90"
-          >
-            <Plus className="h-4 w-4 mr-2" />
-            New Crawl
-          </button>
+        <div>
+          <h1 className="text-3xl font-bold">Crawl Jobs</h1>
+          <p className="text-muted-foreground mt-2">
+            Monitor and manage documentation crawls
+          </p>
         </div>
 
         {/* Search and Selection Controls */}
@@ -620,14 +581,6 @@ export default function CrawlJobs() {
             </div>
           </div>
         )}
-
-      {/* New Crawl Dialog */}
-      <NewCrawlDialog
-        isOpen={showModal}
-        onClose={() => setShowModal(false)}
-        onSubmit={handleSubmit}
-        isSubmitting={createMutation.isPending}
-      />
 
       {/* Cancel Confirmation Modal */}
       <ConfirmationDialog

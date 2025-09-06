@@ -1,4 +1,4 @@
-import { Outlet, Link, useLocation } from "react-router-dom";
+import { Outlet, Link, useLocation, useNavigate } from "react-router-dom";
 import {
   Home,
   Search,
@@ -8,9 +8,14 @@ import {
   X,
   Upload,
   FileSearch,
+  Plus,
 } from "lucide-react";
 import { useState, useEffect } from "react";
 import { DocumentSearchModal } from "./DocumentSearchModal";
+import { NewCrawlDialog } from "./NewCrawlDialog";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { api } from "../lib/api";
+import { useToast } from "../hooks/useToast";
 
 const navigation = [
   { name: "Dashboard", href: "/", icon: Home },
@@ -22,8 +27,12 @@ const navigation = [
 
 export default function Layout() {
   const location = useLocation();
+  const navigate = useNavigate();
+  const queryClient = useQueryClient();
+  const toast = useToast();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [documentSearchOpen, setDocumentSearchOpen] = useState(false);
+  const [crawlDialogOpen, setCrawlDialogOpen] = useState(false);
 
   // Add keyboard shortcut for document search (Cmd/Ctrl + K)
   useEffect(() => {
@@ -37,6 +46,35 @@ export default function Layout() {
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, []);
+
+  // Mutation for creating crawl jobs
+  const createCrawlMutation = useMutation({
+    mutationFn: api.createCrawlJob.bind(api),
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ["crawl-jobs"] });
+      setCrawlDialogOpen(false);
+      navigate(`/crawl/${(data as { id: string }).id}`);
+      toast.success("Crawl job created successfully");
+    },
+    onError: (error) => {
+      console.error("Failed to create crawl job:", error);
+      toast.error(
+        "Failed to create crawl job: " +
+          (error instanceof Error ? error.message : "Unknown error")
+      );
+    },
+  });
+
+  const handleCrawlSubmit = (formData: {
+    name?: string;
+    base_url: string;
+    max_depth: number;
+    domain_filter?: string;
+    url_patterns?: string[];
+    max_concurrent_crawls?: number;
+  }) => {
+    createCrawlMutation.mutate(formData);
+  };
 
   return (
     <div className="min-h-screen bg-background">
@@ -59,7 +97,14 @@ export default function Layout() {
         }`}
       >
         <div className="flex h-full flex-col">
-          <div className="px-3 pt-4 pb-2">
+          <div className="px-3 pt-4 pb-2 space-y-2">
+            <button
+              onClick={() => setCrawlDialogOpen(true)}
+              className="w-full flex items-center gap-2 px-3 py-2.5 text-sm bg-primary hover:bg-primary/90 text-primary-foreground rounded-lg transition-all font-medium shadow-sm hover:shadow-md"
+            >
+              <Plus className="h-4 w-4" />
+              <span className="flex-1 text-left">New Crawl</span>
+            </button>
             <button
               onClick={() => setDocumentSearchOpen(true)}
               className="w-full flex items-center gap-2 px-3 py-2 text-sm bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700 rounded-lg transition-colors text-gray-600 dark:text-gray-400"
@@ -109,9 +154,25 @@ export default function Layout() {
         />
       )}
 
+      {/* Floating Action Button for Mobile */}
+      <button
+        onClick={() => setCrawlDialogOpen(true)}
+        className="fixed bottom-6 right-6 z-40 lg:hidden w-14 h-14 bg-primary text-primary-foreground rounded-full shadow-lg hover:shadow-xl hover:bg-primary/90 transition-all flex items-center justify-center"
+        aria-label="New Crawl"
+      >
+        <Plus className="h-6 w-6" />
+      </button>
+
       <DocumentSearchModal
         isOpen={documentSearchOpen}
         onClose={() => setDocumentSearchOpen(false)}
+      />
+
+      <NewCrawlDialog
+        isOpen={crawlDialogOpen}
+        onClose={() => setCrawlDialogOpen(false)}
+        onSubmit={handleCrawlSubmit}
+        isSubmitting={createCrawlMutation.isPending}
       />
     </div>
   );
