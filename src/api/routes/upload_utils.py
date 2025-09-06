@@ -3,7 +3,6 @@
 import hashlib
 import logging
 import os
-import re
 from typing import Any, Dict, List
 
 from fastapi import HTTPException, UploadFile
@@ -230,7 +229,7 @@ class MarkdownCodeExtractor:
         
         while i < len(lines):
             # Check for fenced code block (``` or ~~~)
-            if lines[i].startswith('```') or lines[i].startswith('~~~'):
+            if lines[i].startswith('```'): 
                 fence = lines[i][:3]
                 language = lines[i][3:].strip() or None
                 code_lines = []
@@ -242,11 +241,19 @@ class MarkdownCodeExtractor:
                     i += 1
                 
                 if code_lines:
-                    blocks.append({
-                        'content': '\n'.join(code_lines),
-                        'language': language,
-                        'type': 'fenced'
-                    })
+                    # Filter out standalone --- separators (common in MongoDB docs)
+                    filtered_lines = []
+                    for line in code_lines:
+                        # Skip lines that are just --- (with optional whitespace)
+                        if line.strip() != '---':
+                            filtered_lines.append(line)
+                    
+                    if filtered_lines:  # Only add if there's content after filtering
+                        blocks.append({
+                            'content': '\n'.join(filtered_lines),
+                            'language': language,
+                            'type': 'fenced'
+                        })
                 i += 1  # Skip closing fence
                 continue
             

@@ -285,22 +285,31 @@ class UploadProcessor:
         try:
             # Calculate content hash from original content
             content_hash = hashlib.md5(content.encode()).hexdigest()
+            
+            # Log the incoming parameters
+            logger.info(f"[_process_file] Processing file: {source_url}")
+            logger.info(f"[_process_file] Content type: {content_type}")
+            logger.info(f"[_process_file] Content length: {len(content)} chars")
 
             # Initialize metadata
             metadata = {"content_type": content_type}
 
             # Process based on content type
             if content_type == "html":
+                logger.info(f"[_process_file] Entering HTML processing block for {source_url}")
                 # Process HTML through Crawl4AI for consistent extraction
-                # Use the same approach as the page crawler
 
                 # Create crawler config with markdown generation
                 crawler_config = CrawlerRunConfig(
                     cache_mode=CacheMode.BYPASS,
                     verbose=False,
+                    only_text=True,
                     markdown_generator=DefaultMarkdownGenerator(
-                        content_source="raw_html", options={"ignore_links": False}
-                    ),
+                        content_source="raw_html", options={
+            "ignore_links": True,
+            "escape_html": True,"body_width": 80,
+
+        }                    ),
                 )
 
                 # Process HTML through Crawl4AI using raw: prefix
@@ -315,14 +324,26 @@ class UploadProcessor:
                         raise ValueError(error_msg)
 
                     # Extract markdown content from result
+                    logger.info(f"[HTML] Crawl4AI result success: {result.success}")
+                    logger.info(f"[HTML] Result has markdown attr: {hasattr(result, 'markdown')}")
+                    
                     if hasattr(result, "markdown"):
+                        logger.info("[HTML] Result has markdown attribute")
+                        logger.info(f"[HTML] Markdown type: {type(result.markdown)}")
+                        logger.info(f"[HTML] Markdown attrs: {dir(result.markdown) if result.markdown else 'None'}")
+                        
                         if hasattr(result.markdown, "raw_markdown"):
+                            logger.info(f"[HTML] Using raw_markdown, length: {len(result.markdown.raw_markdown) if result.markdown.raw_markdown else 0}")
                             markdown_content = result.markdown.raw_markdown
                         elif hasattr(result.markdown, "markdown_v2"):
+                            logger.info(f"[HTML] Using markdown_v2.raw_markdown")
                             markdown_content = result.markdown.markdown_v2.raw_markdown
                         else:
+                            logger.info(f"[HTML] Using str(markdown)")
                             markdown_content = str(result.markdown) if result.markdown else ""
                     else:
+                        logger.warning(f"[HTML] Result has no markdown attribute!")
+                        logger.info(f"[HTML] Result attributes: {dir(result)}")
                         markdown_content = ""
 
                     # Get title from metadata or extract from content
@@ -333,16 +354,15 @@ class UploadProcessor:
                     if not title:
                         title = self._extract_title(markdown_content, source_url)
 
-                    # NOW EXTRACT CODE BLOCKS FROM MARKDOWN INSTEAD OF HTML
-                    # This ensures we get clean code blocks without CSS/JS artifacts
                     code_blocks = self._extract_markdown_code_blocks(markdown_content, source_url)
                     logger.info(f"Extracted {len(code_blocks)} code blocks from converted markdown for {source_url}")
 
             else:
-                # For markdown and other text formats
+                logger.info(f"[_process_file] Processing as markdown (content_type={content_type}) for {source_url}")
                 markdown_content = content
                 title = self._extract_title(content, source_url)
                 code_blocks = self._extract_markdown_code_blocks(content, source_url)
+                logger.info(f"[_process_file] Extracted {len(code_blocks)} code blocks from markdown")
 
             return UploadResult(
                 source_url=source_url,
