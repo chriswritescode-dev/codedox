@@ -156,6 +156,7 @@ export default function DocumentDetail() {
           <div className="flex items-center gap-6 pt-4 border-t border-border">
             <div className="flex items-center gap-4">
               <Code className="h-5 w-5 text-muted-foreground" />
+							
               <div className="flex items-center gap-2">
                 <div className="text-2xl font-semibold">{data.total}</div>
                 <div className="text-sm text-muted-foreground">

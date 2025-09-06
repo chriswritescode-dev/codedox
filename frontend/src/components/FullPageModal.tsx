@@ -45,14 +45,13 @@ export const FullPageModal: React.FC<FullPageModalProps> = ({
   }, [isOpen, url]);
 
   // Handle keyboard shortcuts
-  useKeyboardShortcut('Escape', onClose, { isEnabled: isOpen });
+  useKeyboardShortcut('Escape', onClose, isOpen);
   
   useKeyboardShortcut('f', () => {
-    searchInputRef.current?.focus();
-  }, { 
-    isEnabled: isOpen,
-    ctrlKey: true 
-  });
+    if (isOpen) {
+      searchInputRef.current?.focus();
+    }
+  }, isOpen);
 
   const fetchPageMarkdown = async () => {
     setLoading(true);

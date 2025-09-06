@@ -22,7 +22,7 @@ export function RecrawlDialog({
   const [ignoreHash, setIgnoreHash] = useState(false);
 
   // Handle Escape key to cancel
-  useKeyboardShortcut('Escape', onCancel, { isEnabled: isOpen && !isRecrawling });
+  useKeyboardShortcut('Escape', onCancel, isOpen && !isRecrawling);
 
   if (!isOpen) return null;
 

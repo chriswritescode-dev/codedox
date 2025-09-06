@@ -10,6 +10,7 @@ export interface Source {
   updated_at: string
   documents_count: number
   snippets_count: number
+  source_type: string
 }
 
 export interface CrawlJob {

@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { FileText, Code, Trash2, Check, RefreshCw } from 'lucide-react'
 import { EditableSourceName } from '../EditableSourceName'
 import { Source } from '../../lib/api'
+import { cn } from '../../lib/utils'
 
 interface SourceCardProps {
   source: Source
@@ -35,28 +36,27 @@ export const SourceCard = memo(({
 
   return (
     <div
-      className={`relative bg-secondary/50 rounded-lg p-6 hover:bg-secondary transition-colors group cursor-pointer ${
-        isSelected ? "ring-2 ring-primary" : ""
-      }`}
+      className={cn(
+        "ring-2 relative bg-secondary/50 rounded-lg p-6 hover:bg-secondary transition-colors group cursor-pointer mx-1",
+        isSelected ? "ring-primary" : "ring-transparent"
+      )}
       onClick={handleCardClick}
     >
       <div
         className="absolute top-4 left-4 z-10"
         onClick={(e) => {
-          e.stopPropagation()
-          onToggleSelect(source.id)
+          e.stopPropagation();
+          onToggleSelect(source.id);
         }}
       >
         <div
-          className={`w-5 h-5 rounded border-2 flex items-center justify-center cursor-pointer ${
+          className={`w-6 h-6 rounded border-2 flex items-center justify-center cursor-pointer ${
             isSelected
               ? "bg-primary border-primary"
               : "border-input bg-background hover:border-primary"
           }`}
         >
-          {isSelected && (
-            <Check className="h-3 w-3 text-primary-foreground" />
-          )}
+          {isSelected && <Check className="h-4 w-4 text-primary-foreground" />}
         </div>
       </div>
 
@@ -64,8 +64,8 @@ export const SourceCard = memo(({
         <div className="flex items-center gap-2">
           <button
             onClick={(e) => {
-              e.stopPropagation()
-              onRecrawl(e, source)
+              e.stopPropagation();
+              onRecrawl(e, source);
             }}
             className="p-1 text-muted-foreground hover:text-primary hover:bg-primary/10 rounded-md opacity-0 group-hover:opacity-100 transition-opacity"
             title="Recrawl source"
@@ -75,8 +75,8 @@ export const SourceCard = memo(({
           </button>
           <button
             onClick={(e) => {
-              e.stopPropagation()
-              onDelete(e, source)
+              e.stopPropagation();
+              onDelete(e, source);
             }}
             className="p-1 text-muted-foreground hover:text-destructive hover:bg-destructive/10 rounded-md opacity-0 group-hover:opacity-100 transition-opacity"
             title="Delete source"
@@ -87,7 +87,7 @@ export const SourceCard = memo(({
       </div>
 
       <div className="mb-4">
-        <div 
+        <div
           onClick={(e) => e.stopPropagation()}
           className="inline-block w-fit"
         >
@@ -120,7 +120,7 @@ export const SourceCard = memo(({
         </span>
       </div>
     </div>
-  )
+  );
 })
 
 SourceCard.displayName = 'SourceCard'

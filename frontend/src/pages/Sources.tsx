@@ -288,9 +288,6 @@ export default function Sources() {
       <div className="space-y-4 pb-4">
         <div>
           <h1 className="text-3xl font-bold">Documentation Sources</h1>
-          <p className="text-muted-foreground mt-2">
-            Browse all crawled documentation sources
-          </p>
         </div>
 
         <div className="flex gap-4 items-center">

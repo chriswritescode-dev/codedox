@@ -1,24 +1,24 @@
-import React from 'react'
-import { Filter } from 'lucide-react'
+
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 
 interface FilterDropdownProps {
   value: string
   onChange: (value: string) => void
 }
 
-export const FilterDropdown: React.FC<FilterDropdownProps> = ({ value, onChange }) => {
+export const FilterDropdown = ({ value, onChange }: FilterDropdownProps) => {
   return (
     <div className="flex items-center gap-2">
-      <Filter className="h-4 w-4 text-muted-foreground" />
-      <select
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        className="px-3 py-2 bg-secondary border border-input rounded-md focus:outline-none focus:ring-2 focus:ring-primary"
-      >
-        <option value="all">All Sources</option>
-        <option value="has-snippets">Has Snippets</option>
-        <option value="0">No Snippets</option>
-      </select>
+      <Select value={value} onValueChange={onChange}>
+        <SelectTrigger className="w-[140px]">
+          <SelectValue placeholder="All Sources" />
+        </SelectTrigger>
+        <SelectContent>
+          <SelectItem value="all">All Sources</SelectItem>
+          <SelectItem value="has-snippets">Has Snippets</SelectItem>
+          <SelectItem value="0">No Snippets</SelectItem>
+        </SelectContent>
+      </Select>
     </div>
   )
 }
