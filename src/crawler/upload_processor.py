@@ -14,7 +14,6 @@ from ..config import get_settings
 from ..database import CodeSnippet, Document, UploadJob, get_db_manager
 from .config import create_browser_config
 from .extraction_models import SimpleCodeBlock
-from .html_code_extractor import HTMLCodeExtractor
 from .llm_retry import LLMDescriptionGenerator
 from .markdown_utils import remove_markdown_links
 from .progress_tracker import ProgressTracker
@@ -57,7 +56,6 @@ class UploadProcessor:
         """Initialize the upload processor."""
         self.settings = settings
         self.db_manager = get_db_manager()
-        self.html_extractor = HTMLCodeExtractor()
         self.result_processor = ResultProcessor()
         self.progress_tracker = ProgressTracker(self)
 
@@ -335,25 +333,10 @@ class UploadProcessor:
                     if not title:
                         title = self._extract_title(markdown_content, source_url)
 
-                    # Extract code blocks from the original HTML content
-                    # (not the cleaned version from Crawl4AI which might lose language classes)
-                    extracted_blocks = self.html_extractor.extract_code_blocks(content, source_url)
-
-                # Convert to SimpleCodeBlock format
-                code_blocks = []
-                for block in extracted_blocks:
-                    simple_block = SimpleCodeBlock(
-                        code=block.code,
-                        language=block.language,
-                        title=block.title,
-                        description=block.description,
-                        context_before=block.context_before,
-                        metadata={
-                            "container_type": block.container_type,
-                            "extraction_method": "html",
-                        },
-                    )
-                    code_blocks.append(simple_block)
+                    # NOW EXTRACT CODE BLOCKS FROM MARKDOWN INSTEAD OF HTML
+                    # This ensures we get clean code blocks without CSS/JS artifacts
+                    code_blocks = self._extract_markdown_code_blocks(markdown_content, source_url)
+                    logger.info(f"Extracted {len(code_blocks)} code blocks from converted markdown for {source_url}")
 
             else:
                 # For markdown and other text formats
