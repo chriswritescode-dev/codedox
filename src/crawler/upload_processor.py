@@ -359,7 +359,7 @@ class UploadProcessor:
                 # For markdown and other text formats
                 markdown_content = content
                 title = self._extract_title(content, source_url)
-                code_blocks = self._extract_markdown_code_blocks(content)
+                code_blocks = self._extract_markdown_code_blocks(content, source_url)
 
             return UploadResult(
                 source_url=source_url,
@@ -408,18 +408,19 @@ class UploadProcessor:
 
         return TitleExtractor.resolve(None, content, source_url)
 
-    def _extract_markdown_code_blocks(self, content: str) -> list[SimpleCodeBlock]:
+    def _extract_markdown_code_blocks(self, content: str, source_url: str = None) -> list[SimpleCodeBlock]:
         """Extract code blocks from markdown content.
 
         Args:
             content: Markdown content
+            source_url: Optional source URL for the content
 
         Returns:
             List of SimpleCodeBlock objects
         """
         from src.api.routes.upload_utils import MarkdownCodeExtractor
 
-        return MarkdownCodeExtractor.extract_blocks(content)
+        return MarkdownCodeExtractor.extract_blocks(content, source_url=source_url)
 
     async def _store_result(self, result: UploadResult, job_id: str) -> tuple[int, int]:
         """Store upload result in database."""

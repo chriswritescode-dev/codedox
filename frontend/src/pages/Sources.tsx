@@ -191,8 +191,12 @@ export default function Sources() {
   }, []);
 
   const handleUpdateSourceName = useCallback(
-    async (id: string, newName: string) => {
-      await updateSourceNameMutation.mutateAsync({ id, name: newName });
+    async (id: string, newName: string, newVersion?: string) => {
+      await updateSourceNameMutation.mutateAsync({ 
+        id, 
+        name: newName, 
+        version: newVersion 
+      });
     },
     [updateSourceNameMutation],
   );

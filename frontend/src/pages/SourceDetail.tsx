@@ -30,8 +30,11 @@ export default function SourceDetail() {
     state.deleteMutation.mutate();
   };
   
-  const handleUpdateSourceName = async (_sourceId: string, newName: string) => {
-    await state.updateSourceNameMutation.mutateAsync({ name: newName });
+  const handleUpdateSourceName = async (_sourceId: string, newName: string, newVersion?: string) => {
+    await state.updateSourceNameMutation.mutateAsync({ 
+      name: newName, 
+      version: newVersion 
+    });
   };
 
   if (state.sourceLoading) {
@@ -84,6 +87,7 @@ export default function SourceDetail() {
                 <EditableSourceName
                   id={state.source.id}
                   name={state.source.name}
+                  version={state.source.version || undefined}
                   onUpdate={handleUpdateSourceName}
                   className="text-2xl font-bold"
                 />

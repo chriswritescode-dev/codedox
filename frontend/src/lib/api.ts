@@ -356,10 +356,15 @@ class APIClient {
     })
   }
 
-  async updateSourceName(id: string, name: string): Promise<Source> {
+  async updateSourceName(id: string, name: string, version?: string): Promise<Source> {
+    // Send null instead of empty string for version
+    const payload = { 
+      name, 
+      version: version && version.trim() ? version.trim() : null 
+    };
     return this.fetch<Source>(`/sources/${id}`, {
       method: 'PATCH',
-      body: JSON.stringify({ name }),
+      body: JSON.stringify(payload),
     })
   }
 

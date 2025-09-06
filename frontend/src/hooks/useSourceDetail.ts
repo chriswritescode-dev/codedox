@@ -36,7 +36,7 @@ interface SourceDetailState {
   // Mutations
   deleteMutation: UseMutationResult<{ message: string }, Error, void, unknown>;
   deleteMatchesMutation: UseMutationResult<{ deleted_count: number; source_id: string; source_name: string }, Error, void, unknown>;
-  updateSourceNameMutation: UseMutationResult<Source, Error, { name: string }, unknown>;
+  updateSourceNameMutation: UseMutationResult<Source, Error, { name: string; version?: string }, unknown>;
   
   // Query data
   source: Source | undefined;
@@ -203,8 +203,8 @@ export function useSourceDetail(id: string): SourceDetailState {
   });
 
   const updateSourceNameMutation = useMutation({
-    mutationFn: ({ name }: { name: string }) =>
-      api.updateSourceName(id!, name),
+    mutationFn: ({ name, version }: { name: string; version?: string }) =>
+      api.updateSourceName(id!, name, version),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["source", id] });
       queryClient.invalidateQueries({ queryKey: ["sources"] });

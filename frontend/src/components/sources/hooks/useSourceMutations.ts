@@ -55,8 +55,8 @@ export const useSourceMutations = () => {
   })
 
   const updateSourceNameMutation = useMutation({
-    mutationFn: ({ id, name }: { id: string; name: string }) =>
-      api.updateSourceName(id, name),
+    mutationFn: ({ id, name, version }: { id: string; name: string; version?: string }) =>
+      api.updateSourceName(id, name, version),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["sources"] })
     },
