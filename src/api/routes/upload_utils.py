@@ -4,6 +4,7 @@ import hashlib
 import logging
 import os
 import re
+from typing import Any, Dict, List
 
 from fastapi import HTTPException, UploadFile
 from sqlalchemy.orm import Session
@@ -176,59 +177,120 @@ async def validate_and_read_file(
 
 
 class MarkdownCodeExtractor:
-    """Centralized markdown code block extraction."""
-
-    # Support both backticks and tildes, with varying counts
-    FENCE_PATTERN = r"(`{3,}|~{3,})(\w*)\n(.*?)\1"
-
     @classmethod
     def extract_blocks(
-        cls,
-        content: str,
-        source_url: str | None = None,
-        include_context: bool = False,
-        metadata: dict | None = None,
+        cls, content: str, source_url: str | None = None, include_context: bool = False
     ) -> list[SimpleCodeBlock]:
-        """Extract code blocks with optional context.
-
+        """Extract code blocks from markdown and return as SimpleCodeBlock objects.
+        
         Args:
             content: Markdown content
-            source_url: Optional source URL for blocks
+            source_url: Source URL for the blocks
             include_context: Whether to include surrounding context
-            metadata: Additional metadata to include
-
+            
         Returns:
             List of SimpleCodeBlock objects
         """
-        blocks = []
-        matches = re.finditer(cls.FENCE_PATTERN, content, re.DOTALL | re.MULTILINE)
-
-        for match in matches:
-            language = match.group(2) or None
-            code = match.group(3).strip()
-
-            if not code:
-                continue
-
-            block = SimpleCodeBlock(
-                code=code,
-                language=language or "text",
-                title=None,
-                description=None,
-                source_url=source_url,
-                metadata=metadata or {"extraction_method": "markdown"},
-            )
-
+        extractor = cls()
+        raw_blocks = extractor.extract_code_blocks(content)
+        
+        result = []
+        for block in raw_blocks:
+            metadata = {}
+            
+            # Add context if requested
             if include_context:
-                block.metadata["context_before"] = cls._extract_context(
-                    content, match.start(), before=True
+                # Find position of this block in content
+                block_start = content.find(block['content'])
+                if block_start > 0:
+                    context = cls._extract_context(content, block_start, before=True, max_chars=300)
+                    if context:
+                        metadata['context_before'] = context
+            
+            # Add block type to metadata
+            metadata['block_type'] = block.get('type', 'code')
+            
+            result.append(
+                SimpleCodeBlock(
+                    code=block['content'],
+                    language=block.get('language'),
+                    source_url=source_url,
+                    container_type=block.get('type', 'code'),
+                    metadata=metadata,
                 )
-                block.metadata["context_after"] = cls._extract_context(
-                    content, match.end(), before=False
-                )
-
-            blocks.append(block)
-
+            )
+        
+        return result
+    
+    def extract_code_blocks(self, content: str) -> List[Dict[str, Any]]:
+        """Extract both fenced and indented code blocks from markdown content."""
+        blocks = []
+        lines = content.split('\n')
+        i = 0
+        
+        while i < len(lines):
+            # Check for fenced code block (``` or ~~~)
+            if lines[i].startswith('```') or lines[i].startswith('~~~'):
+                fence = lines[i][:3]
+                language = lines[i][3:].strip() or None
+                code_lines = []
+                i += 1
+                
+                # Collect lines until closing fence
+                while i < len(lines) and not lines[i].startswith(fence):
+                    code_lines.append(lines[i])
+                    i += 1
+                
+                if code_lines:
+                    blocks.append({
+                        'content': '\n'.join(code_lines),
+                        'language': language,
+                        'type': 'fenced'
+                    })
+                i += 1  # Skip closing fence
+                continue
+            
+            # Check for indented code block (4 spaces or tab)
+            if lines[i].startswith('    ') or lines[i].startswith('\t'):
+                code_lines = []
+                
+                # Collect all consecutive indented lines
+                while i < len(lines):
+                    if lines[i].startswith('    '):
+                        # Remove exactly 4 spaces
+                        code_lines.append(lines[i][4:])
+                    elif lines[i].startswith('\t'):
+                        # Remove one tab
+                        code_lines.append(lines[i][1:])
+                    elif lines[i].strip() == '':
+                        # Check if next line is also indented (blank line within code)
+                        if i + 1 < len(lines) and (
+                            lines[i + 1].startswith('    ') or 
+                            lines[i + 1].startswith('\t')
+                        ):
+                            code_lines.append('')  # Keep blank line
+                        else:
+                            break  # End of indented block
+                    else:
+                        break  # Non-indented line ends the block
+                    i += 1
+                
+                # Clean up and add block if non-empty
+                if code_lines:
+                    # Remove trailing empty lines
+                    while code_lines and code_lines[-1] == '':
+                        code_lines.pop()
+                    
+                    if code_lines:  # Check again after cleanup
+                        blocks.append({
+                            'content': '\n'.join(code_lines),
+                            'language': None,  # Indented blocks don't have language
+                            'type': 'indented'
+                        })
+                continue
+            
+            i += 1
+        
         return blocks
 
     @classmethod

@@ -848,6 +848,7 @@ export default function Upload() {
             onChange={(e) => {
               const value = parseInt(e.target.value);
               if (!isNaN(value) && value >= 1 && value <= 50) {
+
                 setMaxConcurrent(value);
               }
             }}

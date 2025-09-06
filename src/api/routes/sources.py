@@ -21,9 +21,10 @@ mcp_tools = MCPTools()
 
 
 class UpdateSourceRequest(BaseModel):
-    """Request model for updating source name."""
+    """Request model for updating source name and version."""
 
     name: str = Field(..., min_length=1, max_length=200, description="New source name")
+    version: str | None = Field(None, max_length=50, description="New version (optional)")
 
 
 def _get_snippet_counts_for_crawl_jobs(db: Session, job_ids: list[str]) -> dict[str, int]:
@@ -1000,7 +1001,7 @@ async def get_filtered_source_ids(
 async def update_source_name(
     source_id: str, request: UpdateSourceRequest, db: Session = Depends(get_db)
 ) -> dict[str, Any]:
-    """Update source name for both crawl jobs and upload jobs."""
+    """Update source name and version for both crawl jobs and upload jobs."""
     # Try crawl job first
     source = db.query(CrawlJob).filter_by(id=source_id).first()
     is_upload_job = False
@@ -1011,10 +1012,24 @@ async def update_source_name(
             raise HTTPException(status_code=404, detail="Source not found")
         is_upload_job = True
 
-    # Update the name
+    # Update the name and version
     source.name = request.name  # type: ignore[assignment]
+    # Handle version update - treat empty string as None for database
+    if request.version is not None:
+        source.version = request.version if request.version else None  # type: ignore[assignment]
     source.updated_at = datetime.utcnow()  # type: ignore[assignment]
-    db.commit()
+
+    try:
+        db.commit()
+    except Exception as e:
+        db.rollback()
+        # Check if it's a unique constraint violation
+        if "unique_name_version" in str(e).lower() or "duplicate key" in str(e).lower():
+            raise HTTPException(
+                status_code=400,
+                detail=f"A source with name '{request.name}' and version '{request.version or 'none'}' already exists",
+            )
+        raise HTTPException(status_code=500, detail=str(e))
 
     # Return updated source info using helper functions
     if is_upload_job:

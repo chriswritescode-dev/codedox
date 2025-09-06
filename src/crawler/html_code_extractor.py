@@ -30,40 +30,13 @@ class HTMLCodeExtractor:
     # Elements to extract text content from
     CONTEXT_ELEMENTS = {"h1", "h2", "h3", "h4", "h5", "h6", "p", "li", "dt", "dd", "span", "div"}
 
-    # Code block selectors to find
     CODE_SELECTORS = [
-        # Standard code blocks (pre > code pattern - most common)
-        ("pre > code", "standard"),
-        # Standalone pre tags (will filter programmatically for no code children)
-        ("pre", "pre-direct"),
-        # Syntax highlighters
-        ("div.highlight pre > code", "highlight-nested"),
-        ("div.highlight pre", "highlight"),
-        ("div.codehilite pre", "codehilite"),
-        ('div[class*="highlight-"] pre', "highlight-lang"),
-        ('pre[class*="language-"]', "prism"),
-        ('code[class*="language-"]', "prism-inline"),
-        # Documentation systems
-        ("div.sourceCode pre", "pandoc"),
-        ("div.code-block pre", "generic-block"),
-        ("div.codeblock pre", "generic-block"),
-        ('div[class*="code-example"] pre', "example"),
-        # API documentation
-        ("div.api-example pre", "api-example"),
-        ("div.endpoint-example pre", "endpoint-example"),
-        # Interactive environments (usually we'd skip these but let's detect them)
-        ("div.CodeMirror-code", "codemirror"),
-        ("div.monaco-editor", "monaco"),
-        # Code blocks in specific sections
-        ("aside pre", "aside-code"),
-        ("aside code", "aside-inline"),
-        (".sidebar pre", "sidebar-code"),
-        (".sidebar code", "sidebar-inline"),
-        (".docs-nav pre", "nav-code"),
-        (".docs-nav code", "nav-inline"),
-        (".table-of-contents code", "toc-code"),
-        # Links that contain code (common in docs)
-        ("a > code", "link-code"),
+        # Get all pre elements with code children (most common pattern)
+        ("pre > code", "pre-code-block"),
+        # Get all pre elements without code children
+        ("pre", "pre-block"),
+        # Get standalone code elements (not inside pre)
+        ("code", "code-block"),
     ]
 
     def __init__(self):
@@ -151,27 +124,39 @@ class HTMLCodeExtractor:
             blocks = soup.select(selector)
 
             for block in blocks:
-                # Skip if we've already processed this element
+                # For pre > code, we process the code element
+                # For standalone pre or code, we process the element itself
+                # Skip if we've already processed this element or its parent/child
                 element_id = id(block)
                 if element_id in processed_elements:
                     continue
-
-                # Special handling for 'pre-direct' - skip if has code child
-                if selector_type == "pre-direct" and block.find("code", recursive=False):
-                    continue
-
-                # Special handling for inline code - skip if inside pre
-                if selector_type in [
-                    "aside-inline",
-                    "sidebar-inline",
-                    "nav-inline",
-                ] and block.find_parent("pre"):
-                    continue
+                
+                # Also skip if this is a code element inside a pre we already processed
+                if block.name == 'code' and block.parent and block.parent.name == 'pre':
+                    parent_id = id(block.parent)
+                    if parent_id in processed_elements:
+                        continue
+                
+                # Skip if this is a pre element and we already processed its code child
+                if block.name == 'pre':
+                    code_child = block.find('code')
+                    if code_child and id(code_child) in processed_elements:
+                        continue
 
                 extracted = self._process_code_block(block, selector_type)
                 if extracted:
                     extracted_blocks.append(extracted)
                     processed_elements.add(element_id)
+                    
+                    # Mark parent pre if we processed a code inside it
+                    if block.name == 'code' and block.parent and block.parent.name == 'pre':
+                        processed_elements.add(id(block.parent))
+                    
+                    # Mark child code if we processed a pre containing it
+                    if block.name == 'pre':
+                        code_child = block.find('code')
+                        if code_child:
+                            processed_elements.add(id(code_child))
 
         if logger.isEnabledFor(logging.DEBUG):
             logger.debug(f"Extracted {len(extracted_blocks)} code blocks from {url}")
@@ -285,10 +270,13 @@ class HTMLCodeExtractor:
         ui_classes = ["copy", "copy-button", "clipboard", "tab", "tabs", "sr-only"]
         for ui_elem in element_copy.find_all(True):
             if hasattr(ui_elem, "get"):
-                classes: list = ui_elem.get("class", None) or []
-                classes_str = " ".join(classes).lower()
-                if any(ui_class in classes_str for ui_class in ui_classes):
-                    ui_elem.decompose()
+                classes = ui_elem.get("class", [])
+                if not isinstance(classes, list):
+                    classes = []
+                if classes:  # Only process if we have classes
+                    classes_str = " ".join(str(c) for c in classes).lower()
+                    if any(ui_class in classes_str for ui_class in ui_classes):
+                        ui_elem.decompose()
 
         # Remove any remaining links within code
         for link in element_copy.find_all("a"):
@@ -366,7 +354,9 @@ class HTMLCodeExtractor:
         if parent and parent.name in {"p", "span", "li", "td"}:
             # But allow if it's in a list item that's specifically for code
             if parent.name == "li":
-                parent_classes: list = parent.get("class", None) or []
+                parent_classes = parent.get("class", [])
+                if not isinstance(parent_classes, list):
+                    parent_classes = []
                 if any("code" in cls or "example" in cls for cls in parent_classes):
                     return False
             return True
