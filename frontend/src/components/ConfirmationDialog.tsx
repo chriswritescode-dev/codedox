@@ -25,7 +25,7 @@ export const ConfirmationDialog: React.FC<ConfirmationDialogProps> = ({
   isConfirming = false,
 }) => {
   // Handle Escape key to cancel
-  useKeyboardShortcut('Escape', onCancel, { isEnabled: isOpen && !isConfirming });
+  useKeyboardShortcut('Escape', onCancel, isOpen && !isConfirming);
   
   if (!isOpen) return null;
 

@@ -50,7 +50,7 @@ docker-compose down
 git fetch origin
 
 # For specific version
-git checkout v0.2.8
+git checkout v0.2.9
 
 # Or for latest main branch
 git pull origin main
@@ -130,7 +130,7 @@ python cli.py search "test query"
 
 ## Version-Specific Upgrade Notes
 
-### Upgrading to 0.2.8
+### Upgrading to 0.2.9
 
 **New Features:**
 - Enhanced markdown search with fallback

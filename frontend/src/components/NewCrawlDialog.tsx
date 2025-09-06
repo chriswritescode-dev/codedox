@@ -46,7 +46,7 @@ export const NewCrawlDialog: React.FC<NewCrawlDialogProps> = ({
   };
 
   // Handle Escape key to close dialog
-  useKeyboardShortcut('Escape', handleClose, { isEnabled: isOpen && !isSubmitting });
+  useKeyboardShortcut('Escape', handleClose, isOpen && !isSubmitting);
 
   if (!isOpen) return null;
 
