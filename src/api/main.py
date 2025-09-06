@@ -14,7 +14,7 @@ from ..constants import __app_name__, __version__
 from ..database import get_db
 from .mcp_routes import router as mcp_router
 from .mcp_streamable import router as mcp_streamable_router
-from .routes import crawl_jobs, search, snippets, sources, upload
+from .routes import crawl_jobs, search, snippets, sources, statistics, upload
 from .websocket import websocket_endpoint
 
 # Setup logging
@@ -96,6 +96,7 @@ app.include_router(sources.router, prefix="/api", tags=["sources"])
 app.include_router(crawl_jobs.router, prefix="/api", tags=["crawl-jobs"])
 app.include_router(search.router, prefix="/api", tags=["search"])
 app.include_router(snippets.router, prefix="/api", tags=["snippets"])
+app.include_router(statistics.router, prefix="/api", tags=["statistics"])
 app.include_router(upload.router, prefix="/api", tags=["upload"])
 app.include_router(mcp_router, tags=["mcp"])
 app.include_router(mcp_streamable_router, tags=["mcp-streamable"])
@@ -196,52 +197,7 @@ async def health_check_crawler():
         }
     }
 
-# Statistics endpoint
-@app.get("/api/statistics")
-async def get_statistics(db: Session = Depends(get_db)):
-    """Get system statistics."""
-    try:
-        from datetime import datetime, timedelta
 
-        from sqlalchemy import distinct, func
-
-        from ..database.models import CodeSnippet, CrawlJob, Document
-
-        # Get counts
-        total_sources = db.query(
-            func.count(distinct(CrawlJob.name))
-        ).filter(
-            CrawlJob.status == 'completed'
-        ).scalar() or 0
-
-        total_documents = db.query(func.count(Document.id)).scalar() or 0
-        total_snippets = db.query(func.count(CodeSnippet.id)).scalar() or 0
-
-        # Get language distribution
-        language_stats = db.query(
-            CodeSnippet.language,
-            func.count(CodeSnippet.id).label('count')
-        ).group_by(CodeSnippet.language).all()
-
-        languages = {lang: count for lang, count in language_stats if lang}
-
-        # Get recent crawls (last 7 days)
-        seven_days_ago = datetime.utcnow() - timedelta(days=7)
-        recent_crawls = db.query(CrawlJob).filter(
-            CrawlJob.created_at >= seven_days_ago
-        ).order_by(CrawlJob.created_at.desc()).limit(10).all()
-
-        return {
-            "total_sources": total_sources,
-            "total_documents": total_documents,
-            "total_snippets": total_snippets,
-            "languages": languages,
-            "recent_crawls": [job.to_dict() for job in recent_crawls]
-        }
-
-    except Exception as e:
-        logger.error(f"Failed to get statistics: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
 
 # Recent snippets endpoint
 @app.get("/api/snippets/recent")

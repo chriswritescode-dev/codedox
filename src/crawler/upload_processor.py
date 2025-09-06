@@ -332,13 +332,13 @@ class UploadProcessor:
                             logger.info(f"[HTML] Using raw_markdown, length: {len(result.markdown.raw_markdown) if result.markdown.raw_markdown else 0}")
                             markdown_content = result.markdown.raw_markdown
                         elif hasattr(result.markdown, "markdown_v2"):
-                            logger.info(f"[HTML] Using markdown_v2.raw_markdown")
+                            logger.info("[HTML] Using markdown_v2.raw_markdown")
                             markdown_content = result.markdown.markdown_v2.raw_markdown
                         else:
-                            logger.info(f"[HTML] Using str(markdown)")
+                            logger.info("[HTML] Using str(markdown)")
                             markdown_content = str(result.markdown) if result.markdown else ""
                     else:
-                        logger.warning(f"[HTML] Result has no markdown attribute!")
+                        logger.warning("[HTML] Result has no markdown attribute!")
                         logger.info(f"[HTML] Result attributes: {dir(result)}")
                         markdown_content = ""
 
@@ -353,6 +353,18 @@ class UploadProcessor:
                     code_blocks = self._extract_markdown_code_blocks(markdown_content, source_url)
                     logger.info(f"Extracted {len(code_blocks)} code blocks from converted markdown for {source_url}")
 
+            elif content_type == "restructuredtext":
+                logger.info(f"[_process_file] Processing as reStructuredText for {source_url}")
+                try:
+                    markdown_content = content  # Store original RST content
+                    title = self._extract_title(content, source_url)
+                    code_blocks = self._extract_code_blocks_by_type(content, content_type, source_url)
+                    logger.info(f"[_process_file] Extracted {len(code_blocks)} code blocks from RST")
+                except Exception as e:
+                    logger.error(f"Failed to process RST content for {source_url}: {e}")
+                    markdown_content = content
+                    title = self._extract_title(content, source_url) or "Unknown"
+                    code_blocks = []
             else:
                 logger.info(f"[_process_file] Processing as markdown (content_type={content_type}) for {source_url}")
                 markdown_content = content
@@ -420,6 +432,23 @@ class UploadProcessor:
         from src.api.routes.upload_utils import MarkdownCodeExtractor
 
         return MarkdownCodeExtractor.extract_blocks(content, source_url=source_url)
+    
+    def _extract_code_blocks_by_type(
+        self, content: str, content_type: str, source_url: str = None
+    ) -> list[SimpleCodeBlock]:
+        """Extract code blocks based on content type.
+        
+        Args:
+            content: Content to extract from
+            content_type: Type of content (markdown, restructuredtext, etc.)
+            source_url: Optional source URL
+            
+        Returns:
+            List of SimpleCodeBlock objects
+        """
+        from src.api.routes.upload_utils import extract_code_blocks_by_type
+        
+        return extract_code_blocks_by_type(content, content_type, source_url)
 
     async def _store_result(self, result: UploadResult, job_id: str) -> tuple[int, int]:
         """Store upload result in database."""

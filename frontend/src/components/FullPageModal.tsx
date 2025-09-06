@@ -12,6 +12,7 @@ import {
 } from "lucide-react";
 import { api } from "../lib/api";
 import { Link } from "react-router-dom";
+import { useKeyboardShortcut } from "../hooks/useKeyboardShortcut";
 
 interface FullPageModalProps {
   url: string;
@@ -44,25 +45,14 @@ export const FullPageModal: React.FC<FullPageModalProps> = ({
   }, [isOpen, url]);
 
   // Handle keyboard shortcuts
-  useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (!isOpen) return;
-
-      // ESC to close modal
-      if (e.key === "Escape") {
-        onClose();
-      }
-
-      // Ctrl/Cmd + F to focus search
-      if ((e.ctrlKey || e.metaKey) && e.key === "f") {
-        e.preventDefault();
-        searchInputRef.current?.focus();
-      }
-    };
-
-    window.addEventListener("keydown", handleKeyDown);
-    return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [isOpen, onClose]);
+  useKeyboardShortcut('Escape', onClose, { isEnabled: isOpen });
+  
+  useKeyboardShortcut('f', () => {
+    searchInputRef.current?.focus();
+  }, { 
+    isEnabled: isOpen,
+    ctrlKey: true 
+  });
 
   const fetchPageMarkdown = async () => {
     setLoading(true);

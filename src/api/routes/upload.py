@@ -2,12 +2,11 @@
 
 import hashlib
 import logging
-import os
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any
 from uuid import uuid4
 
-from fastapi import APIRouter, BackgroundTasks, Depends, File, Form, HTTPException, UploadFile
+from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
@@ -18,8 +17,8 @@ from ...crawler.llm_retry import LLMDescriptionGenerator
 from ...database import get_db
 from ...database.models import CodeSnippet, CrawlJob, Document
 from .upload_utils import (
+    TitleExtractor,
     is_binary_content,
-    resolve_document_title,
     validate_and_read_file,
 )
 
@@ -81,15 +80,15 @@ async def upload_markdown(
             start_urls=[f"upload://{request.name}"],
             status="completed",
             max_depth=0,
-            started_at=datetime.utcnow(),
-            completed_at=datetime.utcnow(),
+            started_at=datetime.now(timezone.utc),
+            completed_at=datetime.now(timezone.utc),
         )
         db.add(job)
 
         # Create document
         content_hash = hashlib.md5(request.content.encode()).hexdigest()
 
-        final_title = resolve_document_title(request.title, request.content, request.name)
+        final_title = TitleExtractor.resolve(request.title, request.content, request.name)
 
         doc_url = f"upload://{request.name}/{final_title}"
         doc = Document(
@@ -192,11 +191,11 @@ async def upload_file(
         content_str, filename_without_ext = await validate_and_read_file(file)
 
         # Determine content type based on file extension
-        content_type = "markdown"
-        if file.filename:
-            ext = os.path.splitext(file.filename)[1].lower()
-            if ext in [".html", ".htm"]:
-                content_type = "html"
+        from src.constants import get_content_type_for_extension
+        
+        content_type = get_content_type_for_extension(file.filename) if file.filename else "text"
+        if not content_type:
+            content_type = "text"  # Default fallback
 
         # For HTML files, use the UploadProcessor
         if content_type == "html":
@@ -281,7 +280,7 @@ async def upload_files(
             )
 
         # Prepare files data for UploadProcessor
-        source_name = name or title or f"Upload {datetime.utcnow().strftime('%Y-%m-%d')}"
+        source_name = name or title or f"Upload {datetime.now(timezone.utc).strftime('%Y-%m-%d')}"
         files_data = []
 
         # Read and validate all files first
@@ -310,8 +309,11 @@ async def upload_files(
                     continue
 
                 # Determine content type based on file extension
-                ext = os.path.splitext(file.filename)[1].lower()
-                content_type = "html" if ext in [".html", ".htm"] else "markdown"
+                from src.constants import get_content_type_for_extension
+                
+                content_type = get_content_type_for_extension(file.filename) if file.filename else "text"
+                if not content_type:
+                    content_type = "text"  # Default fallback
 
                 # Create URL for this file
                 file_url = f"upload://{source_name}/{file.filename}"
@@ -386,8 +388,6 @@ class UploadGitHubRepoRequest(BaseModel):
 @router.post("/github")
 async def upload_github_repo(
     request: UploadGitHubRepoRequest,
-    background_tasks: BackgroundTasks,
-    db: Session = Depends(get_db),
 ) -> dict[str, Any]:
     """Upload markdown documentation from a GitHub repository."""
     try:

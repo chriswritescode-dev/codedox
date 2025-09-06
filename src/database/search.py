@@ -1,7 +1,7 @@
 """PostgreSQL full-text search implementation."""
 
 import logging
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Any
 
 from sqlalchemy import and_, func, or_, text
@@ -558,7 +558,7 @@ class CodeSearcher:
 
             # Format last update as relative time
             if row.last_updated:
-                delta = datetime.utcnow() - row.last_updated
+                delta = datetime.now(timezone.utc) - row.last_updated
                 if delta.days == 0:
                     source["last_update_relative"] = "Today"
                 elif delta.days == 1:
@@ -590,7 +590,7 @@ class CodeSearcher:
         """
         limit = limit or self.settings.default_max_results
 
-        cutoff_time = datetime.utcnow() - timedelta(hours=hours)
+        cutoff_time = datetime.now(timezone.utc) - timedelta(hours=hours)
 
         query = (
             self.session.query(CodeSnippet)

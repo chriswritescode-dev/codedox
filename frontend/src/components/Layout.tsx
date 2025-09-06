@@ -100,14 +100,14 @@ export default function Layout() {
           <div className="px-3 pt-4 pb-2 space-y-2">
             <button
               onClick={() => setCrawlDialogOpen(true)}
-              className="w-full flex items-center gap-2 px-3 py-2.5 text-sm bg-primary hover:bg-primary/90 text-primary-foreground rounded-lg transition-all font-medium shadow-sm hover:shadow-md"
+              className="cursor-pointer w-full flex items-center gap-2 px-3 py-2.5 text-sm bg-primary hover:bg-primary/90 text-primary-foreground rounded-lg transition-all font-medium shadow-sm hover:shadow-md"
             >
               <Plus className="h-4 w-4" />
               <span className="flex-1 text-left">New Crawl</span>
             </button>
             <button
               onClick={() => setDocumentSearchOpen(true)}
-              className="w-full flex items-center gap-2 px-3 py-2 text-sm bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700 rounded-lg transition-colors text-gray-600 dark:text-gray-400"
+              className="cursor-pointer w-full flex items-center gap-2 px-3 py-2 text-sm bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700 rounded-lg transition-colors text-gray-600 dark:text-gray-400"
             >
               <FileSearch className="h-4 w-4" />
               <span className="flex-1 text-left">Markdown Pages</span>

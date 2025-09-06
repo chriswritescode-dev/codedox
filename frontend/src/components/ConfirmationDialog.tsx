@@ -1,4 +1,5 @@
 import React from 'react';
+import { useKeyboardShortcut } from '../hooks/useKeyboardShortcut';
 
 interface ConfirmationDialogProps {
   isOpen: boolean;
@@ -23,6 +24,9 @@ export const ConfirmationDialog: React.FC<ConfirmationDialogProps> = ({
   variant = 'default',
   isConfirming = false,
 }) => {
+  // Handle Escape key to cancel
+  useKeyboardShortcut('Escape', onCancel, { isEnabled: isOpen && !isConfirming });
+  
   if (!isOpen) return null;
 
   return (

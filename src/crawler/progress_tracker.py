@@ -2,7 +2,7 @@
 
 import asyncio
 import logging
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any
 
 from .job_manager import JobManager
@@ -70,7 +70,7 @@ class ProgressTracker:
                 "total_pages": 1,
                 "snippets_extracted": 0,
                 "crawl_phase": "crawling",
-                "timestamp": datetime.utcnow().isoformat(),
+                "timestamp": datetime.now(timezone.utc).isoformat(),
             },
         )
 
@@ -172,7 +172,7 @@ class ProgressTracker:
                     "snippets_extracted": job_status.get("snippets_extracted", 0),
                     "crawl_phase": job_status.get("crawl_phase"),
                     "documents_crawled": job_status.get("documents_crawled", 0),
-                    "timestamp": datetime.utcnow().isoformat(),
+                    "timestamp": datetime.now(timezone.utc).isoformat(),
                 }
 
                 if current_url:
@@ -227,7 +227,7 @@ class ProgressTracker:
             "processed_pages": job_status.get("processed_pages", 0),
             "total_pages": job_status.get("total_pages", 0),
             "snippets_extracted": job_status.get("snippets_extracted", 0),
-            "timestamp": datetime.utcnow().isoformat(),
+            "timestamp": datetime.now(timezone.utc).isoformat(),
         }
 
         if error:
