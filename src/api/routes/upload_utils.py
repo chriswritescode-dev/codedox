@@ -343,8 +343,9 @@ def process_code_snippets(
             logger.info(f"Skipping duplicate within batch: {code_hash}")
             continue
 
-        # Check if snippet already exists in database
-        existing_snippet = db.query(CodeSnippet).filter(CodeSnippet.code_hash == code_hash).first()
+        # Check if snippet already exists in the same source
+        from ...database.content_check import find_duplicate_snippet_in_source
+        existing_snippet = find_duplicate_snippet_in_source(db, code_hash, document)
 
         if existing_snippet:
             logger.info(f"Skipping existing code snippet with hash {code_hash}")

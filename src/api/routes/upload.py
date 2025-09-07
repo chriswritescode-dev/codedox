@@ -127,10 +127,9 @@ async def upload_markdown(
                 # Calculate code hash
                 code_hash = hashlib.md5(block.code_content.encode()).hexdigest()
 
-                # Check if snippet already exists
-                existing_snippet = (
-                    db.query(CodeSnippet).filter(CodeSnippet.code_hash == code_hash).first()
-                )
+                # Check if snippet already exists in the same source
+                from ...database.content_check import find_duplicate_snippet_in_source
+                existing_snippet = find_duplicate_snippet_in_source(db, code_hash, doc)
 
                 if existing_snippet:
                     logger.info(f"Skipping duplicate code snippet with hash {code_hash}")

@@ -390,6 +390,13 @@ def serve(api: bool, mcp: bool):
     import time
 
     import uvicorn
+    
+    # Auto-apply pending migrations before starting
+    try:
+        from src.database.migration_check import auto_apply_migrations
+        auto_apply_migrations()
+    except Exception as e:
+        console.print(f"[yellow]Warning: Could not apply migrations: {e}[/yellow]")
 
     # Handle MCP stdio server mode
     if mcp:
