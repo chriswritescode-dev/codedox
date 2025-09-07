@@ -14,7 +14,6 @@ class SimpleCodeBlock:
     source_url: str | None = None
 
     # Metadata from HTML extraction
-    container_type: str | None = None  # example, api-method, tutorial-step, etc.
     context_before: list[str] = field(default_factory=list)
     metadata: dict = field(default_factory=dict)
 

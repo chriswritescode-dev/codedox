@@ -566,7 +566,6 @@ If you cannot determine the name, respond with "UNKNOWN"."""
             # Build simplified metadata
             full_metadata = {
                 'filename': filename,
-                'container_type': metadata.get('container_type'),
                 'extraction_method': metadata.get('extraction_method'),
             }
 

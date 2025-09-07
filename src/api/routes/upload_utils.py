@@ -249,7 +249,7 @@ class RSTCodeExtractor:
                     code=block['content'],
                     language=block.get('language'),
                     source_url=source_url,
-                    container_type=block.get('type', 'code'),
+
                     metadata=metadata,
                 )
             )
@@ -431,7 +431,7 @@ class MarkdownCodeExtractor:
                     code=block['content'],
                     language=block.get('language'),
                     source_url=source_url,
-                    container_type=block.get('type', 'code'),
+
                     metadata=metadata,
                 )
             )

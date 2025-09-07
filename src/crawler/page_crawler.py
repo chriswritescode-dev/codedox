@@ -671,7 +671,6 @@ class PageCrawler:
                     language=block.language,
                     title=block.title,  # Preserve extracted title
                     description=block.description,  # Preserve extracted description
-                    container_type=block.container_type,
                     context_before=block.context_before,
                     source_url=result.url
                 )
@@ -745,7 +744,7 @@ class PageCrawler:
                     'description': block_description,
                     'source_url': block.source_url,
                     'metadata': {
-                        'container_type': block.container_type,
+
                         'extraction_method': 'html_only'
                     }
                 })
@@ -825,7 +824,7 @@ class PageCrawler:
                     'description': block.description or 'No description available',
                     'source_url': block.source_url,
                     'metadata': {
-                        'container_type': block.container_type,
+
                         'extraction_method': 'html_llm'
                     }
                 })
@@ -857,7 +856,7 @@ class PageCrawler:
                     'description': f"Code block in {block.language or 'unknown'} language",
                     'source_url': block.source_url,
                     'metadata': {
-                        'container_type': block.container_type,
+
                         'extraction_method': 'html_only'
                     }
                 })
