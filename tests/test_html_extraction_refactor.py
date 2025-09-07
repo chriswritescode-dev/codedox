@@ -1,7 +1,7 @@
 """Tests for the refactored HTML code extraction algorithm."""
 
 import pytest
-from src.crawler.html_code_extractor import HTMLCodeExtractor
+from src.crawler.extractors.html import HTMLCodeExtractor
 
 
 def assert_in_description(text: str, description: str | None) -> None:
@@ -25,19 +25,19 @@ class TestHTMLExtractionRefactor:
         <body>
             <h2>Installation Guide</h2>
             <p>To install the package, run the following command:</p>
-            <pre><code>npm install my-package</code></pre>
+            <pre><code>npm install react react-dom my-package</code></pre>
         </body>
         </html>
         """
         
         extractor = HTMLCodeExtractor()
-        blocks = extractor.extract_code_blocks(html, "test.html")
+        blocks = extractor.extract_blocks(html, "test.html")
         
         assert len(blocks) == 1
         assert blocks[0].title == "Installation Guide"
         assert blocks[0].description is not None
         assert "To install the package" in blocks[0].description
-        assert "npm install my-package" in blocks[0].code
+        assert "npm install react react-dom my-package" in blocks[0].code
     
     def test_modern_docs_structure(self):
         """Test modern docs structure like BullMQ."""
@@ -58,7 +58,7 @@ class TestHTMLExtractionRefactor:
         """
         
         extractor = HTMLCodeExtractor()
-        blocks = extractor.extract_code_blocks(html, "test.html")
+        blocks = extractor.extract_blocks(html, "test.html")
         
         assert len(blocks) == 1
         assert blocks[0].title == "Adding jobs in bulk"
@@ -81,7 +81,7 @@ class TestHTMLExtractionRefactor:
         """
         
         extractor = HTMLCodeExtractor()
-        blocks = extractor.extract_code_blocks(html, "test.html")
+        blocks = extractor.extract_blocks(html, "test.html")
         
         assert len(blocks) == 2
         
@@ -107,7 +107,7 @@ class TestHTMLExtractionRefactor:
         """
         
         extractor = HTMLCodeExtractor()
-        blocks = extractor.extract_code_blocks(html, "test.html")
+        blocks = extractor.extract_blocks(html, "test.html")
         
         assert len(blocks) == 1
         assert blocks[0].title is None
@@ -131,7 +131,7 @@ class TestHTMLExtractionRefactor:
                         </ul>
                     </div>
                     <div class="example">
-                        <pre><code>{ "port": 3000 }</code></pre>
+                        <pre><code>{ "port": 3000, "host": "localhost", "debug": true }</code></pre>
                     </div>
                 </div>
             </section>
@@ -139,7 +139,7 @@ class TestHTMLExtractionRefactor:
         """
         
         extractor = HTMLCodeExtractor()
-        blocks = extractor.extract_code_blocks(html, "test.html")
+        blocks = extractor.extract_blocks(html, "test.html")
         
         assert len(blocks) == 1
         assert blocks[0].title == "Configuration"
@@ -157,13 +157,13 @@ class TestHTMLExtractionRefactor:
             </div>
             <div class="content-container">
                 <p>Initialize your database with this command:</p>
-                <pre><code>createdb myapp</code></pre>
+                <pre><code>createdb myapp --encoding UTF8 --template template0</code></pre>
             </div>
         </div>
         """
         
         extractor = HTMLCodeExtractor()
-        blocks = extractor.extract_code_blocks(html, "test.html")
+        blocks = extractor.extract_blocks(html, "test.html")
         
         assert len(blocks) == 1
         assert blocks[0].title == "Database Setup"
@@ -176,14 +176,14 @@ class TestHTMLExtractionRefactor:
         <div>
             <h2>Example Usage</h2>
             <p>Before the code block.</p>
-            <pre><code>example()</code></pre>
+            <pre><code>await processExample(data, options, callback)</code></pre>
             <p>After the code block - should not be included.</p>
             <p>More content after - also should not be included.</p>
         </div>
         """
         
         extractor = HTMLCodeExtractor()
-        blocks = extractor.extract_code_blocks(html, "test.html")
+        blocks = extractor.extract_blocks(html, "test.html")
         
         assert len(blocks) == 1
         assert blocks[0].title == "Example Usage"
@@ -198,15 +198,15 @@ class TestHTMLExtractionRefactor:
             <h2>Documentation</h2>
             <p>Use <code>inline()</code> for inline operations.</p>
             <p>For batch operations, use this:</p>
-            <pre><code>batch_process(items)</code></pre>
+            <pre><code>await batchProcess(items, options, callback)</code></pre>
         </div>
         """
         
         extractor = HTMLCodeExtractor()
-        blocks = extractor.extract_code_blocks(html, "test.html")
+        blocks = extractor.extract_blocks(html, "test.html")
         
         assert len(blocks) == 1
-        assert "batch_process" in blocks[0].code
+        assert "batchProcess" in blocks[0].code
         # Inline code should not be extracted as separate block
         assert not any("inline()" in block.code for block in blocks if "inline()" == block.code.strip())
     
@@ -216,28 +216,28 @@ class TestHTMLExtractionRefactor:
         <div class="api-method">
             <h3>POST /api/users</h3>
             <p>Create a new user.</p>
-            <pre><code>{"name": "John"}</code></pre>
+            <pre><code>{"name": "John", "email": "john@example.com", "role": "admin"}</code></pre>
         </div>
         """
         
         extractor = HTMLCodeExtractor()
-        blocks = extractor.extract_code_blocks(html, "test.html")
+        blocks = extractor.extract_blocks(html, "test.html")
         
         assert len(blocks) == 1
         assert blocks[0].title == "POST /api/users"
-        assert '{"name": "John"}' in blocks[0].code
+        assert '"name": "John"' in blocks[0].code and '"email": "john@example.com"' in blocks[0].code
     
     def test_empty_description(self):
         """Test when there's no content between heading and code."""
         html = """
         <div>
             <h2>Quick Example</h2>
-            <pre><code>quickExample()</code></pre>
+            <pre><code>await quickExample(data, options, callback)</code></pre>
         </div>
         """
         
         extractor = HTMLCodeExtractor()
-        blocks = extractor.extract_code_blocks(html, "test.html")
+        blocks = extractor.extract_blocks(html, "test.html")
         
         assert len(blocks) == 1
         assert blocks[0].title == "Quick Example"

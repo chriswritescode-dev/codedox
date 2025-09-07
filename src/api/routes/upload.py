@@ -11,7 +11,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
 from ...config import get_settings
-from ...crawler.extraction_models import SimpleCodeBlock
+from ...crawler.extractors.models import ExtractedCodeBlock
 from ...crawler.github_processor import GitHubProcessor, GitHubRepoConfig
 from ...crawler.llm_retry import LLMDescriptionGenerator
 from ...database import get_db
@@ -47,23 +47,17 @@ class UploadMarkdownRequest(BaseModel):
     title: str | None = Field(None, description="Optional title")
 
 
-def extract_code_blocks_with_context(content: str, url: str) -> list[SimpleCodeBlock]:
+def extract_code_blocks_with_context(content: str, url: str) -> list[ExtractedCodeBlock]:
     """Extract code blocks from markdown content with surrounding context."""
-    from .upload_utils import MarkdownCodeExtractor
-
-    blocks = MarkdownCodeExtractor.extract_blocks(content, source_url=url, include_context=True)
-
-    # Add context_before attribute for backward compatibility
+    from ...crawler.extractors.markdown import MarkdownCodeExtractor
+    
+    extractor = MarkdownCodeExtractor()
+    blocks = extractor.extract_blocks(content)
+    
+    # Set source_url for each block
     for block in blocks:
-        if "context_before" in block.metadata:
-            context_text = block.metadata["context_before"]
-            # Convert context text back to lines for compatibility
-            block.context_before = [
-                line.strip() for line in context_text.split("\n") if line.strip()
-            ]
-        else:
-            block.context_before = []
-
+        block.source_url = url
+    
     return blocks
 
 
@@ -131,7 +125,7 @@ async def upload_markdown(
             # Save enhanced code snippets
             for block in enhanced_blocks:
                 # Calculate code hash
-                code_hash = hashlib.md5(block.code.encode()).hexdigest()
+                code_hash = hashlib.md5(block.code_content.encode()).hexdigest()
 
                 # Check if snippet already exists
                 existing_snippet = (
@@ -147,7 +141,7 @@ async def upload_markdown(
                     title=block.title or "",
                     description=block.description or "",
                     language=block.language or "unknown",
-                    code_content=block.code,
+                    code_content=block.code_content,
                     code_hash=code_hash,
                     snippet_type="code",
                     source_url=doc_url,
@@ -212,7 +206,7 @@ async def upload_file(
                         "content_type": "html",
                     }
                 ],
-                use_llm=True,
+                use_llm=settings.code_extraction.enable_llm_extraction,
                 max_concurrent_files=max_concurrent or settings.crawling.max_concurrent_crawls,
             )
 
@@ -347,7 +341,7 @@ async def upload_files(
                 "upload_type": "batch",
             },
             extract_code_only=True,
-            use_llm=True,
+            use_llm=settings.code_extraction.enable_llm_extraction,
             max_concurrent_files=max_concurrent or settings.crawling.max_concurrent_crawls,
         )
 
