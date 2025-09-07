@@ -155,7 +155,7 @@ class TestFailedPagesTracking:
             config = mock_start.call_args[0][0]
 
             assert isinstance(config, CrawlConfig)
-            assert config.name == "Test Crawl - Retry"
+            assert config.name == "Test Crawl"
             assert set(config.start_urls) == set(["https://example.com"])  # Original start_urls
             assert config.max_depth == 2  # Uses original depth when no specific_urls
             assert config.max_pages is None  # No page limit for full recrawl

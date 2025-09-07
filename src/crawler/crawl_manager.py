@@ -520,11 +520,11 @@ class CrawlManager:
 
         # Create retry config with appropriate settings
         original_name = job_dict['name']
-        retry_name = f"{original_name} - Retry"
-        logger.info(f"[RETRY DEBUG] Creating retry job - Original name: '{original_name}', Retry name: '{retry_name}'")
+        original_version = job_dict.get('version', '1.0.0')
+        logger.info(f"[RETRY DEBUG] Creating retry job - Using original name: '{original_name}', version: '{original_version}'")
 
         retry_config = CrawlConfig(
-            name=retry_name,
+            name=original_name,
             start_urls=start_urls,  # Use filtered or original URLs
             max_depth=crawl_depth,  # Use 0 for specific URLs, original depth for full recrawl
             domain_restrictions=job_dict.get("domain_restrictions", []),
@@ -532,6 +532,7 @@ class CrawlManager:
             max_pages=original_config.get("max_pages", None) if not specific_urls else len(specific_urls),  # Limit max_pages for specific URLs
             max_concurrent_crawls=original_config.get("max_concurrent_crawls", self.settings.crawling.max_concurrent_crawls),
             metadata=retry_metadata,
+            version=original_version,
         )
 
         # Start new job with appropriate configuration
