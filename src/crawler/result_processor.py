@@ -487,7 +487,6 @@ If you cannot determine the name, respond with "UNKNOWN"."""
         """
         new_snippet_count = 0
         duplicate_count = 0
-        updated_count = 0
         skipped_count = 0
 
         logger.info(f"Processing {len(code_blocks)} code blocks for document {doc.url}")
@@ -591,8 +590,9 @@ If you cannot determine the name, respond with "UNKNOWN"."""
                 metadata=full_metadata,
             )
 
-            # Check for duplicate across entire database
-            existing = session.query(CodeSnippet).filter_by(code_hash=snippet.code_hash).first()
+            # Check for duplicate within the same source (crawl or upload job)
+            from ..database.content_check import find_duplicate_snippet_in_source
+            existing = find_duplicate_snippet_in_source(session, snippet.code_hash, doc)
 
             if not existing:
                 session.add(snippet)
@@ -600,46 +600,18 @@ If you cannot determine the name, respond with "UNKNOWN"."""
                 new_snippet_count += 1
                 logger.debug(f"Added unique snippet: {title} (language: {language})")
             else:
-                # Check if it's from the same document or different
-                if existing.document_id == doc.id:
-                    # Same document - this shouldn't happen normally
-                    duplicate_count += 1
-                    logger.debug(f"Found duplicate in same document: {title}")
-                else:
-                    # Different document - update metadata
-                    self._update_snippet(existing, snippet)
-                    updated_count += 1
-                    session.query(Document).filter_by(id=existing.document_id).first()
-                    logger.debug(f"Updated existing snippet: {title}")
+                # Found duplicate within same source
+                duplicate_count += 1
+                logger.debug(f"Found duplicate in same source: {title}")
 
         # Commit snippets
         session.commit()
 
         # Log comprehensive statistics
         len(processed_blocks)
-        logger.debug(f"Processed {len(code_blocks)} blocks for document {doc.id}: {new_snippet_count} new, {updated_count} updated, {duplicate_count} duplicates")
+        logger.debug(f"Processed {len(code_blocks)} blocks for document {doc.id}: {new_snippet_count} new, {duplicate_count} duplicates")
 
         return new_snippet_count
-
-
-    def _update_snippet(self, existing: CodeSnippet, new: CodeSnippet) -> None:
-        """Update existing snippet with new data.
-
-        Args:
-            existing: Existing snippet
-            new: New snippet data
-        """
-        existing.title = new.title
-        existing.description = new.description
-        existing.language = new.language
-        existing.context_before = new.context_before
-        existing.context_after = new.context_after
-        existing.section_title = new.section_title
-        existing.section_content = new.section_content
-        existing.functions = new.functions
-        existing.imports = new.imports
-        existing.metadata = new.metadata
-        existing.updated_at = datetime.utcnow()
         logger.debug(f"Updated existing snippet: {new.title}")
 
 

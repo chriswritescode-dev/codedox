@@ -97,7 +97,7 @@ CREATE TABLE IF NOT EXISTS code_snippets (
     description TEXT,
     language VARCHAR(50),
     code_content TEXT NOT NULL,
-    code_hash VARCHAR(64) UNIQUE,
+    code_hash VARCHAR(64) NOT NULL,
     line_start INTEGER,
     line_end INTEGER,
     context_before TEXT,
@@ -118,7 +118,11 @@ CREATE TABLE IF NOT EXISTS code_snippets (
     
     meta_data JSONB DEFAULT '{}',
     created_at TIMESTAMP DEFAULT NOW(),
-    updated_at TIMESTAMP DEFAULT NOW()
+    updated_at TIMESTAMP DEFAULT NOW(),
+    
+    -- Composite unique constraint: same code can exist in different documents (sources)
+    -- but not duplicate within the same document
+    CONSTRAINT unique_code_per_document UNIQUE (document_id, code_hash)
 );
 
 
@@ -152,6 +156,7 @@ CREATE INDEX IF NOT EXISTS idx_snippets_search_vector ON code_snippets USING GIN
 CREATE INDEX IF NOT EXISTS idx_snippets_language ON code_snippets(language);
 CREATE INDEX IF NOT EXISTS idx_snippets_document_id ON code_snippets(document_id);
 CREATE INDEX IF NOT EXISTS idx_snippets_source_url ON code_snippets(source_url);
+CREATE INDEX IF NOT EXISTS idx_snippets_code_hash ON code_snippets(code_hash);  -- For duplicate detection within sources
 CREATE INDEX IF NOT EXISTS idx_snippets_functions ON code_snippets USING GIN(functions);
 CREATE INDEX IF NOT EXISTS idx_snippets_imports ON code_snippets USING GIN(imports);
 CREATE INDEX IF NOT EXISTS idx_snippets_snippet_type ON code_snippets(snippet_type);
