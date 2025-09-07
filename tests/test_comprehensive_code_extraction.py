@@ -2,7 +2,7 @@
 
 import pytest
 
-from src.api.routes.upload_utils import extract_markdown_blocks
+from src.crawler.extractors.markdown import MarkdownCodeExtractor
 from src.crawler.extractors.html import HTMLCodeExtractor
 
 
@@ -57,7 +57,8 @@ Regular paragraph before code.
 
 Regular paragraph after code.
 """
-        blocks = extract_markdown_blocks(markdown_content)
+        extractor = MarkdownCodeExtractor()
+        blocks = extractor.extract_blocks(markdown_content)
         
         # Should find all 6 code blocks
         assert len(blocks) == 6
@@ -133,7 +134,8 @@ void example3() {}
 
     
     """
-        blocks = extract_markdown_blocks(content_empty)
+        extractor = MarkdownCodeExtractor()
+        blocks = extractor.extract_blocks(content_empty)
         assert len(blocks) == 0  # Empty blocks are filtered out
         
         # Test unclosed fence (extracts until end of content)
@@ -142,7 +144,8 @@ void example3() {}
 def calculate_total(items, tax_rate):
     return sum(items) * (1 + tax_rate)
 """
-        blocks = extract_markdown_blocks(content_unclosed)
+        extractor = MarkdownCodeExtractor()
+        blocks = extractor.extract_blocks(content_unclosed)
         assert len(blocks) == 1  # Unclosed fence extracted until EOF
         assert 'calculate_total' in blocks[0].code
         
@@ -151,5 +154,6 @@ def calculate_total(items, tax_rate):
   def mixed():  # Only 2 spaces
   pass         # Only 2 spaces
 """
-        blocks = extract_markdown_blocks(content_mixed)
+        extractor = MarkdownCodeExtractor()
+        blocks = extractor.extract_blocks(content_mixed)
         assert len(blocks) == 0  # Less than 4 spaces/tab not extracted

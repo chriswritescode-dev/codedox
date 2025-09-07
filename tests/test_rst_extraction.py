@@ -2,7 +2,8 @@
 
 import pytest
 
-from src.api.routes.upload_utils import RSTCodeExtractorWrapper as RSTCodeExtractor, extract_code_blocks_by_type
+from src.api.routes.upload_utils import extract_code_blocks_by_type
+from src.crawler.extractors.rst import RSTCodeExtractor
 from src.crawler.extractors.models import ExtractedCodeBlock
 
 
@@ -200,7 +201,10 @@ Some text after.
         return True
         """
         
-        blocks = RSTCodeExtractor.extract_blocks(content, source_url="test.rst")
+        extractor = RSTCodeExtractor()
+        blocks = extractor.extract_blocks(content)
+        for block in blocks:
+            block.source_url = "test.rst"
         
         assert len(blocks) == 1
         assert isinstance(blocks[0], ExtractedCodeBlock)

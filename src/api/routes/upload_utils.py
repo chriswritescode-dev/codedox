@@ -210,66 +210,10 @@ async def validate_and_read_file(
     return content, filename_without_ext
 
 
-class RSTCodeExtractorWrapper:
-    """Wrapper for reStructuredText code blocks extraction."""
-    
-    @classmethod
-    def extract_blocks(
-        cls, content: str, source_url: str | None = None, include_context: bool = False
-    ) -> list[ExtractedCodeBlock]:
-        """Extract code blocks from RST content.
-        
-        Supports:
-        - .. code-block:: language
-        - .. code:: language
-        - .. sourcecode:: language
-        - Literal blocks with ::
-        - Indented literal blocks
-        """
-        from src.crawler.extractors.rst import RSTCodeExtractor
-        
-        extractor = RSTCodeExtractor()
-        blocks = extractor.extract_blocks(content)
-        
-        # Set source_url for each block
-        for block in blocks:
-            block.source_url = source_url
-        
-        return blocks
-    
-
-
-
-def extract_markdown_blocks(content: str, source_url: str | None = None) -> list[ExtractedCodeBlock]:
-    """Extract code blocks from markdown using the unified extractor.
-    
-    Args:
-        content: Markdown content
-        source_url: Source URL for the blocks
-        
-    Returns:
-        List of ExtractedCodeBlock objects
-    """
-    from src.crawler.extractors.markdown import MarkdownCodeExtractor
-    
-    extractor = MarkdownCodeExtractor()
-    blocks = extractor.extract_blocks(content)
-    
-    # Set source_url for each block
-    for block in blocks:
-        block.source_url = source_url
-    
-    return blocks
-
-
-
-
-
-
 def extract_code_blocks_by_type(
     content: str, content_type: str, source_url: str | None = None
 ) -> list[ExtractedCodeBlock]:
-    """Extract code blocks based on content type.
+    """Extract code blocks based on content type using the factory pattern.
     
     Args:
         content: The content to extract from
@@ -279,13 +223,27 @@ def extract_code_blocks_by_type(
     Returns:
         List of ExtractedCodeBlock objects
     """
-    if content_type == 'restructuredtext':
-        return RSTCodeExtractorWrapper.extract_blocks(content, source_url)
-    elif content_type in ('markdown', 'text'):
-        return extract_markdown_blocks(content, source_url)
-    else:
-        # Default to markdown extractor for unknown types
-        return extract_markdown_blocks(content, source_url)
+    from src.crawler.extractors.factory import create_extractor
+    
+    # Map content types to extractor types
+    extractor_type = content_type
+    if content_type == 'text':
+        extractor_type = 'markdown'  # Default text to markdown
+    
+    extractor = create_extractor(content_type=extractor_type)
+    if not extractor:
+        # Fall back to markdown if type is unknown
+        extractor = create_extractor(content_type='markdown')
+    
+    # Extract blocks
+    blocks = extractor.extract_blocks(content)
+    
+    # Set source_url for each block
+    if source_url:
+        for block in blocks:
+            block.source_url = source_url
+    
+    return blocks
 
 
 class GitHubURLParser:
