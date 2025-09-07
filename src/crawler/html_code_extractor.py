@@ -2,24 +2,21 @@
 
 import logging
 import re
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Any
 
-from bs4 import BeautifulSoup, Tag
+from bs4 import BeautifulSoup, NavigableString, Tag
 
 logger = logging.getLogger(__name__)
 
 
 @dataclass
 class ExtractedCodeBlock:
-    """Represents an extracted code block with its context."""
-
+    """Represents a code block extracted from HTML."""
     code: str
     language: str | None = None
-    container_hierarchy: list[dict[str, Any]] = field(default_factory=list)
-    context_before: list[str] = field(default_factory=list)
-    container_type: str | None = None  # example, api-method, tutorial-step,
-    # etc.
+    container_hierarchy: list[dict[str, Any]] | None = None
+    context_before: list[str] | None = None
     title: str | None = None
     description: str | None = None
 
@@ -43,217 +40,352 @@ class HTMLCodeExtractor:
         """Initialize the code extractor."""
         self.stats = {"total_blocks": 0, "blocks_by_type": {}, "languages_found": set()}
 
-    def _process_code_block(self, block: Tag, selector_type: str) -> ExtractedCodeBlock | None:
-        """
-        Process a single code block element.
 
-        Args:
-            block: The code block element
-            selector_type: Type of selector that found this block
-
-        Returns:
-            ExtractedCodeBlock or None if block should be skipped
-        """
-        # Skip if already processed (nested selectors might match same element)
-        if block.get("data-processed"):
-            return None
-
-        block["data-processed"] = "true"
-
-        # Extract the code content
-        raw_code_text = self._extract_code_text(block)
-
-        # Skip empty or very short code blocks (likely inline code)
-        if not raw_code_text or len(raw_code_text.strip()) < 10:
-            return None
-
-        # Language will be detected by LLM
-        language = None
-
-        # Use raw code text without formatting to preserve original
-        code_text = raw_code_text
-
-        # Skip inline code in sentences (unless it's multi-line)
-        if self._is_inline_code(block) and "\n" not in code_text:
-            return None
-
-        # Extract surrounding context
-        context = self._extract_context(block)
-
-        # Classify container type
-        container_type = self._classify_container(context["hierarchy"])
-
-        # Create extracted block
-        extracted = ExtractedCodeBlock(
-            code=code_text,
-            language=language,
-            container_hierarchy=context["hierarchy"],
-            context_before=context["before"],
-            container_type=container_type,
-            title=context.get("title"),
-            description=context.get("description"),
-        )
-
-        # Update stats
-        self.stats["total_blocks"] += 1
-        self.stats["blocks_by_type"][selector_type] = (
-            self.stats["blocks_by_type"].get(selector_type, 0) + 1
-        )
-
-        return extracted
-
+    
     def extract_code_blocks(self, html: str, url: str) -> list[ExtractedCodeBlock]:
         """
-        Extract all code blocks from HTML with their documentation context (synchronous version).
-
+        Extract all code blocks with their preceding context using simplified approach.
+        
+        For each code block:
+        1. Find the nearest preceding heading (h1-h6) by traversing up and backward
+        2. Collect ALL content between the heading and code block
+        3. Stop at the code block - never include content after it
+        
         Args:
             html: Raw HTML content
             url: URL of the page (for logging)
-
+            
         Returns:
             List of ExtractedCodeBlock objects
         """
         soup = BeautifulSoup(html, "html.parser")
-
-        extracted_blocks = []
-        # Track processed elements to avoid duplicates
-        processed_elements = set()
-
-        # Find all code blocks
-        for selector, selector_type in self.CODE_SELECTORS:
-            blocks = soup.select(selector)
-
-            for block in blocks:
-                # For pre > code, we process the code element
-                # For standalone pre or code, we process the element itself
-                # Skip if we've already processed this element or its parent/child
-                element_id = id(block)
-                if element_id in processed_elements:
+        
+        extracted_blocks: list[ExtractedCodeBlock] = []
+        processed_code_blocks: set[Tag] = set()
+        
+        def find_code_blocks(soup: BeautifulSoup) -> list[Tag]:
+            """Find all code blocks we want to extract."""
+            code_blocks: list[Tag] = []
+            
+            # Find all <pre> elements (most common for code blocks)
+            for pre in soup.find_all('pre'):
+                if pre not in processed_code_blocks:
+                    code_blocks.append(pre)
+            
+            # Find standalone <code> elements (not inside <pre>)
+            for code in soup.find_all('code'):
+                if code.parent and code.parent.name != 'pre':
+                    text = code.get_text().strip()
+                    
+                    # Skip ALL single-line inline code
+                    if '\n' not in text:
+                        continue
+                    
+                    # Only keep multi-line code blocks
+                    if code not in processed_code_blocks:
+                        code_blocks.append(code)
+            
+            return code_blocks
+        
+        def find_preceding_heading(code_element: Tag) -> tuple[Tag | None, Tag | None]:
+            """
+            Find the nearest heading that precedes the code block in document order.
+            Returns: (heading_element, common_container)
+            """
+            current: Tag | None = code_element
+            heading: Tag | None = None
+            common_container: Tag | None = None
+            
+            # Traverse up the tree
+            while current and hasattr(current, 'name') and current.name not in ['body', 'html']:
+                parent = current.parent
+                if not parent or not hasattr(parent, 'name'):
+                    break
+                
+                # Get all children of parent
+                children = [c for c in parent.children if hasattr(c, 'name') and c.name]
+                
+                # Find index of current element
+                try:
+                    current_index = children.index(current)
+                except ValueError:
+                    # Current not directly in children, it's nested deeper
+                    # Find which child contains current
+                    current_index = -1
+                    for i, child in enumerate(children):
+                        if hasattr(child, 'descendants') and current in child.descendants:
+                            current_index = i
+                            break
+                
+                if current_index > 0:
+                    # Check previous siblings for headings
+                    for i in range(current_index - 1, -1, -1):
+                        sibling = children[i]
+                        
+                        # Direct heading
+                        if isinstance(sibling, Tag) and sibling.name in ['h1', 'h2', 'h3', 'h4', 'h5', 'h6']:
+                            heading = sibling
+                            common_container = parent if isinstance(parent, Tag) else None
+                            return heading, common_container
+                        
+                        # Heading inside sibling
+                        if isinstance(sibling, Tag) and hasattr(sibling, 'find_all'):
+                            # Get the last heading in this sibling (closest to our code)
+                            headings = sibling.find_all(['h1', 'h2', 'h3', 'h4', 'h5', 'h6'])
+                            if headings:
+                                last_heading = headings[-1]  # Last heading is closest
+                                if isinstance(last_heading, Tag):
+                                    heading = last_heading
+                                    common_container = parent if isinstance(parent, Tag) else None
+                                    return heading, common_container
+                
+                # Move up to parent
+                if isinstance(parent, Tag):
+                    current = parent
+                else:
+                    break
+            
+            return heading, common_container
+        
+        def collect_content_between(heading: Tag | None, code_element: Tag, container: Tag | None, previous_code: Tag | None = None) -> list[str]:
+            """
+            Collect all text content between heading and code block.
+            If no heading, collect content from start of container.
+            If previous_code is provided, collect content between previous_code and current code_element.
+            """
+            descriptions: list[str] = []
+            
+            if not container:
+                # No common container found, use code's parent
+                container = code_element.parent
+                if not container:
+                    return descriptions
+            
+            # Determine if we should process in document order
+            def get_element_position(elem: Tag) -> tuple[int, ...]:
+                """Get position of element as tuple of indices in tree."""
+                position: list[int] = []
+                current = elem
+                while current and current != container:
+                    if current.parent:
+                        siblings = [s for s in current.parent.children if hasattr(s, 'name')]
+                        try:
+                            idx = siblings.index(current)
+                            position.insert(0, idx)
+                        except ValueError:
+                            position.insert(0, 0)
+                    current = current.parent
+                return tuple(position)
+            
+            # Get positions
+            heading_pos = get_element_position(heading) if heading else None
+            code_pos = get_element_position(code_element)
+            prev_code_pos = get_element_position(previous_code) if previous_code else None
+            
+            # Collect all text elements in container
+            for elem in container.descendants:
+                if not hasattr(elem, 'name'):
                     continue
                 
-                # Also skip if this is a code element inside a pre we already processed
-                if block.name == 'code' and block.parent and block.parent.name == 'pre':
-                    parent_id = id(block.parent)
-                    if parent_id in processed_elements:
+                # Skip the code block itself and its children
+                if elem == code_element or code_element in (elem.descendants if hasattr(elem, 'descendants') else []):
+                    continue
+                
+                # Skip previous code block and its children
+                if previous_code and (elem == previous_code or previous_code in (elem.descendants if hasattr(elem, 'descendants') else [])):
+                    continue
+                
+                # Check if this element is inside a <pre> tag (part of a code block)
+                # This is critical - we need to check ancestors, not just the element itself
+                is_inside_pre = False
+                parent = elem.parent
+                while parent and hasattr(parent, 'name'):
+                    if parent.name == 'pre':
+                        is_inside_pre = True
+                        break
+                    parent = parent.parent
+                
+                if is_inside_pre:
+                    continue
+                
+                # Skip UI elements
+                if elem.name in ['button', 'nav', 'svg', 'script', 'style', 'noscript']:
+                    continue
+                
+                # Skip <pre> elements (code blocks)
+                if elem.name == 'pre':
+                    continue
+                
+                # Skip any element that contains <pre> descendants (containers of code blocks)
+                # This must come BEFORE we check positions or extract text
+                if hasattr(elem, 'find'):
+                    if elem.find('pre'):
                         continue
                 
-                # Skip if this is a pre element and we already processed its code child
-                if block.name == 'pre':
-                    code_child = block.find('code')
-                    if code_child and id(code_child) in processed_elements:
+                # Skip <code> elements that are multi-line or inside <pre> (block code)
+                # But keep inline <code> elements (single line, not in <pre>)
+                if elem.name == 'code':
+                    # Check if it contains newlines (multi-line code)
+                    code_text = elem.get_text()
+                    if '\n' in code_text:
                         continue
-
-                extracted = self._process_code_block(block, selector_type)
-                if extracted:
-                    extracted_blocks.append(extracted)
-                    processed_elements.add(element_id)
+                
+                # Get position of this element
+                elem_pos = get_element_position(elem)
+                
+                # Check if element is between heading/previous code and current code
+                if prev_code_pos:
+                    # Must be after previous code and before current code
+                    if elem_pos <= prev_code_pos or elem_pos >= code_pos:
+                        continue
+                elif heading_pos:
+                    # Must be after heading and before code
+                    if elem_pos <= heading_pos or elem_pos >= code_pos:
+                        continue
+                else:
+                    # No heading, just before code
+                    if elem_pos >= code_pos:
+                        continue
+                
+                # Extract text from various elements
+                if elem.name in ['p', 'div', 'span', 'li', 'dt', 'dd', 'td', 'th']:
+                    # Check if this element has child elements we'll process separately
+                    has_child_content = any(
+                        child.name in ['p', 'li', 'dt', 'dd']
+                        for child in elem.children
+                        if hasattr(child, 'name')
+                    )
                     
-                    # Mark parent pre if we processed a code inside it
-                    if block.name == 'code' and block.parent and block.parent.name == 'pre':
-                        processed_elements.add(id(block.parent))
+                    if not has_child_content:
+                        # Check if element contains buttons - if so, extract text without button content
+                        if elem.find('button'):
+                            # Extract text from all non-button children
+                            text_parts = []
+                            for child in elem.descendants:
+                                # Check if it's a text node
+                                if isinstance(child, NavigableString):
+                                    # Check if this text node is inside a button
+                                    parent = child.parent
+                                    is_in_button = False
+                                    while parent and parent != elem:
+                                        if hasattr(parent, 'name') and parent.name == 'button':
+                                            is_in_button = True
+                                            break
+                                        parent = parent.parent
+                                    
+                                    if not is_in_button:
+                                        text = str(child).strip()
+                                        if text:
+                                            text_parts.append(text)
+                            text = ' '.join(text_parts)
+                        else:
+                            # No buttons, extract normally
+                            text = elem.get_text(separator=' ', strip=True)
+                        
+                        if text and len(text) > 10:
+                            # Avoid duplicates
+                            if not descriptions or text not in descriptions[-1]:
+                                descriptions.append(text)
+            
+            return descriptions
+        
+        def build_hierarchy(element: Tag) -> list[dict[str, Any]]:
+            """Build container hierarchy for the element."""
+            hierarchy = []
+            current = element.parent
+            
+            for _ in range(4):  # Limit depth
+                if not current or current.name in ['body', 'html']:
+                    break
                     
-                    # Mark child code if we processed a pre containing it
-                    if block.name == 'pre':
-                        code_child = block.find('code')
-                        if code_child:
-                            processed_elements.add(id(code_child))
+                hierarchy_info: dict[str, Any] = {
+                    'tag': current.name,
+                    'classes': current.get('class', []) if hasattr(current, 'get') else [],
+                    'id': current.get('id') if hasattr(current, 'get') else None
+                }
+                hierarchy.append(hierarchy_info)
+                current = current.parent
+            
+            return hierarchy
+        
 
-        if logger.isEnabledFor(logging.DEBUG):
-            logger.debug(f"Extracted {len(extracted_blocks)} code blocks from {url}")
-            logger.debug(f"Stats: {self.stats}")
-
-        return extracted_blocks
-
-    async def _process_code_block_async(
-        self, block: Tag, selector_type: str
-    ) -> ExtractedCodeBlock | None:
-        """
-        Process a single code block element with async language detection.
-
-        Args:
-            block: The code block element
-            selector_type: Type of selector that found this block
-
-        Returns:
-            ExtractedCodeBlock or None if block should be skipped
-        """
-        # Skip if already processed (nested selectors might match same element)
-        if block.get("data-processed"):
-            return None
-
-        block["data-processed"] = "true"
-
-        # Extract the code content
-        raw_code_text = self._extract_code_text(block)
-
-        # Skip empty or very short code blocks (likely inline code)
-        if not raw_code_text or len(raw_code_text.strip()) < 10:
-            return None
-
-        # Language will be detected by LLM
-        language = None
-
-        # Use raw code text without formatting to preserve original
-        code_text = raw_code_text
-
-        # Skip inline code in sentences (unless it's multi-line)
-        if self._is_inline_code(block) and "\n" not in code_text:
-            return None
-
-        # Extract surrounding context
-        context = self._extract_context(block)
-
-        # Classify container type
-        container_type = self._classify_container(context["hierarchy"])
-
-        # Create extracted block
-        extracted = ExtractedCodeBlock(
-            code=code_text,
-            language=language,
-            container_hierarchy=context["hierarchy"],
-            context_before=context["before"],
-            container_type=container_type,
-            title=context.get("title"),
-            description=context.get("description"),
-        )
-
-        # Update stats
-        self.stats["total_blocks"] += 1
-        self.stats["blocks_by_type"][selector_type] = (
-            self.stats["blocks_by_type"].get(selector_type, 0) + 1
-        )
-
-        return extracted
-
-    async def extract_code_blocks_async(self, html: str, url: str) -> list[ExtractedCodeBlock]:
-        """
-        Extract all code blocks from HTML with their documentation context (async version with VS Code detection).
-
-        Args:
-            html: Raw HTML content
-            url: URL of the page (for logging)
-
-        Returns:
-            List of ExtractedCodeBlock objects
-        """
-        soup = BeautifulSoup(html, "html.parser")
-
-        extracted_blocks = []
-
+        
         # Find all code blocks
-        for selector, selector_type in self.CODE_SELECTORS:
-            blocks = soup.select(selector)
-
-            for block in blocks:
-                extracted = await self._process_code_block_async(block, selector_type)
-                if extracted:
-                    extracted_blocks.append(extracted)
-
+        code_blocks = find_code_blocks(soup)
+        
+        # Track previous code block for each heading
+        previous_code_by_heading: dict[Tag | None, Tag] = {}
+        
+        for code_element in code_blocks:
+            # Skip if already processed
+            if code_element in processed_code_blocks:
+                continue
+            
+            # Mark as processed
+            processed_code_blocks.add(code_element)
+            
+            # Get the actual code element (might be child <code> of <pre>)
+            actual_code_element = code_element
+            if code_element.name == 'pre':
+                code_child = code_element.find('code')
+                if code_child:
+                    actual_code_element = code_child
+                    processed_code_blocks.add(code_child)
+            elif code_element.parent and code_element.parent.name == 'pre':
+                processed_code_blocks.add(code_element.parent)
+            
+            # Extract code text
+            raw_code_text = self._extract_code_text(actual_code_element)
+            
+            # Skip empty code blocks
+            if not raw_code_text or not raw_code_text.strip():
+                continue
+            
+            # Find preceding heading
+            heading, container = find_preceding_heading(code_element)
+            
+            # Get previous code block for this heading
+            previous_code = previous_code_by_heading.get(heading)
+            
+            # Collect content between heading/previous code and current code
+            descriptions = collect_content_between(heading, code_element, container, previous_code)
+            
+            # Update previous code for this heading
+            previous_code_by_heading[heading] = code_element
+            
+            # Build hierarchy
+            hierarchy = build_hierarchy(code_element)
+            
+            # Extract title text if heading found
+            title = None
+            if heading:
+                title = heading.get_text(separator=' ', strip=True)
+            
+            # Create extracted block
+            extracted = ExtractedCodeBlock(
+                code=raw_code_text,
+                language=None,  # Will be detected by LLM
+                container_hierarchy=hierarchy,
+                context_before=descriptions.copy(),
+                title=title,
+                description='\n'.join(descriptions) if descriptions else None
+            )
+            
+            extracted_blocks.append(extracted)
+            
+            # Update stats
+            self.stats['total_blocks'] += 1
+            self.stats['blocks_by_type']['simplified'] = (
+                self.stats['blocks_by_type'].get('simplified', 0) + 1
+            )
+        
         if logger.isEnabledFor(logging.DEBUG):
-            logger.debug(f"Extracted {len(extracted_blocks)} code blocks from {url}")
+            logger.debug(f"Extracted {len(extracted_blocks)} code blocks from {url} (simplified approach)")
             logger.debug(f"Stats: {self.stats}")
-
+        
         return extracted_blocks
+
+
 
     def _extract_code_text(self, element: Tag) -> str:
         """Extract clean code text from an element."""
@@ -343,182 +475,6 @@ class HTMLCodeExtractor:
         # Also remove any leading empty lines
         return "\n".join(cleaned_lines).strip()
 
-    def _is_inline_code(self, element: Tag) -> bool:
-        """Check if this is inline code (not a block)."""
-        # If it's just a <code> tag without <pre>, likely inline
-        if element.name == "code" and not element.find_parent("pre"):
-            return True
-
-        # Check if parent is a paragraph or span (inline context)
-        parent = element.parent
-        if parent and parent.name in {"p", "span", "li", "td"}:
-            # But allow if it's in a list item that's specifically for code
-            if parent.name == "li":
-                parent_classes = parent.get("class", [])
-                if not isinstance(parent_classes, list):
-                    parent_classes = []
-                if any("code" in cls or "example" in cls for cls in parent_classes):
-                    return False
-            return True
-
-        return False
-
-    def _extract_context(self, code_element: Tag) -> dict[str, Any]:
-        """Extract surrounding context for a code block."""
-        context: dict[str, Any] = {
-            "before": [],
-            "hierarchy": [],
-            "title": None,
-            "description": None,
-            "filename": None,
-        }
-
-        # Walk up the DOM tree to find context
-        current = code_element
-        levels_up = 0
-
-        while current.parent and levels_up < 4:
-            parent = current.parent
-
-            # Skip if we hit body or html
-            if parent.name in {"body", "html"}:
-                break
-
-            # Record hierarchy
-            hierarchy_info = {
-                "tag": parent.name,
-                "classes": parent.get("class", None) or [],
-                "id": parent.get("id"),
-            }
-            context["hierarchy"].append(hierarchy_info)
-
-            # Look for title in this container - only before the code element
-            if not context["title"]:
-                # Check if code_element is descendant of current
-                code_is_descendant = code_element in (
-                    current.descendants if hasattr(current, "descendants") else []
-                )
-
-                for elem in parent.children:
-                    # Stop when we reach the current element or its container
-                    if elem == current or (code_is_descendant and elem == code_element):
-                        break
-                    # Skip navigation elements
-                    if hasattr(elem, "name") and elem.name in ["button", "nav", "a"]:
-                        continue
-                    if hasattr(elem, "name") and elem.name in ["h1", "h2", "h3", "h4", "h5", "h6"]:
-                        title_text = elem.get_text(separator=" ", strip=True)
-                        if title_text:
-                            context["title"] = title_text
-                            break
-
-            # Look for filename in this container - only before the code element
-            if not context["filename"]:
-                # Check for common filename indicators
-                filename_elem = None
-                code_is_descendant = code_element in (
-                    current.descendants if hasattr(current, "descendants") else []
-                )
-
-                # Check for elements with filename-related classes
-                for elem in parent.children:
-                    # Stop when we reach the current element or its container
-                    if elem == current or (code_is_descendant and elem == code_element):
-                        break
-
-                    if hasattr(elem, "name") and elem.name in ["div", "span", "code"]:
-                        if hasattr(elem, "get"):
-                            elem_classes = elem.get("class", None) or []
-                        else:
-                            elem_classes = []
-                        if any(
-                            "filename" in cls.lower()
-                            or "file-name" in cls.lower()
-                            or "code-title" in cls.lower()
-                            for cls in elem_classes
-                        ):
-                            filename_elem = elem
-                            break
-
-                # Check for data attributes
-                if not filename_elem and parent.get("data-filename"):
-                    context["filename"] = parent.get("data-filename")
-                elif (
-                    not filename_elem and parent.get("title") and "." in (parent.get("title") or "")
-                ):
-                    # Sometimes filename is in title attribute
-                    context["filename"] = parent.get("title")
-                elif filename_elem:
-                    filename_text = filename_elem.get_text(strip=True)
-                    if filename_text and (
-                        "." in filename_text or filename_text in ["Dockerfile", "Makefile"]
-                    ):
-                        context["filename"] = filename_text
-
-            # Look for content elements in the parent container that appear before the code block
-            if parent and hasattr(parent, "children"):
-                children_list = list(parent.children)
-
-                # Find where the current element is in the parent's children
-                for idx, child in enumerate(children_list):
-                    if child == current:
-                        # We found the code block, now get content before it
-                        # but stop if we hit another code block
-                        for i in range(idx - 1, -1, -1):  # Work backwards from current element
-                            prev_child = children_list[i]
-                            if hasattr(prev_child, "name"):
-                                # Stop if we hit another code block
-                                if prev_child.name in ["pre", "code"]:
-                                    break
-                                # Also check if this element contains a code block
-                                if prev_child.name == "div" and prev_child.find(["pre", "code"]):
-                                    break
-
-                                # Collect content elements
-                                if prev_child.name in ["p", "span", "h2", "h3", "h4"]:
-                                    text = prev_child.get_text(separator=" ", strip=True)
-                                    if text and len(text) > 10:
-                                        # Insert at beginning since we're going backwards
-                                        context["before"].insert(0, text)
-                                elif prev_child.name == "ul":
-                                    # Get text from list items
-                                    list_items = []
-                                    for li in prev_child.find_all("li"):
-                                        text = li.get_text(separator=" ", strip=True)
-                                        if text and len(text) > 10:
-                                            list_items.append(text)
-                                    # Insert all list items at beginning
-                                    for item in reversed(list_items):
-                                        context["before"].insert(0, item)
-                        break  # Stop once we've processed elements before the code block
-
-            current = parent
-            levels_up += 1
-
-        # Extract filename from context if not found
-        if not context["filename"] and context["before"]:
-            # Look for filename patterns in context
-            for text in context["before"]:
-                # Common patterns: "app/page.tsx", "src/index.js", "package.json"
-                if ("/" in text or "." in text) and len(text) < 100:
-                    # Check if it looks like a filename
-                    import re
-
-                    filename_pattern = r"^[\w\-\/]+\.\w+$|^Dockerfile$|^Makefile$|^\\.[\w]+$"
-                    if re.match(filename_pattern, text.strip()):
-                        context["filename"] = text.strip()
-                        break
-
-        # Set description from first paragraph in context
-        if context["before"] and not context["description"]:
-            # Look for a paragraph that's not a title
-            for text in context["before"]:
-                if not any(text.startswith(h) for h in ["#", "Step", "Example"]):
-                    context["description"] = text
-                    break
-
-        return context
-
     def _classify_container(self, hierarchy: list[dict[str, Any]]) -> str | None:
         """Classify the container type based on hierarchy."""
         # Check classes and IDs in the hierarchy
@@ -575,8 +531,7 @@ class HTMLCodeExtractor:
             if block.language:
                 output.append(f"Language: {block.language}")
 
-            if block.container_type:
-                output.append(f"Type: {block.container_type}")
+
 
             if block.container_hierarchy:
                 containers = " > ".join(
