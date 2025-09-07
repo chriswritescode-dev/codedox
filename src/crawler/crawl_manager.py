@@ -467,6 +467,17 @@ class CrawlManager:
             self._active_crawl_tasks[job_id] = task
             return True
 
+    def _build_retry_metadata(self, original_job: dict, failed_count: int) -> dict:
+        """Build standardized retry metadata."""
+        original_config = original_job.get("config", {})
+        original_metadata = original_config.get("metadata", {})
+        return {
+            **original_metadata,
+            "retry_of_job": original_job["id"],
+            "original_job_name": original_job["name"],
+            "failed_pages_count": failed_count
+        }
+
     async def retry_failed_pages(self, job_id: str, specific_urls: list[str] | None = None) -> str | None:
         """Create a new job to retry by re-running the original configuration.
         
@@ -496,13 +507,7 @@ class CrawlManager:
         original_config = job_dict.get("config", {})
 
         # Preserve all metadata from original job and add retry markers
-        original_metadata = original_config.get("metadata", {})
-        retry_metadata = {
-            **original_metadata,  # Keep all original metadata
-            "retry_of_job": job_id,
-            "original_job_name": job_dict["name"],
-            "failed_pages_count": failed_count
-        }
+        retry_metadata = self._build_retry_metadata(job_dict, failed_count)
 
         # Determine which URLs to use and appropriate depth
         if specific_urls:
@@ -520,8 +525,8 @@ class CrawlManager:
 
         # Create retry config with appropriate settings
         original_name = job_dict['name']
-        original_version = job_dict.get('version', '1.0.0')
-        logger.info(f"[RETRY DEBUG] Creating retry job - Using original name: '{original_name}', version: '{original_version}'")
+        original_version = job_dict.get('version')
+        logger.info(f"Creating retry job - Using original name: '{original_name}', version: '{original_version}'")
 
         retry_config = CrawlConfig(
             name=original_name,

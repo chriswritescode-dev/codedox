@@ -215,6 +215,7 @@ class TestFailedPagesTracking:
                     )
 
 
+
 class TestAPIEndpoint:
     """Test the retry failed pages API endpoint."""
 
