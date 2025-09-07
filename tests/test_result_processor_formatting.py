@@ -12,13 +12,13 @@ class TestResultProcessorFormatting:
     """Test code block processing in result processor."""
 
     @pytest.mark.asyncio
-    async def test_code_blocks_are_saved_correctly(self):
+    async def test_code_blocks_are_saved_correctly(self, monkeypatch):
         """Test that code blocks are saved to database."""
         processor = ResultProcessor()
 
         # Mock database session
         mock_session = Mock()
-        mock_doc = Mock(id=1, url='https://example.com/test')
+        mock_doc = Mock(id=1, url='https://example.com/test', crawl_job_id='test-job-id', upload_job_id=None)
 
         # Create test code blocks
         code_blocks = [
@@ -32,8 +32,16 @@ class TestResultProcessorFormatting:
             )
         ]
 
-        # Mock database queries
-        mock_session.query.return_value.filter_by.return_value.first.return_value = None
+        # Mock find_duplicate_snippet_in_source to return None (no duplicate)
+        def mock_find_duplicate(session, code_hash, doc):
+            return None
+        
+        monkeypatch.setattr(
+            'src.database.content_check.find_duplicate_snippet_in_source',
+            mock_find_duplicate
+        )
+        
+        # Mock database operations
         mock_session.add = Mock()
         mock_session.flush = Mock()
         mock_session.commit = Mock()
@@ -49,13 +57,13 @@ class TestResultProcessorFormatting:
         assert snippet_count == 1
 
     @pytest.mark.asyncio
-    async def test_duplicate_detection(self):
+    async def test_duplicate_detection(self, monkeypatch):
         """Test that duplicate code blocks are detected."""
         processor = ResultProcessor()
 
         # Mock database session
         mock_session = Mock()
-        mock_doc = Mock(id=1, url='https://example.com/test')
+        mock_doc = Mock(id=1, url='https://example.com/test', crawl_job_id='test-job-id', upload_job_id=None)
 
         # Create test code block
         test_code = 'function test() { return 42; }'
@@ -80,12 +88,16 @@ class TestResultProcessorFormatting:
             code_content=test_code
         )
         
-        # Setup mock to return existing snippet when checking for duplicates
-        mock_query = Mock()
-        mock_filter_by = Mock()
-        mock_filter_by.first.return_value = existing_snippet
-        mock_query.filter_by.return_value = mock_filter_by
-        mock_session.query.return_value = mock_query
+        # Mock find_duplicate_snippet_in_source to return existing snippet
+        def mock_find_duplicate(session, code_hash, doc):
+            if code_hash == expected_hash:
+                return existing_snippet
+            return None
+        
+        monkeypatch.setattr(
+            'src.database.content_check.find_duplicate_snippet_in_source',
+            mock_find_duplicate
+        )
         
         mock_session.add = Mock()
         mock_session.flush = Mock()
@@ -101,13 +113,13 @@ class TestResultProcessorFormatting:
         mock_session.add.assert_not_called()
 
     @pytest.mark.asyncio
-    async def test_multiple_code_blocks(self):
+    async def test_multiple_code_blocks(self, monkeypatch):
         """Test processing multiple code blocks."""
         processor = ResultProcessor()
 
         # Mock database session
         mock_session = Mock()
-        mock_doc = Mock(id=1, url='https://example.com/test')
+        mock_doc = Mock(id=1, url='https://example.com/test', crawl_job_id='test-job-id', upload_job_id=None)
 
         code_blocks = [
             ExtractedCodeBlock(
@@ -128,8 +140,16 @@ class TestResultProcessorFormatting:
             )
         ]
 
-        # Mock database queries
-        mock_session.query.return_value.filter_by.return_value.first.return_value = None
+        # Mock find_duplicate_snippet_in_source to return None (no duplicates)
+        def mock_find_duplicate(session, code_hash, doc):
+            return None
+        
+        monkeypatch.setattr(
+            'src.database.content_check.find_duplicate_snippet_in_source',
+            mock_find_duplicate
+        )
+        
+        # Mock database operations
         mock_session.add = Mock()
         mock_session.flush = Mock()
         mock_session.commit = Mock()
