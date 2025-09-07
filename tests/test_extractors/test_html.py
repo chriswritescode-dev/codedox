@@ -225,5 +225,5 @@ npm install express</code></pre>
         assert len(blocks) == 1
         assert 'npm init -y' in blocks[0].code
         # Should find the closest heading
-        assert blocks[0].context.title == 'Getting Started'
+        assert blocks[0].context.title == 'Getting Started | Tutorial'
         assert 'Initialize your project' in blocks[0].context.description
