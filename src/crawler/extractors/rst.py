@@ -22,6 +22,10 @@ class RSTCodeExtractor(BaseCodeExtractor):
     def extract_blocks(self, content: str, source_url: str | None = None) -> list[ExtractedCodeBlock]:
         """Extract ONLY multi-line code blocks from RST."""
         lines = content.split('\n')
+        
+        # Get the main page title (first heading)
+        main_title = self._get_main_title(lines)
+        
         code_blocks = self._find_code_blocks(lines)
         extracted_blocks = []
         
@@ -53,6 +57,17 @@ class RSTCodeExtractor(BaseCodeExtractor):
             # Extract context between heading/previous code and current code
             context = self.extract_context_between(lines, context_start, block_info.start_line)
             
+            # Set the title combining section heading with page title
+            if heading_text:
+                if main_title and main_title != heading_text:
+                    # Combine section heading with main title like "Examples | CodeDox"
+                    context.title = f"{heading_text} | {main_title}"
+                else:
+                    context.title = heading_text
+            elif main_title:
+                # Use main title if no section heading
+                context.title = main_title
+            
             # Update previous code block for this heading
             previous_code_by_heading[(heading_text, heading_line)] = block_info.end_line
             
@@ -69,6 +84,40 @@ class RSTCodeExtractor(BaseCodeExtractor):
             extracted_blocks.append(extracted)
         
         return extracted_blocks
+    
+    def _get_main_title(self, lines: list[str]) -> str | None:
+        """Get the main page title from the first heading in RST."""
+        # RST heading characters in order of precedence
+        heading_chars = '=-~^_*+#'
+        
+        for i in range(len(lines) - 1):
+            line = lines[i].strip()
+            next_line = lines[i + 1].strip() if i + 1 < len(lines) else ''
+            
+            # Check for underlined heading (most common in RST)
+            if next_line and len(next_line.strip()) > 0:
+                char = next_line.strip()[0]
+                if char in heading_chars and all(c == char for c in next_line.strip()):
+                    # Check if underline is at least as long as the text
+                    if len(next_line.strip()) >= len(line.strip()) and line.strip():
+                        return line.strip()
+            
+            # Check for overlined + underlined heading (less common but often used for main titles)
+            if i > 0 and i < len(lines) - 1:
+                prev_line = lines[i - 1].strip() if i > 0 else ''
+                if prev_line and next_line:
+                    # Check if both prev and next lines are the same character
+                    if prev_line.strip() and next_line.strip():
+                        char = prev_line.strip()[0]
+                        if (char in heading_chars and
+                            all(c == char for c in prev_line.strip()) and
+                            all(c == char for c in next_line.strip()) and
+                            len(prev_line.strip()) >= len(line.strip()) and
+                            len(next_line.strip()) >= len(line.strip()) and
+                            line.strip()):
+                            return line.strip()
+        
+        return None
     
     def find_preceding_heading(self, lines: list[str], position: int) -> tuple[str | None, int]:
         """Find RST headings (overlined/underlined)."""

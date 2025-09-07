@@ -26,6 +26,10 @@ class MarkdownCodeExtractor(BaseCodeExtractor):
         _, content = extract_frontmatter(content)
         
         lines = content.split('\n')
+        
+        # Get the main page title (first H1)
+        main_title = self._get_main_title(lines)
+        
         code_blocks = self._find_code_blocks(lines)
         extracted_blocks = []
         
@@ -62,9 +66,16 @@ class MarkdownCodeExtractor(BaseCodeExtractor):
             # Extract context between heading/previous code and current code
             context = self.extract_context_between(lines, context_start, block_info.start_line)
             
-            # Set the title if we found a heading
+            # Set the title combining section heading with page title
             if heading_text:
-                context.title = heading_text
+                if main_title and main_title != heading_text:
+                    # Combine section heading with main title like "Examples | CodeDox"
+                    context.title = f"{heading_text} | {main_title}"
+                else:
+                    context.title = heading_text
+            elif main_title:
+                # Use main title if no section heading
+                context.title = main_title
             
             # Update previous code block for this heading
             previous_code_by_heading[(heading_text, heading_line)] = block_info.end_line
@@ -82,6 +93,23 @@ class MarkdownCodeExtractor(BaseCodeExtractor):
             extracted_blocks.append(extracted)
         
         return extracted_blocks
+    
+    def _get_main_title(self, lines: list[str]) -> str | None:
+        """Get the main page title from the first H1 heading."""
+        for i, line in enumerate(lines):
+            line = line.strip()
+            
+            # Check for ATX H1 heading (single #)
+            if line.startswith('# ') and not line.startswith('## '):
+                return line[2:].strip()
+            
+            # Check for Setext H1 heading (underlined with ===)
+            if i + 1 < len(lines):
+                next_line = lines[i + 1].strip()
+                if next_line and re.match(r'^=+$', next_line) and line:
+                    return line
+        
+        return None
     
     def find_preceding_heading(self, lines: list[str], position: int) -> tuple[str | None, int]:
         """Find nearest heading before code block."""

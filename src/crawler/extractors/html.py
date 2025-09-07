@@ -40,6 +40,9 @@ class HTMLCodeExtractor(BaseCodeExtractor):
         extracted_blocks: list[ExtractedCodeBlock] = []
         processed_code_blocks: set[Tag] = set()
         
+        # Get the main page title (H1)
+        main_title = self._get_main_title(soup)
+        
         # Find all code blocks
         code_blocks = self._find_code_blocks(soup, processed_code_blocks)
         
@@ -85,9 +88,16 @@ class HTMLCodeExtractor(BaseCodeExtractor):
                 previous_code
             )
             
-            # Update context with title if we found a heading
+            # Update context with title combining section heading with page title
             if heading_text:
-                context.title = heading_text
+                if main_title and main_title != heading_text:
+                    # Combine section heading with main title like "Examples | CodeDox"
+                    context.title = f"{heading_text} | {main_title}"
+                else:
+                    context.title = heading_text
+            elif main_title:
+                # Use main title if no section heading
+                context.title = main_title
             
             # Update previous code block for this heading
             previous_code_by_heading[heading_key] = code_element
@@ -113,6 +123,16 @@ class HTMLCodeExtractor(BaseCodeExtractor):
             logger.debug(f"Stats: {self.stats}")
         
         return extracted_blocks
+    
+    def _get_main_title(self, soup: BeautifulSoup) -> str | None:
+        """Get the main page title from H1 tag."""
+        h1 = soup.find('h1')
+        if h1:
+            # Get text and clean it up
+            title = h1.get_text(strip=True)
+            if title:
+                return title
+        return None
     
     def find_preceding_heading(self, element: Tag, position: int = 0) -> tuple[str | None, Tag | None]:
         """
