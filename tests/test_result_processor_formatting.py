@@ -4,7 +4,7 @@ from unittest.mock import Mock
 
 import pytest
 
-from src.crawler.extraction_models import SimpleCodeBlock
+from src.crawler.extractors.models import ExtractedCodeBlock, ExtractedContext
 from src.crawler.result_processor import ResultProcessor
 
 
@@ -22,11 +22,13 @@ class TestResultProcessorFormatting:
 
         # Create test code blocks
         code_blocks = [
-            SimpleCodeBlock(
+            ExtractedCodeBlock(
                 code='const x = 5;\nconst y = 10;',
                 language='javascript',
-                title='Variable declarations',
-                description='Declares two constants'
+                context=ExtractedContext(
+                    title='Variable declarations',
+                    description='Declares two constants'
+                )
             )
         ]
 
@@ -58,11 +60,13 @@ class TestResultProcessorFormatting:
         # Create test code block
         test_code = 'function test() { return 42; }'
         code_blocks = [
-            SimpleCodeBlock(
+            ExtractedCodeBlock(
                 code=test_code,
                 language='javascript',
-                title='Test function',
-                description='Returns 42'
+                context=ExtractedContext(
+                    title='Test function',
+                    description='Returns 42'
+                )
             )
         ]
 
@@ -106,17 +110,21 @@ class TestResultProcessorFormatting:
         mock_doc = Mock(id=1, url='https://example.com/test')
 
         code_blocks = [
-            SimpleCodeBlock(
+            ExtractedCodeBlock(
                 code='function greet(name) {\n  console.log(`Hello, ${name}!`);\n}',
                 language='javascript',
-                title='Greeting function',
-                description='Greets a person by name'
+                context=ExtractedContext(
+                    title='Greeting function',
+                    description='Greets a person by name'
+                )
             ),
-            SimpleCodeBlock(
+            ExtractedCodeBlock(
                 code='def greet(name):\n    print(f"Hello, {name}!")',
                 language='python',
-                title='Python greeting',
-                description='Python version'
+                context=ExtractedContext(
+                    title='Python greeting',
+                    description='Python version'
+                )
             )
         ]
 

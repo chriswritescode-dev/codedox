@@ -16,9 +16,9 @@ from crawl4ai import (
 from ..config import get_settings
 from ..database import get_db_manager
 from .config import BrowserConfig, create_crawler_config
-from .extraction_models import SimpleCodeBlock
+from .extractors.html import HTMLCodeExtractor
+from .extractors.models import ExtractedCodeBlock
 from .failed_page_utils import record_failed_page
-from .html_code_extractor import HTMLCodeExtractor
 from .llm_retry import LLMDescriptionGenerator
 
 logger = logging.getLogger(__name__)
@@ -32,7 +32,7 @@ class CrawlResult:
     title: str
     content: str
     content_hash: str
-    code_blocks: list[Any]
+    code_blocks: list[ExtractedCodeBlock]
     error: str | None = None
     metadata: dict[str, Any] = field(default_factory=dict)
 
@@ -660,21 +660,10 @@ class PageCrawler:
             logger.info(f"Using HTML extraction for {result.url}")
             
             # Extract code blocks from HTML content
-            extracted_blocks = self.html_extractor.extract_code_blocks(html_content, result.url)
+            extracted_blocks = self.html_extractor.extract_blocks(html_content, result.url)
             
-            # Convert to SimpleCodeBlock format, preserving all extracted fields
-            for block in extracted_blocks:
-                # Debug logging
-                
-                simple_block = SimpleCodeBlock(
-                    code=block.code,
-                    language=block.language,
-                    title=block.title,  # Preserve extracted title
-                    description=block.description,  # Preserve extracted description
-                    context_before=block.context_before,
-                    source_url=result.url
-                )
-                html_blocks.append(simple_block)
+            # Use ExtractedCodeBlock directly
+            html_blocks.extend(extracted_blocks)
 
             if logger.isEnabledFor(logging.DEBUG):
                 logger.debug(f"Found {len(html_blocks)} code blocks via HTML extraction for {result.url}")

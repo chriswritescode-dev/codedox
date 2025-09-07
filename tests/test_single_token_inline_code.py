@@ -1,6 +1,6 @@
 """Test that single-line inline code is not extracted as snippets."""
 
-from src.crawler.html_code_extractor import HTMLCodeExtractor
+from src.crawler.extractors.html import HTMLCodeExtractor
 
 
 class TestSingleLineInlineCode:
@@ -25,7 +25,7 @@ class TestSingleLineInlineCode:
         """
         
         extractor = HTMLCodeExtractor()
-        blocks = extractor.extract_code_blocks(html, "test.html")
+        blocks = extractor.extract_blocks(html, "test.html")
         
         # NONE of these single-line snippets should be extracted
         assert len(blocks) == 0
@@ -50,7 +50,7 @@ class TestSingleLineInlineCode:
         """
         
         extractor = HTMLCodeExtractor()
-        blocks = extractor.extract_code_blocks(html, "test.html")
+        blocks = extractor.extract_blocks(html, "test.html")
         
         # All multi-line code should be extracted
         assert len(blocks) == 3
@@ -75,7 +75,7 @@ const [age, setAge] = useState(0);</code></pre>
         """
         
         extractor = HTMLCodeExtractor()
-        blocks = extractor.extract_code_blocks(html, "test.html")
+        blocks = extractor.extract_blocks(html, "test.html")
         
         # Only the pre block should be extracted
         assert len(blocks) == 1
@@ -103,7 +103,7 @@ line2</code></p>
         """
         
         extractor = HTMLCodeExtractor()
-        blocks = extractor.extract_code_blocks(html, "test.html")
+        blocks = extractor.extract_blocks(html, "test.html")
         
         # Only multi-line code should be extracted
         assert len(blocks) == 2
@@ -129,17 +129,16 @@ line2</code></p>
         """
         
         extractor = HTMLCodeExtractor()
-        blocks = extractor.extract_code_blocks(html, "test.html")
+        blocks = extractor.extract_blocks(html, "test.html")
         
-        # Should only extract the pre block (multi-line)
-        # Single-line inline code is filtered out
-        assert len(blocks) == 1
+        # Should extract the pre block (multi-line) and the JSX example (3+ words)
+        assert len(blocks) == 2
         
-        # Check the pre block
-        assert "function MyComponent" in blocks[0].code
-        assert "onChange" in blocks[0].code
+        # Check the function block
+        function_block = next(b for b in blocks if "function MyComponent" in b.code)
+        assert "onChange" in function_block.code
         
-        # Single-line inline code should appear in description
-        assert blocks[0].description is not None
-        assert "Required props" in blocks[0].description
-        assert "name" in blocks[0].description
+        # Single-word inline code should appear in description
+        assert function_block.description is not None
+        assert "Required props" in function_block.description
+        assert "name" in function_block.description

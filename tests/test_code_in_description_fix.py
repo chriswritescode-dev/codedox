@@ -1,6 +1,6 @@
 """Test that code blocks are never included in descriptions."""
 
-from src.crawler.html_code_extractor import HTMLCodeExtractor
+from src.crawler.extractors.html import HTMLCodeExtractor
 
 
 class TestCodeInDescriptionFix:
@@ -26,7 +26,7 @@ import asyncio</code></pre>
         """
         
         extractor = HTMLCodeExtractor()
-        blocks = extractor.extract_code_blocks(html, "test.html")
+        blocks = extractor.extract_blocks(html, "test.html")
         
         assert len(blocks) == 2
         
@@ -54,7 +54,7 @@ import asyncio</code></pre>
         """
         
         extractor = HTMLCodeExtractor()
-        blocks = extractor.extract_code_blocks(html, "test.html")
+        blocks = extractor.extract_blocks(html, "test.html")
         
         assert len(blocks) == 1
         assert blocks[0].description is not None
@@ -84,7 +84,7 @@ import asyncio</code></pre>
         """
         
         extractor = HTMLCodeExtractor()
-        blocks = extractor.extract_code_blocks(html, "test.html")
+        blocks = extractor.extract_blocks(html, "test.html")
         
         # Should find both code blocks
         assert len(blocks) == 2
@@ -116,7 +116,7 @@ import asyncio</code></pre>
         """
         
         extractor = HTMLCodeExtractor()
-        blocks = extractor.extract_code_blocks(html, "test.html")
+        blocks = extractor.extract_blocks(html, "test.html")
         
         # Only multi-line code block is extracted (single-line filtered out)
         assert len(blocks) == 1
@@ -150,7 +150,7 @@ function App() {
         """
         
         extractor = HTMLCodeExtractor()
-        blocks = extractor.extract_code_blocks(html, "test.html")
+        blocks = extractor.extract_blocks(html, "test.html")
         
         # Should extract the code block
         assert len(blocks) == 1
@@ -184,7 +184,7 @@ function App() {
         """
         
         extractor = HTMLCodeExtractor()
-        blocks = extractor.extract_code_blocks(html, "test.html")
+        blocks = extractor.extract_blocks(html, "test.html")
         
         # Should extract the code block
         assert len(blocks) == 1
@@ -216,7 +216,7 @@ function App() {
         """
         
         extractor = HTMLCodeExtractor()
-        blocks = extractor.extract_code_blocks(html, "test.html")
+        blocks = extractor.extract_blocks(html, "test.html")
         
         assert len(blocks) == 2
         
