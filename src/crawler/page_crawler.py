@@ -712,15 +712,10 @@ class PageCrawler:
                 # Use the description already extracted by HTML extractor first
                 block_description = block.description if block.description else ""
                 
-                # Fallback to context_before if no description
-                if not block_description and block.context_before:
-                    # Join ALL context elements from the parent container with newlines
-                    # This gives us the full description/explanation that appears before the code
-                    context_text = "\n".join(block.context_before).strip()
-                    
-                    if context_text:
-                        # Use full context text for description (database column can hold text)
-                        block_description = context_text
+                # Fallback to context description if available
+                if not block_description and block.context and block.context.description:
+                    # Use the context description
+                    block_description = block.context.description.strip()
                 
                 # Only use generic description as last resort
                 if not block_description:
