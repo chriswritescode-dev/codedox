@@ -573,3 +573,37 @@ class UploadProcessor:
                     setattr(job, key, value)
                 job.updated_at = datetime.utcnow()
                 session.commit()
+
+    def is_job_active(self, job_id: str) -> bool:
+        """Check if upload job is still active.
+        
+        Args:
+            job_id: Upload job ID
+            
+        Returns:
+            True if job is running
+        """
+        from ..database import UploadJob
+        
+        with self.db_manager.session_scope() as session:
+            job = session.query(UploadJob).filter_by(id=job_id).first()
+            return bool(job is not None and job.status == "running")
+    
+    def update_heartbeat(self, job_id: str) -> bool:
+        """Update upload job heartbeat timestamp.
+        
+        Args:
+            job_id: Upload job ID
+            
+        Returns:
+            True if updated successfully
+        """
+        from ..database import UploadJob
+        
+        with self.db_manager.session_scope() as session:
+            job = session.query(UploadJob).filter_by(id=job_id).first()
+            if job:
+                job.last_heartbeat = datetime.utcnow()
+                session.commit()
+                return True
+        return False
