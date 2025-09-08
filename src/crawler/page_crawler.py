@@ -16,9 +16,9 @@ from crawl4ai import (
 from ..config import get_settings
 from ..database import get_db_manager
 from .config import BrowserConfig, create_crawler_config
-from .extraction_models import SimpleCodeBlock
+from .extractors.html import HTMLCodeExtractor
+from .extractors.models import ExtractedCodeBlock
 from .failed_page_utils import record_failed_page
-from .html_code_extractor import HTMLCodeExtractor
 from .llm_retry import LLMDescriptionGenerator
 
 logger = logging.getLogger(__name__)
@@ -32,7 +32,7 @@ class CrawlResult:
     title: str
     content: str
     content_hash: str
-    code_blocks: list[Any]
+    code_blocks: list[ExtractedCodeBlock]
     error: str | None = None
     metadata: dict[str, Any] = field(default_factory=dict)
 
@@ -660,22 +660,10 @@ class PageCrawler:
             logger.info(f"Using HTML extraction for {result.url}")
             
             # Extract code blocks from HTML content
-            extracted_blocks = self.html_extractor.extract_code_blocks(html_content, result.url)
+            extracted_blocks = self.html_extractor.extract_blocks(html_content, result.url)
             
-            # Convert to SimpleCodeBlock format, preserving all extracted fields
-            for block in extracted_blocks:
-                # Debug logging
-                
-                simple_block = SimpleCodeBlock(
-                    code=block.code,
-                    language=block.language,
-                    title=block.title,  # Preserve extracted title
-                    description=block.description,  # Preserve extracted description
-                    container_type=block.container_type,
-                    context_before=block.context_before,
-                    source_url=result.url
-                )
-                html_blocks.append(simple_block)
+            # Use ExtractedCodeBlock directly
+            html_blocks.extend(extracted_blocks)
 
             if logger.isEnabledFor(logging.DEBUG):
                 logger.debug(f"Found {len(html_blocks)} code blocks via HTML extraction for {result.url}")
@@ -724,15 +712,10 @@ class PageCrawler:
                 # Use the description already extracted by HTML extractor first
                 block_description = block.description if block.description else ""
                 
-                # Fallback to context_before if no description
-                if not block_description and block.context_before:
-                    # Join ALL context elements from the parent container with newlines
-                    # This gives us the full description/explanation that appears before the code
-                    context_text = "\n".join(block.context_before).strip()
-                    
-                    if context_text:
-                        # Use full context text for description (database column can hold text)
-                        block_description = context_text
+                # Fallback to context description if available
+                if not block_description and block.context and block.context.description:
+                    # Use the context description
+                    block_description = block.context.description.strip()
                 
                 # Only use generic description as last resort
                 if not block_description:
@@ -745,7 +728,7 @@ class PageCrawler:
                     'description': block_description,
                     'source_url': block.source_url,
                     'metadata': {
-                        'container_type': block.container_type,
+
                         'extraction_method': 'html_only'
                     }
                 })
@@ -825,7 +808,7 @@ class PageCrawler:
                     'description': block.description or 'No description available',
                     'source_url': block.source_url,
                     'metadata': {
-                        'container_type': block.container_type,
+
                         'extraction_method': 'html_llm'
                     }
                 })
@@ -857,7 +840,7 @@ class PageCrawler:
                     'description': f"Code block in {block.language or 'unknown'} language",
                     'source_url': block.source_url,
                     'metadata': {
-                        'container_type': block.container_type,
+
                         'extraction_method': 'html_only'
                     }
                 })

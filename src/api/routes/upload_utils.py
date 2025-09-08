@@ -3,15 +3,13 @@
 import hashlib
 import logging
 import os
-import re
-from typing import Any
 
 from fastapi import HTTPException, UploadFile
 from sqlalchemy.orm import Session
 
 from src.config import get_settings
 from src.constants import ALL_SUPPORTED_EXTENSIONS
-from src.crawler.extraction_models import SimpleCodeBlock
+from src.crawler.extractors.models import ExtractedCodeBlock
 from src.database.models import CodeSnippet, Document
 
 logger = logging.getLogger(__name__)
@@ -212,332 +210,10 @@ async def validate_and_read_file(
     return content, filename_without_ext
 
 
-class RSTCodeExtractor:
-    """Extractor for reStructuredText code blocks."""
-    
-    @classmethod
-    def extract_blocks(
-        cls, content: str, source_url: str | None = None, include_context: bool = False
-    ) -> list[SimpleCodeBlock]:
-        """Extract code blocks from RST content.
-        
-        Supports:
-        - .. code-block:: language
-        - .. code:: language
-        - .. sourcecode:: language
-        - Literal blocks with ::
-        - Indented literal blocks
-        """
-        extractor = cls()
-        raw_blocks = extractor.extract_code_blocks(content)
-        
-        result = []
-        for block in raw_blocks:
-            metadata = {}
-            
-            if include_context:
-                block_start = content.find(block['content'])
-                if block_start > 0:
-                    context = cls._extract_context(content, block_start, before=True, max_chars=300)
-                    if context:
-                        metadata['context_before'] = context
-            
-            metadata['block_type'] = block.get('type', 'code')
-            
-            result.append(
-                SimpleCodeBlock(
-                    code=block['content'],
-                    language=block.get('language'),
-                    source_url=source_url,
-                    container_type=block.get('type', 'code'),
-                    metadata=metadata,
-                )
-            )
-        
-        return result
-    
-    def extract_code_blocks(self, content: str) -> list[dict[str, Any]]:
-        """Extract code blocks from RST content."""
-        blocks = []
-        lines = content.split('\n')
-        i = 0
-        
-        while i < len(lines):
-            # Check for .. code-block::, .. code::, or .. sourcecode:: directives
-            directive_match = re.match(r'^\.\.\s+(code-block|code|sourcecode)::\s*(.*)$', lines[i])
-            if directive_match:
-                directive_type = directive_match.group(1)
-                language = directive_match.group(2).strip() or None
-                
-                # Skip to the content (may have options first)
-                i += 1
-                # Skip any directive options (lines starting with :)
-                while i < len(lines) and lines[i].strip().startswith(':'):
-                    i += 1
-                
-                # Skip blank lines
-                while i < len(lines) and not lines[i].strip():
-                    i += 1
-                
-                if i >= len(lines):
-                    continue
-                
-                # Determine the indentation of the code block
-                first_line = lines[i]
-                if not first_line.strip():
-                    i += 1
-                    continue
-                    
-                base_indent = len(first_line) - len(first_line.lstrip())
-                if base_indent == 0:
-                    # No indentation, skip
-                    i += 1
-                    continue
-                
-                # Collect the code block
-                code_lines = []
-                while i < len(lines):
-                    line = lines[i]
-                    if line.strip():  # Non-empty line
-                        line_indent = len(line) - len(line.lstrip())
-                        if line_indent < base_indent:
-                            # End of code block
-                            break
-                        # Remove the base indentation
-                        code_lines.append(line[base_indent:])
-                    else:
-                        # Empty line within code block
-                        code_lines.append('')
-                    i += 1
-                
-                if code_lines:
-                    # Remove trailing empty lines
-                    while code_lines and not code_lines[-1].strip():
-                        code_lines.pop()
-                    
-                    if code_lines:
-                        blocks.append({
-                            'content': '\n'.join(code_lines),
-                            'language': language,
-                            'type': f'rst-{directive_type}'
-                        })
-                continue
-            
-            # Check for literal block marker (::)
-            if i > 0 and lines[i-1].rstrip().endswith('::'):
-                # Next indented block is a literal block
-                i += 1
-                
-                # Skip blank lines
-                while i < len(lines) and not lines[i].strip():
-                    i += 1
-                
-                if i >= len(lines):
-                    continue
-                
-                # Check if next line is indented
-                first_line = lines[i]
-                if not first_line.strip():
-                    continue
-                    
-                base_indent = len(first_line) - len(first_line.lstrip())
-                if base_indent == 0:
-                    # Not indented, not a literal block
-                    continue
-                
-                # Collect the literal block
-                code_lines = []
-                while i < len(lines):
-                    line = lines[i]
-                    if line.strip():  # Non-empty line
-                        line_indent = len(line) - len(line.lstrip())
-                        if line_indent < base_indent:
-                            # End of literal block
-                            break
-                        # Remove the base indentation
-                        code_lines.append(line[base_indent:])
-                    else:
-                        # Empty line within literal block
-                        code_lines.append('')
-                    i += 1
-                
-                if code_lines:
-                    # Remove trailing empty lines
-                    while code_lines and not code_lines[-1].strip():
-                        code_lines.pop()
-                    
-                    if code_lines:
-                        blocks.append({
-                            'content': '\n'.join(code_lines),
-                            'language': None,
-                            'type': 'rst-literal'
-                        })
-                continue
-            
-            i += 1
-        
-        return blocks
-    
-    @classmethod
-    def _extract_context(
-        cls, content: str, position: int, before: bool = True, max_chars: int = 200
-    ) -> str:
-        """Extract context around a position."""
-        if before:
-            start = max(0, position - max_chars)
-            context = content[start:position].strip()
-        else:
-            end = min(len(content), position + max_chars)
-            context = content[position:end].strip()
-        return context
-
-
-class MarkdownCodeExtractor:
-    @classmethod
-    def extract_blocks(
-        cls, content: str, source_url: str | None = None, include_context: bool = False
-    ) -> list[SimpleCodeBlock]:
-        """Extract code blocks from markdown and return as SimpleCodeBlock objects.
-        
-        Args:
-            content: Markdown content
-            source_url: Source URL for the blocks
-            include_context: Whether to include surrounding context
-            
-        Returns:
-            List of SimpleCodeBlock objects
-        """
-        extractor = cls()
-        raw_blocks = extractor.extract_code_blocks(content)
-        
-        result = []
-        for block in raw_blocks:
-            metadata = {}
-            
-            # Add context if requested
-            if include_context:
-                # Find position of this block in content
-                block_start = content.find(block['content'])
-                if block_start > 0:
-                    context = cls._extract_context(content, block_start, before=True, max_chars=300)
-                    if context:
-                        metadata['context_before'] = context
-            
-            # Add block type to metadata
-            metadata['block_type'] = block.get('type', 'code')
-            
-            result.append(
-                SimpleCodeBlock(
-                    code=block['content'],
-                    language=block.get('language'),
-                    source_url=source_url,
-                    container_type=block.get('type', 'code'),
-                    metadata=metadata,
-                )
-            )
-        
-        return result
-    
-    def extract_code_blocks(self, content: str) -> list[dict[str, Any]]:
-        """Extract both fenced and indented code blocks from markdown content."""
-        blocks = []
-        lines = content.split('\n')
-        i = 0
-        
-        while i < len(lines):
-            # Check for fenced code block (``` or ~~~)
-            if lines[i].startswith('```'):
-                fence = lines[i][:3]
-                language = lines[i][3:].strip() or None
-                code_lines = []
-                i += 1
-                
-                # Collect lines until closing fence
-                while i < len(lines) and not lines[i].startswith(fence):
-                    code_lines.append(lines[i])
-                    i += 1
-                
-                if code_lines:
-                    # Filter out standalone --- separators (common in MongoDB docs)
-                    filtered_lines = []
-                    for line in code_lines:
-                        # Skip lines that are just --- (with optional whitespace)
-                        if line.strip() != '---':
-                            filtered_lines.append(line)
-                    
-                    if filtered_lines:  # Only add if there's content after filtering
-                        blocks.append({
-                            'content': '\n'.join(filtered_lines),
-                            'language': language,
-                            'type': 'fenced'
-                        })
-                i += 1  # Skip closing fence
-                continue
-            
-            # Check for indented code block (4 spaces or tab)
-            if lines[i].startswith('    ') or lines[i].startswith('\t'):
-                code_lines = []
-                
-                # Collect all consecutive indented lines
-                while i < len(lines):
-                    if lines[i].startswith('    '):
-                        # Remove exactly 4 spaces
-                        code_lines.append(lines[i][4:])
-                    elif lines[i].startswith('\t'):
-                        # Remove one tab
-                        code_lines.append(lines[i][1:])
-                    elif lines[i].strip() == '':
-                        # Check if next line is also indented (blank line within code)
-                        if i + 1 < len(lines) and (
-                            lines[i + 1].startswith('    ') or
-                            lines[i + 1].startswith('\t')
-                        ):
-                            code_lines.append('')  # Keep blank line
-                        else:
-                            break  # End of indented block
-                    else:
-                        break  # Non-indented line ends the block
-                    i += 1
-                
-                # Clean up and add block if non-empty
-                if code_lines:
-                    # Remove trailing empty lines
-                    while code_lines and code_lines[-1] == '':
-                        code_lines.pop()
-                    
-                    if code_lines:  # Check again after cleanup
-                        blocks.append({
-                            'content': '\n'.join(code_lines),
-                            'language': None,  # Indented blocks don't have language
-                            'type': 'indented'
-                        })
-                continue
-            
-            i += 1
-        
-        return blocks
-
-    @classmethod
-    def _extract_context(
-        cls, content: str, position: int, before: bool = True, max_chars: int = 200
-    ) -> str:
-        """Extract context around a position."""
-        if before:
-            start = max(0, position - max_chars)
-            context = content[start:position].strip()
-        else:
-            end = min(len(content), position + max_chars)
-            context = content[position:end].strip()
-        return context
-
-
-
-
-
 def extract_code_blocks_by_type(
     content: str, content_type: str, source_url: str | None = None
-) -> list[SimpleCodeBlock]:
-    """Extract code blocks based on content type.
+) -> list[ExtractedCodeBlock]:
+    """Extract code blocks based on content type using the factory pattern.
     
     Args:
         content: The content to extract from
@@ -545,15 +221,29 @@ def extract_code_blocks_by_type(
         source_url: Optional source URL for the blocks
         
     Returns:
-        List of SimpleCodeBlock objects
+        List of ExtractedCodeBlock objects
     """
-    if content_type == 'restructuredtext':
-        return RSTCodeExtractor.extract_blocks(content, source_url)
-    elif content_type in ('markdown', 'text'):
-        return MarkdownCodeExtractor.extract_blocks(content, source_url)
-    else:
-        # Default to markdown extractor for unknown types
-        return MarkdownCodeExtractor.extract_blocks(content, source_url)
+    from src.crawler.extractors.factory import create_extractor
+    
+    # Map content types to extractor types
+    extractor_type = content_type
+    if content_type == 'text':
+        extractor_type = 'markdown'  # Default text to markdown
+    
+    extractor = create_extractor(content_type=extractor_type)
+    if not extractor:
+        # Fall back to markdown if type is unknown
+        extractor = create_extractor(content_type='markdown')
+    
+    # Extract blocks
+    blocks = extractor.extract_blocks(content)
+    
+    # Set source_url for each block
+    if source_url:
+        for block in blocks:
+            block.source_url = source_url
+    
+    return blocks
 
 
 class GitHubURLParser:
@@ -619,7 +309,7 @@ class GitHubURLParser:
 
 
 def process_code_snippets(
-    code_blocks: list[SimpleCodeBlock],
+    code_blocks: list[ExtractedCodeBlock],
     document: Document,
     source_url: str,
     db: Session,
@@ -646,15 +336,16 @@ def process_code_snippets(
 
     for block in code_blocks:
         # Calculate code hash
-        code_hash = hashlib.md5(block.code.encode()).hexdigest()
+        code_hash = hashlib.md5(block.code_content.encode()).hexdigest()
 
         # Check if snippet already exists in batch
         if code_hash in batch_snippets:
             logger.info(f"Skipping duplicate within batch: {code_hash}")
             continue
 
-        # Check if snippet already exists in database
-        existing_snippet = db.query(CodeSnippet).filter(CodeSnippet.code_hash == code_hash).first()
+        # Check if snippet already exists in the same source
+        from ...database.content_check import find_duplicate_snippet_in_source
+        existing_snippet = find_duplicate_snippet_in_source(db, code_hash, document)
 
         if existing_snippet:
             logger.info(f"Skipping existing code snippet with hash {code_hash}")
@@ -666,7 +357,7 @@ def process_code_snippets(
             title=block.title or file_context or "Code Block",
             description=block.description or "",
             language=block.language or "text",
-            code_content=block.code,
+            code_content=block.code_content,
             code_hash=code_hash,
             snippet_type="code",
             source_url=source_url,

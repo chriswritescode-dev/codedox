@@ -2,7 +2,7 @@
 
 from bs4 import BeautifulSoup
 
-from src.crawler.html_code_extractor import HTMLCodeExtractor
+from src.crawler.extractors.html import HTMLCodeExtractor
 
 
 class TestHTMLCodeExtractor:
@@ -25,25 +25,25 @@ class TestHTMLCodeExtractor:
         """
         BeautifulSoup(html, 'html.parser')
 
-        blocks = self.extractor.extract_code_blocks(html, "https://test.com")
+        blocks = self.extractor.extract_blocks(html, "https://test.com")
 
         assert len(blocks) >= 1
         assert "function hello()" in blocks[0].code
 
     def test_extract_code_from_code_tags(self):
-        """Test extracting code from <code> tags inside <pre> (standalone <code> tags are not extracted by design)."""
+        """Test extracting code from <code> tags inside <pre>."""
         html = """
         <html>
             <body>
-                <pre><code>const x: number = 42;</code></pre>
+                <pre><code>const userData: UserType = getUserData(userId);</code></pre>
             </body>
         </html>
         """
 
-        blocks = self.extractor.extract_code_blocks(html, "https://test.com")
+        blocks = self.extractor.extract_blocks(html, "https://test.com")
 
         assert len(blocks) >= 1
-        assert "const x: number = 42;" in blocks[0].code
+        assert "const userData: UserType = getUserData(userId);" in blocks[0].code
 
     def test_language_detection_typescript(self):
         """Test TypeScript language detection."""
@@ -53,7 +53,7 @@ class TestHTMLCodeExtractor:
     age: number;
 }</code></pre>
         """
-        blocks = self.extractor.extract_code_blocks(html, "https://test.com")
+        blocks = self.extractor.extract_blocks(html, "https://test.com")
 
         assert len(blocks) >= 1
 
@@ -64,7 +64,7 @@ class TestHTMLCodeExtractor:
     return a + b;
 }</code></pre>
         """
-        blocks = self.extractor.extract_code_blocks(html, "https://test.com")
+        blocks = self.extractor.extract_blocks(html, "https://test.com")
 
         assert len(blocks) >= 1
 
@@ -76,7 +76,7 @@ class TestHTMLCodeExtractor:
         return n
     return fibonacci(n-1) + fibonacci(n-2)</code></pre>
         """
-        blocks = self.extractor.extract_code_blocks(html, "https://test.com")
+        blocks = self.extractor.extract_blocks(html, "https://test.com")
 
         assert len(blocks) >= 1
 
@@ -87,7 +87,7 @@ class TestHTMLCodeExtractor:
 echo "Hello World"
 ls -la</code></pre>
         """
-        blocks = self.extractor.extract_code_blocks(html, "https://test.com")
+        blocks = self.extractor.extract_blocks(html, "https://test.com")
 
         assert len(blocks) >= 1
 
@@ -99,7 +99,7 @@ ls -la</code></pre>
     "version": "1.0.0"
 }</code></pre>
         """
-        blocks = self.extractor.extract_code_blocks(html, "https://test.com")
+        blocks = self.extractor.extract_blocks(html, "https://test.com")
 
         assert len(blocks) >= 1
 
@@ -111,7 +111,7 @@ body {
     margin: 0;
 }</code></pre>
         """
-        blocks = self.extractor.extract_code_blocks(html, "https://test.com")
+        blocks = self.extractor.extract_blocks(html, "https://test.com")
 
         assert len(blocks) >= 1
 
@@ -127,7 +127,7 @@ body {
             </body>
         </html>
         """
-        blocks = self.extractor.extract_code_blocks(html, "https://test.com")
+        blocks = self.extractor.extract_blocks(html, "https://test.com")
 
         assert len(blocks) >= 1
         assert "longEnoughFunction" in blocks[0].code
@@ -146,34 +146,27 @@ body {
             </body>
         </html>
         """
-        blocks = self.extractor.extract_code_blocks(html, "https://test.com")
+        blocks = self.extractor.extract_blocks(html, "https://test.com")
 
         assert len(blocks) >= 1
-        # Check that context_before is extracted
-        assert hasattr(blocks[0], 'context_before')
-        # context_after was removed - we only collect context before code blocks
-        assert not hasattr(blocks[0], 'context_after')
+        # Check that context is extracted
+        assert blocks[0].context is not None
+        assert blocks[0].description is not None
+        assert "This function handles user login" in blocks[0].description
 
     def test_stats_tracking(self):
         """Test that statistics are properly tracked."""
         html = """
         <html>
             <body>
-                <pre><code>const x = 1;</code></pre>
-                <pre><code>def func(): pass</code></pre>
+                <pre><code>const userData = await fetchUserData(userId);</code></pre>
+                <pre><code>function processData(data, options) { return transform(data); }</code></pre>
             </body>
         </html>
         """
         BeautifulSoup(html, 'html.parser')
 
-        # Reset stats
-        self.extractor.stats = {
-            'total_blocks': 0,
-            'blocks_by_type': {},
-            'languages_found': set()
-        }
-
-        blocks = self.extractor.extract_code_blocks(html, "https://test.com")
+        blocks = self.extractor.extract_blocks(html, "https://test.com")
 
         assert len(blocks) >= 2
         assert self.extractor.stats['total_blocks'] >= 2
@@ -197,7 +190,7 @@ body {
             </body>
         </html>
         """
-        blocks = self.extractor.extract_code_blocks(html, "https://test.com")
+        blocks = self.extractor.extract_blocks(html, "https://test.com")
 
         assert len(blocks) >= 1
         assert "ApiResponse" in blocks[0].code
@@ -216,7 +209,7 @@ body {
             </body>
         </html>
         """
-        blocks = self.extractor.extract_code_blocks(html, "https://test.com")
+        blocks = self.extractor.extract_blocks(html, "https://test.com")
 
         # Only the valid function should be extracted
         assert len(blocks) >= 1

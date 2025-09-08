@@ -1,6 +1,8 @@
 """Content hash checking utilities for avoiding redundant LLM extraction."""
 
 
+from typing import Optional
+
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
@@ -58,4 +60,48 @@ def get_existing_document_info(session: Session, url: str) -> tuple[int, str, in
         .filter(CodeSnippet.document_id == existing_doc.id)\
         .scalar() or 0
 
-    return existing_doc.id, existing_doc.content_hash, snippet_count
+    return int(existing_doc.id), str(existing_doc.content_hash or ""), int(snippet_count)  # type: ignore
+
+
+def find_duplicate_snippet_in_source(
+    session: Session, 
+    code_hash: str, 
+    document: Document
+) -> Optional[CodeSnippet]:
+    """Find duplicate snippet within the same source (crawl or upload job).
+    
+    This ensures that duplicate detection is scoped to each source, allowing
+    the same code to exist in different sources (e.g., different versions of
+    documentation or different libraries).
+    
+    Args:
+        session: Database session
+        code_hash: Hash of the code content
+        document: Document that contains or will contain the snippet
+        
+    Returns:
+        Existing CodeSnippet if duplicate found in same source, None otherwise
+    """
+    # Build query to find snippets with same hash
+    query = (
+        session.query(CodeSnippet)
+        .join(Document)
+        .filter(CodeSnippet.code_hash == code_hash)
+    )
+    
+    # Add source-specific filtering
+    if document.crawl_job_id:
+        # Check within same crawl job
+        query = query.filter(Document.crawl_job_id == document.crawl_job_id)
+    elif document.upload_job_id:
+        # Check within same upload job
+        query = query.filter(Document.upload_job_id == document.upload_job_id)
+    else:
+        # Orphan document - check against other orphans
+        # This shouldn't normally happen but we handle it for completeness
+        query = query.filter(
+            Document.crawl_job_id.is_(None),
+            Document.upload_job_id.is_(None)
+        )
+    
+    return query.first()

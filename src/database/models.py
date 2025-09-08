@@ -198,7 +198,7 @@ class CodeSnippet(Base):  # type: ignore[misc,valid-type]
     description = Column(Text)
     language = Column(String(50), index=True)
     code_content = Column(Text, nullable=False)
-    code_hash = Column(String(64), unique=True)
+    code_hash = Column(String(64), nullable=False, index=True)  # Not globally unique, indexed for duplicate detection
     line_start = Column(Integer)
     line_end = Column(Integer)
     context_before = Column(Text)
@@ -241,6 +241,7 @@ class CodeSnippet(Base):  # type: ignore[misc,valid-type]
             "snippet_type IN ('function', 'class', 'example', 'config', 'code')",
             name="check_snippet_type",
         ),
+        UniqueConstraint("document_id", "code_hash", name="unique_code_per_document"),
         Index("idx_snippets_document_id", "document_id"),
         Index("idx_snippets_functions", "functions", postgresql_using="gin"),
         Index("idx_snippets_imports", "imports", postgresql_using="gin"),
