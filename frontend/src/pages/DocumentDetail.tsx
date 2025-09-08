@@ -1,90 +1,70 @@
-import { useState, useEffect, useCallback, useMemo } from 'react'
+import { useRef, useEffect } from "react";
 import { useParams, Link } from 'react-router-dom'
-import { useQuery } from '@tanstack/react-query'
-import { api } from '../lib/api'
-import { 
-  ArrowLeft, 
-  FileText, 
-  Code, 
-  ExternalLink, 
+import {
+  ArrowLeft,
+  FileText,
+  Code,
+  ExternalLink,
   Search,
   X,
-  Filter
-} from 'lucide-react'
+} from "lucide-react";
 import { SnippetList } from '../components/SnippetList'
 import { PaginationControls } from '../components/PaginationControls'
-import { useDebounce } from '../hooks/useDebounce'
+import { useDocumentDetail } from "../hooks/useDocumentDetail";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 
 export default function DocumentDetail() {
-  const { sourceId, documentId } = useParams<{ sourceId: string; documentId: string }>()
-  
-  const [currentPage, setCurrentPage] = useState(1)
-  const [searchQuery, setSearchQuery] = useState('')
-  const [selectedLanguage, setSelectedLanguage] = useState('')
-  const itemsPerPage = 10
-  
-  const debouncedSearchQuery = useDebounce(searchQuery, 300)
-  
-  const { 
-    data, 
-    isLoading, 
-    error 
-  } = useQuery({
-    queryKey: ['document-snippets', documentId, currentPage, debouncedSearchQuery, selectedLanguage],
-    queryFn: () => api.getDocumentSnippets(
-      parseInt(documentId!),
-      {
-        query: debouncedSearchQuery || undefined,
-        language: selectedLanguage || undefined,
-        limit: itemsPerPage,
-        offset: (currentPage - 1) * itemsPerPage
-      }
-    ),
-    enabled: !!documentId,
-  })
-  
-  // Get unique languages from snippets
-  const languages = useMemo(() => {
-    if (!data?.snippets) return []
-    const langSet = new Set(data.snippets.map(s => s.language).filter(Boolean))
-    return Array.from(langSet).sort()
-  }, [data?.snippets])
-  
-  const totalPages = useMemo(
-    () => (data ? Math.ceil(data.total / itemsPerPage) : 0),
-    [data]
-  )
-  
-  // Reset page when search changes
+  const { sourceId, documentId } = useParams<{
+    sourceId: string;
+    documentId: string;
+  }>();
+  const state = useDocumentDetail(sourceId, documentId);
+  const searchInputRef = useRef<HTMLInputElement>(null);
+  const wasTypingRef = useRef(false);
+
+  // Track when user is actively typing (before debounce)
   useEffect(() => {
-    setCurrentPage(1)
-  }, [debouncedSearchQuery, selectedLanguage])
-  
-  const handleSearchChange = useCallback((value: string) => {
-    setSearchQuery(value)
-  }, [])
-  
-  const handleLanguageChange = useCallback((value: string) => {
-    setSelectedLanguage(value)
-  }, [])
-  
-  const handlePageChange = useCallback((page: number) => {
-    setCurrentPage(page)
-  }, [])
-  
-  if (isLoading) {
+    if (state.searchQuery !== state.debouncedSearchQuery) {
+      wasTypingRef.current = true;
+    }
+  }, [state.searchQuery, state.debouncedSearchQuery]);
+
+  useEffect(() => {
+    if (
+      wasTypingRef.current &&
+      searchInputRef.current &&
+      state.searchQuery === state.debouncedSearchQuery
+    ) {
+      if (document.activeElement !== searchInputRef.current) {
+        searchInputRef.current.focus();
+      }
+      wasTypingRef.current = false;
+    }
+  }, [state.data, state.debouncedSearchQuery]);
+
+  if (state.isLoading) {
     return (
       <div className="flex items-center justify-center h-64">
-        <div className="text-muted-foreground">Loading document snippets...</div>
+        <div className="text-muted-foreground">
+          Loading document snippets...
+        </div>
       </div>
-    )
+    );
   }
-  
-  if (error || !data) {
+
+  if (state.error || !state.data) {
     return (
       <div className="flex items-center justify-center h-64">
         <div className="text-center">
-          <h1 className="text-2xl font-bold text-destructive mb-2">Document Not Found</h1>
+          <h1 className="text-2xl font-bold text-destructive mb-2">
+            Document Not Found
+          </h1>
           <p className="text-muted-foreground mb-4">
             This document may have been deleted or never existed.
           </p>
@@ -97,9 +77,9 @@ export default function DocumentDetail() {
           </Link>
         </div>
       </div>
-    )
+    );
   }
-  
+
   return (
     <div className="flex flex-col h-full min-h-0">
       {/* Fixed header section */}
@@ -113,13 +93,13 @@ export default function DocumentDetail() {
             Sources
           </Link>
           <span className="text-muted-foreground">/</span>
-          {data.source && (
+          {state.data.source && (
             <>
               <Link
-                to={`/sources/${data.source.id}`}
+                to={`/sources/${state.data.source.id}`}
                 className="text-muted-foreground hover:text-foreground"
               >
-                {data.source.name}
+                {state.data.source.name}
               </Link>
               <span className="text-muted-foreground">/</span>
             </>
@@ -132,21 +112,25 @@ export default function DocumentDetail() {
           <div className="flex items-start gap-3 mb-4">
             <FileText className="h-8 w-8 text-muted-foreground mt-1" />
             <div className="flex-1">
-              <h1 className="text-2xl font-bold mb-2">{data.document.title}</h1>
+              <h1 className="text-2xl font-bold mb-2">
+                {state.data.document.title}
+              </h1>
               <a
-                href={data.document.url}
+                href={state.data.document.url}
                 target="_blank"
                 rel="noopener noreferrer"
                 className="text-sm text-primary hover:underline inline-flex items-center gap-1"
               >
-                {data.document.url}
+                {state.data.document.url}
                 <ExternalLink className="h-3 w-3" />
               </a>
               <div className="flex items-center gap-4 mt-3 text-sm text-muted-foreground">
-                <span>Depth: {data.document.crawl_depth}</span>
+                <span>Depth: {state.data.document.crawl_depth}</span>
                 <span>•</span>
                 <span>
-                  {new Date(data.document.created_at).toLocaleDateString()}
+                  {new Date(
+                    state.data.document.created_at,
+                  ).toLocaleDateString()}
                 </span>
               </div>
             </div>
@@ -156,9 +140,9 @@ export default function DocumentDetail() {
           <div className="flex items-center gap-6 pt-4 border-t border-border">
             <div className="flex items-center gap-4">
               <Code className="h-5 w-5 text-muted-foreground" />
-							
+
               <div className="flex items-center gap-2">
-                <div className="text-2xl font-semibold">{data.total}</div>
+                <div className="text-2xl font-semibold">{state.data.total}</div>
                 <div className="text-sm text-muted-foreground">
                   Code Snippets
                 </div>
@@ -167,44 +151,60 @@ export default function DocumentDetail() {
           </div>
         </div>
 
-        {/* Search and filter */}
-        <div className="flex gap-4">
-          <div className="relative flex-1">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-            <input
-              type="text"
-              placeholder="Search snippets in this document..."
-              value={searchQuery}
-              onChange={(e) => handleSearchChange(e.target.value)}
-              className="w-full pl-10 pr-4 py-2 bg-secondary border border-input rounded-md focus:outline-none focus:ring-2 focus:ring-primary"
-            />
-            {searchQuery && (
-              <button
-                onClick={() => handleSearchChange("")}
-                className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
-              >
-                <X className="h-4 w-4" />
-              </button>
-            )}
-          </div>
+        {/* Search/Filter controls - always visible */}
+        <div className="px-2 pb-4">
+          <div className="flex items-center justify-between gap-2">
+            <div className="flex gap-3 flex-1 min-w-0">
+              <div className="flex-1 relative min-w-[300px]">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                <input
+                  ref={searchInputRef}
+                  type="text"
+                  placeholder="Search snippets in this document..."
+                  value={state.searchQuery}
+                  onChange={(e) => state.setSearchQuery(e.target.value)}
+                  className="w-full pl-10 pr-4 py-2 bg-secondary border border-input rounded-md focus:outline-none focus:ring-2 focus:ring-primary"
+                />
+                {state.searchQuery && (
+                  <>
+                    <span className="absolute right-12 top-1/2 -translate-y-1/2 text-sm text-muted-foreground">
+                      {state.data && state.data.total > 0
+                        ? `(${state.data.total} matches)`
+                        : "(0 matches)"}
+                    </span>
+                    <button
+                      onClick={() => state.setSearchQuery("")}
+                      className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                    >
+                      <X className="h-4 w-4" />
+                    </button>
+                  </>
+                )}
+              </div>
 
-          {languages.length > 0 && (
-            <div className="flex items-center gap-2">
-              <Filter className="h-4 w-4 text-muted-foreground" />
-              <select
-                value={selectedLanguage}
-                onChange={(e) => handleLanguageChange(e.target.value)}
-                className="px-3 py-2 bg-secondary border border-input rounded-md focus:outline-none focus:ring-2 focus:ring-primary"
-              >
-                <option value="">All Languages</option>
-                {languages.map((lang) => (
-                  <option key={lang} value={lang}>
-                    {lang}
-                  </option>
-                ))}
-              </select>
+              {state.languages && state.languages.languages.length > 0 && (
+                <Select
+                  value={state.selectedLanguage || "all"}
+                  onValueChange={(value) => {
+                    state.setSelectedLanguage(value === "all" ? "" : value);
+                    state.setCurrentPage(1);
+                  }}
+                >
+                  <SelectTrigger className="w-[180px] h-[42px]!">
+                    <SelectValue placeholder="All Languages" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All Languages</SelectItem>
+                    {state.languages.languages.map((lang: any) => (
+                      <SelectItem key={lang.name} value={lang.name}>
+                        {lang.name} ({lang.count})
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              )}
             </div>
-          )}
+          </div>
         </div>
       </div>
 
@@ -212,30 +212,30 @@ export default function DocumentDetail() {
       <div className="flex-1 min-h-0 overflow-auto pb-4">
         <div className="mx-auto w-full">
           {/* Snippets */}
-          {data.snippets.length === 0 ? (
+          {state.data.snippets.length === 0 ? (
             <div className="text-center py-12 text-muted-foreground">
-              {debouncedSearchQuery || selectedLanguage
+              {state.debouncedSearchQuery || state.selectedLanguage
                 ? "No snippets match your filters."
                 : "No code snippets found in this document."}
             </div>
           ) : (
             <>
-              <SnippetList snippets={data.snippets} />
+              <SnippetList snippets={state.data.snippets} />
             </>
           )}
         </div>
       </div>
 
       {/* Pagination Controls - Always visible at bottom */}
-      {data && (
+      {state.data && (
         <div className="pt-4 border-t border-border">
           <PaginationControls
-            currentPage={currentPage}
-            totalPages={totalPages}
-            onPageChange={handlePageChange}
-            totalItems={data.total}
-            itemsPerPage={itemsPerPage}
-            currentItemsCount={data.snippets.length}
+            currentPage={state.currentPage}
+            totalPages={state.totalPages}
+            onPageChange={state.setCurrentPage}
+            totalItems={state.data.total}
+            itemsPerPage={state.itemsPerPage}
+            currentItemsCount={state.data.snippets.length}
           />
         </div>
       )}
