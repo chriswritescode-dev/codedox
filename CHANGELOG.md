@@ -5,6 +5,71 @@ All notable changes to CodeDox will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## 0.3.0 - 2025-09-07
+
+### 🚀 Major Features & Improvements
+
+**Unified Code Extraction System**
+- Complete refactor to a unified extraction architecture with factory pattern
+- New `ExtractedCodeBlock` model with semantic `ExtractedContext` for better code understanding
+- Consolidated HTML, Markdown, and RST extraction into specialized extractors with shared base class
+- Improved extraction rules: multi-line blocks always extracted, single-line with 3+ significant words
+- Better handling of unclosed markdown fence blocks and HTML button elements
+
+**Source-Scoped Duplicate Detection**
+- **Breaking Change**: Duplicate detection now scoped to individual sources instead of global
+- Same code snippets can exist across different documentation sources
+- New composite unique constraint (document_id, code_hash) replaces global code_hash constraint
+- Automatic database migration system with migration 008_remove_code_hash_unique
+- Shared utility function `find_duplicate_snippet_in_source()` for consistent duplicate checking
+
+**Enhanced Frontend Experience**
+- Refactored DocumentDetail page with custom `useDocumentDetail` hook
+- Improved search UX with better focus management and search result counts
+- Enhanced language filtering with count display in dropdown
+
+### 🔧 Technical Improvements
+
+**Extraction Engine**
+- Removed legacy SimpleCodeBlock and html_code_extractor.py systems
+- Factory pattern for creating format-specific extractors
+- Better context-aware HTML extraction with heading detection
+- Improved title extraction combining section headings with page titles
+- Enhanced RST support with better literal block detection
+
+**Database & Migrations**
+- Automatic migration application on app startup
+- New migration check system that applies pending migrations automatically
+- Updated SQLAlchemy models for new constraint structure
+
+**Code Quality**
+- Removed redundant wrapper functions and adapter layers
+- Cleaned up 34 files with 2,805 additions and 1,921 deletions in main refactor
+- Migrated all 269+ tests to new extraction API
+- Added comprehensive test coverage for new extraction system
+
+### 🐛 Bug Fixes
+
+- Fixed UploadProcessor missing heartbeat tracking methods
+- Removed pygame-specific corruption handling from RST extractor
+- Fixed retry failed pages to maintain original source association
+
+### 📝 Developer Experience
+
+- Better extraction rules with semantic understanding
+- Improved error handling and edge case coverage
+- Enhanced test suite with dedicated extractor tests
+- More consistent API across extraction formats
+
+### 🔄 Migration Notes
+
+**Automatic Migrations**: The database schema will be automatically updated when starting the application. The migration adds source-scoped duplicate detection.
+
+**Breaking Changes**: 
+- Code extraction now uses `ExtractedCodeBlock` model instead of dictionary-based approach
+- Duplicate detection API changed from global to source-scoped
+- Removed `container_type` field from extraction models
+
 ## 0.2.8
 
 ### Added
