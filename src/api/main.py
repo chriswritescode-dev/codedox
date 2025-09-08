@@ -44,6 +44,13 @@ async def lifespan(app: FastAPI):
         logger.error("Failed to connect to database. Please ensure PostgreSQL is running and the database exists.")
         logger.error("Run 'python cli.py init' to initialize the database.")
         raise RuntimeError("Database connection failed")
+    
+    # Auto-apply pending migrations
+    try:
+        from ..database.migration_check import auto_apply_migrations
+        auto_apply_migrations()
+    except Exception as e:
+        logger.warning(f"Could not apply migrations: {e}")
 
     # Start health monitor (skip in test environment)
     import os

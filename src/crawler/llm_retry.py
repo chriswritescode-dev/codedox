@@ -7,7 +7,7 @@ import os
 import openai
 
 from ..config import get_settings
-from .extraction_models import TITLE_AND_DESCRIPTION_PROMPT, SimpleCodeBlock
+from .extractors.models import TITLE_AND_DESCRIPTION_PROMPT, ExtractedCodeBlock, ExtractedContext
 from .language_mapping import normalize_language
 
 logger = logging.getLogger(__name__)
@@ -51,11 +51,11 @@ class LLMDescriptionGenerator:
 
     async def generate_titles_and_descriptions_batch(
         self,
-        code_blocks: list[SimpleCodeBlock],
+        code_blocks: list[ExtractedCodeBlock],
         url: str,
         max_concurrent: int | None = None,
         semaphore: asyncio.Semaphore | None = None
-    ) -> list[SimpleCodeBlock]:
+    ) -> list[ExtractedCodeBlock]:
         """
         Generate titles and descriptions for multiple code blocks concurrently.
         
@@ -76,18 +76,23 @@ class LLMDescriptionGenerator:
 
             semaphore = asyncio.Semaphore(max_concurrent)
 
-        async def generate_with_semaphore(block: SimpleCodeBlock) -> SimpleCodeBlock:
+        async def generate_with_semaphore(block: ExtractedCodeBlock) -> ExtractedCodeBlock:
             async with semaphore:
                 if not self.client:
                     logger.error("LLM client not initialized - missing API key")
-                    block.title = f"Code Block in {block.language or 'Unknown'}"
-                    block.description = f"Code block in {block.language or 'unknown'} language"
+                    if not block.context:
+                        block.context = ExtractedContext()
+                    block.context.title = f"Code Block in {block.language or 'Unknown'}"
+                    block.context.description = f"Code block in {block.language or 'unknown'} language"
                     return block
 
-                # Build context from before context only
+                # Build context from description and raw_content
                 context_parts = []
-                if block.context_before:
-                    context_parts.extend(block.context_before)
+                if block.context:
+                    if block.context.description:
+                        context_parts.append(block.context.description)
+                    if block.context.raw_content:
+                        context_parts.extend(block.context.raw_content)
 
                 context = " ".join(context_parts) if context_parts else "No additional context available"
 
@@ -142,8 +147,10 @@ class LLMDescriptionGenerator:
                         if title and description:
                             logger.debug(f"Generated title: {title}")
                             logger.debug(f"Generated description: {description[:100]}...")
-                            block.title = title
-                            block.description = description
+                            if not block.context:
+                                block.context = ExtractedContext()
+                            block.context.title = title
+                            block.context.description = description
 
                             # Update language if LLM provided one
                             if language:
@@ -166,8 +173,10 @@ class LLMDescriptionGenerator:
 
                 # Fallback if all attempts failed
                 logger.error(f"All {max_retries} title/description attempts failed")
-                block.title = f"Code Block in {block.language or 'Unknown'}"
-                block.description = f"Code block in {block.language or 'unknown'} language"
+                if not block.context:
+                    block.context = ExtractedContext()
+                block.context.title = f"Code Block in {block.language or 'Unknown'}"
+                block.context.description = f"Code block in {block.language or 'unknown'} language"
                 return block
 
         # Run generation concurrently

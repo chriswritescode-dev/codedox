@@ -10,7 +10,7 @@ from typing import Any
 from sqlalchemy.orm import Session
 
 from ..database import CodeSnippet, CrawlJob, Document
-from .extraction_models import TITLE_AND_DESCRIPTION_PROMPT
+from .extractors.models import TITLE_AND_DESCRIPTION_PROMPT
 from .language_mapping import normalize_language
 from .llm_retry import LLMDescriptionGenerator
 

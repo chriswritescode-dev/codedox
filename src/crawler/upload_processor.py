@@ -13,7 +13,8 @@ from crawl4ai.markdown_generation_strategy import DefaultMarkdownGenerator
 from ..config import get_settings
 from ..database import CodeSnippet, Document, UploadJob, get_db_manager
 from .config import create_browser_config
-from .extraction_models import SimpleCodeBlock
+from .extractors.factory import create_extractor
+from .extractors.models import ExtractedCodeBlock
 from .llm_retry import LLMDescriptionGenerator
 from .markdown_utils import remove_markdown_links
 from .progress_tracker import ProgressTracker
@@ -43,7 +44,7 @@ class UploadResult:
     source_url: str
     title: str
     content_hash: str
-    code_blocks: list[SimpleCodeBlock]
+    code_blocks: list[ExtractedCodeBlock]
     content: str | None = None
     error: str | None = None
     metadata: dict[str, Any] = field(default_factory=dict)
@@ -419,7 +420,7 @@ class UploadProcessor:
 
         return TitleExtractor.resolve(None, content, source_url)
 
-    def _extract_markdown_code_blocks(self, content: str, source_url: str = None) -> list[SimpleCodeBlock]:
+    def _extract_markdown_code_blocks(self, content: str, source_url: str = None) -> list[ExtractedCodeBlock]:
         """Extract code blocks from markdown content.
 
         Args:
@@ -427,15 +428,19 @@ class UploadProcessor:
             source_url: Optional source URL for the content
 
         Returns:
-            List of SimpleCodeBlock objects
+            List of ExtractedCodeBlock objects
         """
-        from src.api.routes.upload_utils import MarkdownCodeExtractor
-
-        return MarkdownCodeExtractor.extract_blocks(content, source_url=source_url)
+        extractor = create_extractor(content_type='markdown')
+        if extractor:
+            blocks = extractor.extract_blocks(content)
+            for block in blocks:
+                block.source_url = source_url
+            return blocks
+        return []
     
     def _extract_code_blocks_by_type(
         self, content: str, content_type: str, source_url: str = None
-    ) -> list[SimpleCodeBlock]:
+    ) -> list[ExtractedCodeBlock]:
         """Extract code blocks based on content type.
         
         Args:
@@ -444,11 +449,15 @@ class UploadProcessor:
             source_url: Optional source URL
             
         Returns:
-            List of SimpleCodeBlock objects
+            List of ExtractedCodeBlock objects
         """
-        from src.api.routes.upload_utils import extract_code_blocks_by_type
-        
-        return extract_code_blocks_by_type(content, content_type, source_url)
+        extractor = create_extractor(content_type=content_type)
+        if extractor:
+            blocks = extractor.extract_blocks(content)
+            for block in blocks:
+                block.source_url = source_url
+            return blocks
+        return []
 
     async def _store_result(self, result: UploadResult, job_id: str) -> tuple[int, int]:
         """Store upload result in database."""
@@ -491,15 +500,27 @@ class UploadProcessor:
 
             # Process code blocks
             if result.code_blocks:
-                # Convert SimpleCodeBlock to format expected by result processor
+                # Convert ExtractedCodeBlock to format expected by result processor
                 code_blocks_data = []
                 for block in result.code_blocks:
+                    # Build metadata from context
+                    metadata = {}
+                    if block.context:
+                        if block.context.hierarchy:
+                            metadata['hierarchy'] = block.context.hierarchy
+                        if block.context.raw_content:
+                            metadata['raw_content'] = block.context.raw_content
+                    if block.line_start:
+                        metadata['line_start'] = block.line_start
+                    if block.line_end:
+                        metadata['line_end'] = block.line_end
+                    
                     block_dict = {
                         "code": block.code,
                         "language": block.language,
                         "title": block.title or f"Code Block in {block.language or 'Unknown'}",
                         "description": block.description or f"Code block from {result.title}",
-                        "metadata": block.metadata or {},
+                        "metadata": metadata,
                         "filename": None,
                     }
                     code_blocks_data.append(block_dict)
@@ -552,3 +573,37 @@ class UploadProcessor:
                     setattr(job, key, value)
                 job.updated_at = datetime.utcnow()
                 session.commit()
+
+    def is_job_active(self, job_id: str) -> bool:
+        """Check if upload job is still active.
+        
+        Args:
+            job_id: Upload job ID
+            
+        Returns:
+            True if job is running
+        """
+        from ..database import UploadJob
+        
+        with self.db_manager.session_scope() as session:
+            job = session.query(UploadJob).filter_by(id=job_id).first()
+            return bool(job is not None and job.status == "running")
+    
+    def update_heartbeat(self, job_id: str) -> bool:
+        """Update upload job heartbeat timestamp.
+        
+        Args:
+            job_id: Upload job ID
+            
+        Returns:
+            True if updated successfully
+        """
+        from ..database import UploadJob
+        
+        with self.db_manager.session_scope() as session:
+            job = session.query(UploadJob).filter_by(id=job_id).first()
+            if job:
+                job.last_heartbeat = datetime.utcnow()
+                session.commit()
+                return True
+        return False

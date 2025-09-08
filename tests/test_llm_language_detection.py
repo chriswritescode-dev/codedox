@@ -4,7 +4,7 @@ from unittest.mock import AsyncMock, Mock, patch
 
 import pytest
 
-from src.crawler.extraction_models import SimpleCodeBlock
+from src.crawler.extractors.models import ExtractedCodeBlock, ExtractedContext
 from src.crawler.llm_retry import LLMDescriptionGenerator
 
 
@@ -16,15 +16,28 @@ class TestLLMLanguageDetection:
         """Test that LLM can correct misidentified languages."""
         # Create test blocks with wrong initial language
         test_blocks = [
-            SimpleCodeBlock(
+            ExtractedCodeBlock(
                 code='export default { plugins: { "@tailwindcss/postcss": {} } }',
                 language='css',  # Wrong - should be javascript
-                context_before=['PostCSS configuration', 'This configures PostCSS plugins']
+                context=ExtractedContext(
+                    title='PostCSS configuration',
+                    description='This configures PostCSS plugins'
+                )
             ),
-            SimpleCodeBlock(
+            ExtractedCodeBlock(
                 code='<div class="container"><h1>Title</h1></div>',
                 language='ruby',  # Wrong - should be html
-                context_before=['HTML template example', 'Basic HTML structure']
+                context=ExtractedContext(
+                    title='HTML template example',
+                    description='Basic HTML structure'
+                )
+            ),
+            ExtractedCodeBlock(
+                code='<div class="container"><h1>Title</h1></div>',
+                language='ruby',  # Wrong - should be html
+                context=ExtractedContext(
+                    description='HTML template example. Basic HTML structure'
+                )
             )
         ]
 
@@ -68,10 +81,13 @@ DESCRIPTION: Exports PostCSS configuration object with Tailwind CSS plugin
     @pytest.mark.asyncio
     async def test_llm_preserves_correct_language(self):
         """Test that LLM preserves correctly identified languages."""
-        test_block = SimpleCodeBlock(
+        test_block = ExtractedCodeBlock(
             code='def hello():\n    print("Hello, World!")',
             language='python',  # Correct
-            context_before=['Python function example', 'Simple greeting function']
+            context=ExtractedContext(
+                title='Python function example',
+                description='Simple greeting function'
+            )
         )
 
         with patch('src.crawler.llm_retry.openai.AsyncOpenAI') as mock_openai:
@@ -103,7 +119,7 @@ DESCRIPTION: Defines a function that prints Hello World greeting
 
     def test_prompt_includes_url(self):
         """Test that the prompt includes the source URL."""
-        from src.crawler.extraction_models import TITLE_AND_DESCRIPTION_PROMPT
+        from src.crawler.extractors.models import TITLE_AND_DESCRIPTION_PROMPT
 
         assert '{url}' in TITLE_AND_DESCRIPTION_PROMPT
         assert 'Source URL:' in TITLE_AND_DESCRIPTION_PROMPT

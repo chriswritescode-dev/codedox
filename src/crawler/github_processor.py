@@ -138,7 +138,7 @@ class GitHubProcessor:
                     "file_count": len(files_data),
                 },
                 extract_code_only=True,
-                use_llm=True,
+                use_llm=settings.code_extraction.enable_llm_extraction,
                 max_concurrent_files=config.max_concurrent,
             )
 

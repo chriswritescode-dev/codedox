@@ -2,8 +2,9 @@
 
 import pytest
 
-from src.api.routes.upload_utils import RSTCodeExtractor, extract_code_blocks_by_type
-from src.crawler.extraction_models import SimpleCodeBlock
+from src.api.routes.upload_utils import extract_code_blocks_by_type
+from src.crawler.extractors.rst import RSTCodeExtractor
+from src.crawler.extractors.models import ExtractedCodeBlock
 
 
 class TestRSTCodeExtractor:
@@ -72,23 +73,21 @@ Third block:
     def test_extract_code_block_directive(self, rst_code_block_python):
         """Test extraction of .. code-block:: directive."""
         extractor = RSTCodeExtractor()
-        blocks = extractor.extract_code_blocks(rst_code_block_python)
+        blocks = extractor.extract_blocks(rst_code_block_python)
         
         assert len(blocks) == 1
-        assert blocks[0]['language'] == 'python'
-        assert 'def hello_world():' in blocks[0]['content']
-        assert 'print("Hello, World!")' in blocks[0]['content']
-        assert blocks[0]['type'] == 'rst-code-block'
+        assert blocks[0].language == 'python'
+        assert 'def hello_world():' in blocks[0].code_content
+        assert 'print("Hello, World!")' in blocks[0].code_content
 
     def test_extract_code_directive(self, rst_code_javascript):
         """Test extraction of .. code:: directive."""
         extractor = RSTCodeExtractor()
-        blocks = extractor.extract_code_blocks(rst_code_javascript)
+        blocks = extractor.extract_blocks(rst_code_javascript)
         
         assert len(blocks) == 1
-        assert blocks[0]['language'] == 'javascript'
-        assert 'const greeting = "Hello"' in blocks[0]['content']
-        assert blocks[0]['type'] == 'rst-code'
+        assert blocks[0].language == 'javascript'
+        assert 'const greeting = "Hello"' in blocks[0].code_content
 
     def test_extract_sourcecode_directive(self):
         """Test extraction of .. sourcecode:: directive."""
@@ -100,23 +99,21 @@ Third block:
         """
         
         extractor = RSTCodeExtractor()
-        blocks = extractor.extract_code_blocks(content)
+        blocks = extractor.extract_blocks(content)
         
         assert len(blocks) == 1
-        assert blocks[0]['language'] == 'ruby'
-        assert 'puts "Hello from Ruby"' in blocks[0]['content']
-        assert blocks[0]['type'] == 'rst-sourcecode'
+        assert blocks[0].language == 'ruby'
+        assert 'puts "Hello from Ruby"' in blocks[0].code_content
 
     def test_extract_literal_block(self, rst_literal_block):
         """Test extraction of literal blocks with ::."""
         extractor = RSTCodeExtractor()
-        blocks = extractor.extract_code_blocks(rst_literal_block)
+        blocks = extractor.extract_blocks(rst_literal_block)
         
         assert len(blocks) == 1
-        assert blocks[0]['language'] is None
-        assert 'This is literal text' in blocks[0]['content']
-        assert 'It preserves    spacing' in blocks[0]['content']
-        assert blocks[0]['type'] == 'rst-literal'
+        assert blocks[0].language is None
+        assert 'This is literal text' in blocks[0].code_content
+        assert 'It preserves    spacing' in blocks[0].code_content
 
     def test_extract_code_block_with_options(self):
         """Test extraction of code block with directive options."""
@@ -132,31 +129,31 @@ Third block:
         """
         
         extractor = RSTCodeExtractor()
-        blocks = extractor.extract_code_blocks(content)
+        blocks = extractor.extract_blocks(content)
         
         assert len(blocks) == 1
-        assert blocks[0]['language'] == 'python'
-        assert 'def process_data(data):' in blocks[0]['content']
+        assert blocks[0].language == 'python'
+        assert 'def process_data(data):' in blocks[0].code_content
         # Options should be skipped, only code extracted
 
     def test_extract_multiple_blocks(self, rst_multiple_blocks):
         """Test extraction of multiple code blocks."""
         extractor = RSTCodeExtractor()
-        blocks = extractor.extract_code_blocks(rst_multiple_blocks)
+        blocks = extractor.extract_blocks(rst_multiple_blocks)
         
         assert len(blocks) == 3
         
         # First block
-        assert blocks[0]['language'] == 'python'
-        assert 'x = 1' in blocks[0]['content']
+        assert blocks[0].language == 'python'
+        assert 'x = 1' in blocks[0].code_content
         
         # Second block
-        assert blocks[1]['language'] is None
-        assert 'literal block' in blocks[1]['content']
+        assert blocks[1].language is None
+        assert 'literal block' in blocks[1].code_content
         
         # Third block
-        assert blocks[2]['language'] == 'sql'
-        assert 'SELECT * FROM users' in blocks[2]['content']
+        assert blocks[2].language == 'sql'
+        assert 'SELECT * FROM users' in blocks[2].code_content
 
     def test_extract_nested_indentation(self):
         """Test extraction with nested indentation."""
@@ -174,12 +171,12 @@ Third block:
         """
         
         extractor = RSTCodeExtractor()
-        blocks = extractor.extract_code_blocks(content)
+        blocks = extractor.extract_blocks(content)
         
         assert len(blocks) == 1
-        assert 'class Example:' in blocks[0]['content']
-        assert '    def __init__(self):' in blocks[0]['content']
-        assert '        self.value = 42' in blocks[0]['content']
+        assert 'class Example:' in blocks[0].code_content
+        assert '    def __init__(self):' in blocks[0].code_content
+        assert '        self.value = 42' in blocks[0].code_content
 
     def test_empty_code_block(self):
         """Test handling of empty code blocks."""
@@ -190,26 +187,30 @@ Some text after.
         """
         
         extractor = RSTCodeExtractor()
-        blocks = extractor.extract_code_blocks(content)
+        blocks = extractor.extract_blocks(content)
         
         assert len(blocks) == 0
 
     def test_extract_blocks_with_simple_code_block(self):
-        """Test extract_blocks method returning SimpleCodeBlock objects."""
+        """Test extract_blocks method returning ExtractedCodeBlock objects."""
         content = """
 .. code-block:: python
 
-    print("test")
+    def test_function():
+        print("test")
+        return True
         """
         
-        blocks = RSTCodeExtractor.extract_blocks(content, source_url="test.rst")
+        extractor = RSTCodeExtractor()
+        blocks = extractor.extract_blocks(content)
+        for block in blocks:
+            block.source_url = "test.rst"
         
         assert len(blocks) == 1
-        assert isinstance(blocks[0], SimpleCodeBlock)
-        assert blocks[0].code == 'print("test")'
+        assert isinstance(blocks[0], ExtractedCodeBlock)
+        assert blocks[0].code_content == 'def test_function():\n    print("test")\n    return True'
         assert blocks[0].language == 'python'
         assert blocks[0].source_url == "test.rst"
-        assert blocks[0].container_type == 'rst-code-block'
 
     def test_extract_code_blocks_by_type_rst(self):
         """Test extract_code_blocks_by_type with RST content."""
@@ -223,8 +224,8 @@ Some text after.
         blocks = extract_code_blocks_by_type(content, 'restructuredtext', 'test.rst')
         
         assert len(blocks) == 1
-        assert isinstance(blocks[0], SimpleCodeBlock)
-        assert 'def test():' in blocks[0].code
+        assert isinstance(blocks[0], ExtractedCodeBlock)
+        assert 'def test():' in blocks[0].code_content
         assert blocks[0].language == 'python'
 
     def test_extract_code_blocks_by_type_markdown(self):
@@ -237,8 +238,8 @@ def test():
         blocks = extract_code_blocks_by_type(content, 'markdown', 'test.md')
         
         assert len(blocks) == 1
-        assert isinstance(blocks[0], SimpleCodeBlock)
-        assert 'def test():' in blocks[0].code
+        assert isinstance(blocks[0], ExtractedCodeBlock)
+        assert 'def test():' in blocks[0].code_content
 
     def test_extract_code_block_without_language(self):
         """Test extraction of code block without language specification."""
@@ -250,11 +251,11 @@ def test():
         """
         
         extractor = RSTCodeExtractor()
-        blocks = extractor.extract_code_blocks(content)
+        blocks = extractor.extract_blocks(content)
         
         assert len(blocks) == 1
-        assert blocks[0]['language'] is None
-        assert 'Some code without language' in blocks[0]['content']
+        assert blocks[0].language is None
+        assert 'Some code without language' in blocks[0].code_content
 
     def test_preserve_blank_lines_in_code(self):
         """Test that blank lines within code blocks are preserved."""
@@ -269,8 +270,8 @@ def test():
         """
         
         extractor = RSTCodeExtractor()
-        blocks = extractor.extract_code_blocks(content)
+        blocks = extractor.extract_blocks(content)
         
         assert len(blocks) == 1
         # Check that blank line is preserved
-        assert '\n\ndef second():' in blocks[0]['content'] or '\n    \ndef second():' in blocks[0]['content']
+        assert '\n\ndef second():' in blocks[0].code_content or '\n    \ndef second():' in blocks[0].code_content

@@ -55,6 +55,8 @@ class MigrationRunner:
         ("006_add_version_support", "src/database/migrations/006_add_version_support.sql"),
         # Search enhancements
         ("007_add_markdown_fulltext_search", "migrations/add_markdown_fulltext_search.sql"),
+        # Source-scoped duplicate detection
+        ("008_remove_code_hash_unique", "src/database/migrations/008_remove_code_hash_unique.sql"),
     ]
 
     def __init__(self):

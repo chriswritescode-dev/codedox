@@ -1,22 +1,41 @@
-"""Simple data structures for the new HTML extraction method."""
+"""Unified data models for code extraction."""
 
 from dataclasses import dataclass, field
 
 
 @dataclass
-class SimpleCodeBlock:
-    """Simplified code block structure for HTML extraction + LLM description."""
+class ExtractedContext:
+    """Semantic context for a code block."""
+    title: str | None = None          # From nearest heading
+    description: str | None = None     # Cleaned paragraphs/lists between heading and code
+    raw_content: list[str] = field(default_factory=list)  # Original content lines (for debugging)
+    hierarchy: list[str] = field(default_factory=list)    # Heading hierarchy (h1 > h2 > h3)
 
+
+@dataclass
+class ExtractedCodeBlock:
+    """Unified code block with context."""
     code: str
     language: str | None = None
-    title: str | None = None
-    description: str | None = None
+    context: ExtractedContext = field(default_factory=ExtractedContext)
     source_url: str | None = None
-
-    # Metadata from HTML extraction
-    container_type: str | None = None  # example, api-method, tutorial-step, etc.
-    context_before: list[str] = field(default_factory=list)
-    metadata: dict = field(default_factory=dict)
+    line_start: int | None = None
+    line_end: int | None = None
+    
+    @property
+    def title(self) -> str | None:
+        """Get title from context."""
+        return self.context.title if self.context else None
+    
+    @property
+    def description(self) -> str | None:
+        """Get description from context."""
+        return self.context.description if self.context else None
+    
+    @property
+    def code_content(self) -> str:
+        """Alias for code to maintain compatibility."""
+        return self.code
 
 
 # LLM prompt for getting language, title and description

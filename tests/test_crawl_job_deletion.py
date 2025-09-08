@@ -1,4 +1,5 @@
 """Tests for crawl job deletion endpoints."""
+import hashlib
 from uuid import uuid4
 
 from sqlalchemy.orm import Session
@@ -29,9 +30,11 @@ def test_delete_single_crawl_job_success(client, db: Session):
     db.add(doc)
 
     # Add a code snippet
+    code_content = "print('hello')"
     snippet = CodeSnippet(
         document_id=doc.id,
-        code_content="print('hello')",
+        code_content=code_content,
+        code_hash=hashlib.md5(code_content.encode()).hexdigest(),
         language="python",
         line_start=1,
         line_end=1
@@ -203,9 +206,11 @@ def test_cascade_delete_documents_and_snippets(client, db: Session):
     snippet_count = 0
     for doc in docs:
         for j in range(2):
+            code_content = f"code_{snippet_count}"
             snippet = CodeSnippet(
                 document_id=doc.id,
-                code_content=f"code_{snippet_count}",
+                code_content=code_content,
+                code_hash=hashlib.md5(code_content.encode()).hexdigest(),
                 language="python",
                 line_start=j * 10,
                 line_end=(j + 1) * 10
