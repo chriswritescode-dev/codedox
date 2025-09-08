@@ -195,14 +195,21 @@ class RSTCodeExtractor(BaseCodeExtractor):
                     continue
                 
                 # Keep content from important directives
-                if directive in ['note', 'warning', 'tip', 'important', 'caution']:
+                elif directive in ['note', 'warning', 'tip', 'important', 'caution', 'function', 'method', 'class', 'attribute', 'module']:
                     i += 1
                     # Extract directive content
                     while i < end and i < len(lines):
                         if lines[i] and not lines[i].startswith(' '):
                             break
                         if lines[i].strip():
-                            context_lines.append(lines[i].strip())
+                            # Clean up RST-specific markup from function/method descriptions
+                            content = lines[i].strip()
+                            # Remove role markers like :sl:, :sg:
+                            content = re.sub(r':[\w]+:`([^`]+)`', r'\1', content)
+                            # Remove pipe markers used for line continuations
+                            content = content.lstrip('|').strip()
+                            if content:
+                                context_lines.append(content)
                         i += 1
                     continue
             
