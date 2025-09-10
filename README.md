@@ -25,6 +25,7 @@ cp .env.example .env
 ./docker-setup.sh
 
 # Access the web UI at http://localhost:5173
+# MCP tools available at http://localhost:8000/mcp
 ```
 
 ### Manual Installation
@@ -35,9 +36,11 @@ See the [full installation guide](https://chriswritescode-dev.github.io/codedox/
 
 - **Intelligent Web Crawling**: Depth-controlled crawling with URL pattern filtering and domain restrictions
 - **Smart Code Extraction**: Dual-mode extraction (Automatic Title / Description or LLM Generated Titles and Descriptions)
+- **Enhanced Search Modes**: Standard code search with intelligent markdown fallback for comprehensive results
 - **Lightning-Fast Search**: PostgreSQL full-text search with fuzzy matching
 - **GitHub Repository Processing**: Clone and extract documentation from GitHub repositories with full path support (e.g., `/tree/main/docs`)
-- **MCP Integration**: Native Model Context Protocol support for AI assistants
+- **HTTP-First MCP Integration**: MCP tools via HTTP endpoints with Streamable HTTP transport support (MCP 2025-03-26 spec)
+- **Full Documentation Access**: Get complete markdown content from any documentation page for full context
 - **Modern Web Dashboard**: React + TypeScript UI for visual management
 - **Version Support**: Track multiple versions of documentation
 - **Real-time Monitoring**: Live crawl progress and health monitoring

@@ -6,11 +6,23 @@
 # Activate virtual environment
 source .venv/bin/activate
 
-# Start API and Web UI
+# Start API, Web UI, and MCP HTTP endpoints
 python cli.py serve
 ```
 
-Visit http://localhost:5173 for the web interface.
+**Available Services:**
+- Web UI: http://localhost:5173 
+- API: http://localhost:8000
+- MCP Tools: http://localhost:8000/mcp
+
+**Alternative Server Modes:**
+```bash
+# API + MCP only (no Web UI)
+python cli.py serve --api
+
+# MCP stdio mode only (for legacy integrations)
+python cli.py serve --mcp
+```
 
 ## Your First Crawl
 
@@ -67,8 +79,16 @@ python cli.py search "authentication middleware"
 
 ### Via MCP
 
-MCP tools are available when the API server is running:
+MCP tools are automatically available when the API server is running:
 
 ```bash
+# List available MCP tools
 curl http://localhost:8000/mcp/tools
+
+# Execute a tool directly
+curl -X POST http://localhost:8000/mcp/execute/get_content \
+  -H "Content-Type: application/json" \
+  -d '{"library_id": "library-name", "query": "search term"}'
 ```
+
+**For AI Assistants**: Connect directly to `http://localhost:8000/mcp` using Streamable HTTP transport (MCP 2025-03-26 spec).

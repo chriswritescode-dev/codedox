@@ -658,7 +658,14 @@ def mock_mcp_tools(monkeypatch):
         }
 
     async def mock_get_content(
-        self, library_id: str, query: str = None, limit: int = 20, page: int = 1
+        self, 
+        library_id: str = None, 
+        query: str = None, 
+        snippet_id: str = None,
+        limit: int = 20, 
+        page: int = 1,
+        chunk_index: int = None,
+        search_mode: str = "code"
     ):
         return """Found 1 results in Test Source
 

@@ -267,8 +267,30 @@ class CodeSnippet(Base):  # type: ignore[misc,valid-type]
             "created_at": self.created_at.isoformat(),
         }
 
-    def format_output(self) -> str:
-        """Format snippet for search output in the required format."""
+    def format_output(self, max_tokens: int | None = None) -> str:
+        """Format snippet for search output in the required format.
+        
+        Args:
+            max_tokens: Maximum tokens for code content (if None, no limit)
+        """
+        code = self.code_content
+        
+        # Limit code content if max_tokens is specified
+        if max_tokens and code:
+            # Import here to avoid circular dependency
+            from src.utils import token_utils
+            
+            # Use smart truncation with line-break preference
+            truncated_code = token_utils.estimate_token_buffer(
+                code, max_tokens, prefer_line_break=True
+            )
+            
+            # Check if truncation occurred
+            if len(truncated_code) < len(code):
+                code = truncated_code + "\n... [truncated due to size]"
+            else:
+                code = truncated_code
+        
         return f"""TITLE: {self.title or "Untitled"}
 DESCRIPTION: {self.description or "No description available"}
 SOURCE: {self.source_url}
@@ -276,7 +298,7 @@ SOURCE: {self.source_url}
 LANGUAGE: {self.language or "unknown"}
 CODE:
 ```
-{self.code_content}
+{code}
 ```
 
 ----------------------------------------"""

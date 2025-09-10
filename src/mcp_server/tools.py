@@ -2,7 +2,7 @@
 
 import logging
 from datetime import datetime
-from typing import Any
+from typing import Any, Optional
 
 from ..config import get_settings
 from ..crawler import CrawlConfig, CrawlManager
@@ -301,6 +301,7 @@ class MCPTools:
         Workflow example:
         1. get_content("react", "useState") → Returns code snippets with SOURCE URLs
         2. Use SOURCE URL with get_page_markdown() to get full documentation context
+        3. Use snippet IDs from results with get_snippet() to retrieve full snippets
 
         Search modes:
         - "code" (default): Searches snippets directly, uses markdown fallback only if < 5 results
@@ -311,17 +312,18 @@ class MCPTools:
         - Searches in: code content, titles, descriptions, function names, imports
         - Enhanced mode also searches: full markdown documentation to discover related snippets
 
-        Pagination (IMPROVED):
-        - Consistent results across all pages - no duplicates or missing results
-        - Markdown fallback search properly handles offset for seamless pagination
-        - Total count accurately reflects all available results (direct + markdown)
-        - Works correctly whether results come from direct search, markdown, or both
+        Pagination:
+        - Use page parameter (1-indexed) for paginated results
+        - Results are limited to prevent context overflow
+
+        Token limits:
+        - Multiple snippets: Each limited to 500 tokens to prevent context overflow
 
         Args:
-            library_id: Library ID (UUID) or library name - can use either format
+            library_id: Library ID (UUID) or library name - required
             query: Optional search query to filter code snippets (not documentation)
             limit: Maximum results per page (default: 20)
-            page: Page number for paginated results (1-indexed, works consistently across all pages)
+            page: Page number for paginated search results (1-indexed)
             search_mode: Search strategy - "code" (default) uses threshold-based markdown fallback,
                         "enhanced" always searches markdown for maximum results
 
@@ -338,7 +340,7 @@ class MCPTools:
                 uuid_pattern = re.compile(
                     r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$", re.I
                 )
-                is_uuid = bool(uuid_pattern.match(library_id))
+                is_uuid = bool(uuid_pattern.match(library_id) if library_id else False)
 
                 actual_library_id = library_id
                 library_name = library_id  # Default to the input for display
@@ -376,16 +378,16 @@ class MCPTools:
 
                             if suggestions:
                                 return (
-                                    f"❌ No library found matching '{library_id}'.\n\n"
-                                    f"📚 Did you mean one of these?\n"
+                                    f"No library found matching '{library_id}'.\n\n"
+                                    f"Did you mean one of these?\n"
                                     + "\n".join(suggestions)
                                     + "\n\n"
-                                    "💡 Tip: Use the exact library name or copy the ID from search_libraries."
+                                    "Tip: Use the exact library name or copy the ID from search_libraries."
                                 )
                             else:
-                                return f"❌ No library found matching '{library_id}' and no similar libraries found.\n\n💡 Use search_libraries to find available libraries."
+                                return f"No library found matching '{library_id}' and no similar libraries found.\n\nUse search_libraries to find available libraries."
                         else:
-                            return "❌ No libraries have been crawled yet. Use init_crawl to add documentation sources."
+                            return "No libraries have been crawled yet. Use init_crawl to add documentation sources."
 
                     # Check for exact match first (case-insensitive)
                     exact_match = None
@@ -438,10 +440,10 @@ class MCPTools:
                                 )
 
                             return (
-                                f"🤔 Multiple libraries match '{library_id}'. Please be more specific:\n\n"
+                                f"Multiple libraries match '{library_id}'. Please be more specific:\n\n"
                                 + "\n".join(suggestions)
                                 + "\n\n"
-                                "💡 Tip: Use the exact library name for best results."
+                                "Tip: Use the exact library name for best results."
                             )
 
                 # Calculate offset for pagination
@@ -466,8 +468,14 @@ class MCPTools:
                         no_results_msg = f"No content found in library '{library_name}'"
                     return no_results_msg
 
-                # Format results using the specified format
-                formatted_results = searcher.format_search_results(snippets)
+                # Limit each snippet to prevent overwhelming context
+                # Use configurable limits from settings
+                max_snippet_tokens = (
+                    settings.search.max_single_snippet_tokens 
+                    if len(snippets) == 1 
+                    else settings.search.max_multi_snippet_tokens
+                )
+                formatted_results = searcher.format_search_results(snippets, max_snippet_tokens=max_snippet_tokens)
 
                 # Calculate total pages
                 import math
@@ -567,50 +575,231 @@ class MCPTools:
             logger.error(f"Failed to cancel crawl: {e}")
             return {"error": str(e), "job_id": job_id}
 
+    async def get_snippet(
+        self,
+        snippet_id: str,
+        max_tokens: Optional[int] = None,
+        chunk_index: Optional[int] = None
+    ) -> str:
+        """
+        Retrieve a specific code snippet by its ID with customizable token limits.
+        
+        This tool provides direct access to individual code snippets when you know
+        the exact snippet ID. You can control the output size to manage context usage.
+        
+        Features:
+        - Direct snippet access by ID
+        - Customizable token limits (100-10000)
+        - Automatic chunking for large snippets
+        - Smart truncation with continuation indicators
+        
+        Args:
+            snippet_id: The ID of the snippet to retrieve
+            max_tokens: Maximum tokens to return (100-10000, default: 2000)
+            chunk_index: Optional chunk index for large snippets (0-indexed)
+        
+        Returns:
+            Formatted code snippet with metadata and source URL
+        """
+        try:
+            with self.db_manager.session_scope() as session:
+                from src.database.models import CodeSnippet
+                from src.utils import validation, token_utils
+                
+                # Validate and set max_tokens
+                if max_tokens is None:
+                    max_tokens = settings.search.max_single_snippet_tokens  # Default: 2000
+                else:
+                    # Validate max_tokens is within reasonable bounds
+                    if max_tokens < 100:
+                        return "Error: max_tokens must be at least 100"
+                    elif max_tokens > 10000:
+                        return "Error: max_tokens cannot exceed 10000"
+                
+                # Validate and convert snippet_id
+                try:
+                    snippet_id_int = validation.validate_snippet_id(snippet_id)
+                except (ValueError, TypeError) as e:
+                    return f"Invalid snippet ID: {e}"
+                
+                snippet = session.query(CodeSnippet).filter(CodeSnippet.id == snippet_id_int).first()
+                
+                if not snippet:
+                    return f"Snippet with ID '{snippet_id}' not found."
+                
+                # Get total token count for the snippet
+                full_code = snippet.code_content
+                total_tokens = token_utils.count_tokens(full_code)
+                
+                # Handle chunking if requested
+                if chunk_index is not None:
+                    # Calculate total chunks based on max_tokens
+                    total_chunks = token_utils.calculate_chunks(full_code, max_tokens)
+                    
+                    # Validate chunk index
+                    try:
+                        validated_index = validation.validate_chunk_index(chunk_index, total_chunks)
+                    except ValueError as e:
+                        return str(e)
+                    
+                    # Get the specific chunk
+                    chunk_text, chunk_tokens = token_utils.get_chunk_at_index(
+                        full_code, max_tokens, validated_index
+                    )
+                    
+                    # Create a temporary snippet with the chunk
+                    chunked_snippet = CodeSnippet()
+                    chunked_snippet.title = snippet.title
+                    chunked_snippet.description = snippet.description
+                    chunked_snippet.language = snippet.language
+                    chunked_snippet.source_url = snippet.source_url
+                    chunked_snippet.code_content = chunk_text
+                    
+                    # Build informative header
+                    header = f"Snippet #{snippet_id}: {snippet.title}\n"
+                    header += f"Chunk {validated_index + 1} of {total_chunks} "
+                    header += f"({chunk_tokens} tokens, max: {max_tokens})\n"
+                    header += f"Total snippet size: {total_tokens} tokens\n\n"
+                    
+                    return header + chunked_snippet.format_output()
+                
+                else:
+                    # Return snippet with token limit applied
+                    if total_tokens <= max_tokens:
+                        # Full snippet fits within limit
+                        header = f"Snippet #{snippet_id} ({total_tokens} tokens)\n\n"
+                        return header + snippet.format_output()
+                    else:
+                        # Need to truncate
+                        total_chunks = token_utils.calculate_chunks(full_code, max_tokens)
+                        
+                        # Truncate to max tokens
+                        truncated_code = token_utils.truncate_to_token_limit(
+                            full_code, max_tokens
+                        )
+                        
+                        # Count actual truncated tokens
+                        truncated_tokens = token_utils.count_tokens(truncated_code)
+                        
+                        # Create temporary snippet with truncated content
+                        truncated_snippet = CodeSnippet()
+                        truncated_snippet.title = snippet.title
+                        truncated_snippet.description = snippet.description
+                        truncated_snippet.language = snippet.language
+                        truncated_snippet.source_url = snippet.source_url
+                        truncated_snippet.code_content = truncated_code
+                        
+                        # Build informative header
+                        header = f"Snippet #{snippet_id}: {snippet.title}\n"
+                        header += f"Truncated to {truncated_tokens}/{total_tokens} tokens (limit: {max_tokens})\n"
+                        header += f"Use chunk_index (0-{total_chunks-1}) to navigate full content\n"
+                        header += f"Or increase max_tokens (up to 10000) for more content\n\n"
+                        
+                        return header + truncated_snippet.format_output()
+                        
+        except Exception as e:
+            logger.error(f"Error retrieving snippet: {e}", exc_info=True)
+            return f"Error retrieving snippet: {str(e)}"
+
     async def get_page_markdown(
         self,
-        url: str,
+        url: str | None = None,
+        snippet_id: str | None = None,
         query: str | None = None,
         max_tokens: int | None = None,
         chunk_index: int | None = None,
     ) -> dict[str, Any]:
-        """Get full documentation markdown from a specific page URL.
+        """Get full documentation markdown from a specific page URL or snippet ID.
 
         Use this tool to retrieve the complete documentation context for code snippets.
-        The URL typically comes from the SOURCE field in get_content results.
+        You can provide either a URL (from SOURCE field in get_content results) or a snippet_id
+        to automatically get the document containing that snippet.
 
         Features:
-        1. Get full page: Just provide URL
+        1. Get full page: Provide URL or snippet_id
         2. Search within page: Add query parameter to search/highlight within this specific document
         3. Limit content size: Use max_tokens to get only first N tokens
         4. Chunk large docs: Use chunk_index to paginate through large documents
 
         Common workflows:
         - After get_content(): Use SOURCE URL here to get full documentation
+        - Direct snippet access: get_page_markdown(snippet_id="12345")
         - Search in page: get_page_markdown(url="...", query="specific term")
-        - Get summary: get_page_markdown(url="...", max_tokens=500)
+        - Get summary: get_page_markdown(snippet_id="12345", max_tokens=500)
         - Navigate chunks: get_page_markdown(url="...", chunk_index=0, max_tokens=2048)
 
         Important notes:
+        - Provide EITHER url OR snippet_id, not both
         - This searches WITHIN a single document, not across all documents
         - The query parameter uses PostgreSQL full-text search with highlighting
         - Returns markdown format with code blocks, headers, etc. preserved
 
         Args:
             url: The URL of the documentation page (typically from SOURCE in get_content)
+            snippet_id: The ID of a code snippet to get its associated document
             query: Optional search within THIS document only (highlights matches)
             max_tokens: Limit response to first N tokens (useful for summaries) or define chunk size when using chunk_index (default: 2048)
             chunk_index: Get specific chunk of large documents (0-based, uses max_tokens for chunk size)
-
 
         Returns:
             Dictionary with markdown content, search highlights, token counts, and pagination info
         """
         try:
-            with self.db_manager.session_scope() as session:
-                from ..database.models import CrawlJob, Document, UploadJob
+            # Validate that exactly one of url or snippet_id is provided
+            if not url and not snippet_id:
+                return {
+                    "status": "error",
+                    "error": "Either 'url' or 'snippet_id' must be provided",
+                    "suggestion": "Provide a URL from get_content results or a snippet ID",
+                }
+            
+            if url and snippet_id:
+                return {
+                    "status": "error",
+                    "error": "Cannot provide both 'url' and 'snippet_id'",
+                    "suggestion": "Use either URL or snippet_id, not both",
+                }
 
-                doc = session.query(Document).filter(Document.url == url).first()
+            with self.db_manager.session_scope() as session:
+                from ..database.models import CodeSnippet, CrawlJob, Document, UploadJob
+
+                # Get document either by URL or via snippet_id
+                if snippet_id:
+                    # Find snippet and get its associated document
+                    try:
+                        snippet_id_int = int(snippet_id)
+                    except ValueError:
+                        return {
+                            "status": "error",
+                            "error": f"Invalid snippet_id '{snippet_id}': must be a valid integer",
+                            "suggestion": "Provide a numeric snippet ID",
+                        }
+                    
+                    snippet = session.query(CodeSnippet).filter(CodeSnippet.id == snippet_id_int).first()
+                    
+                    if not snippet:
+                        return {
+                            "status": "not_found",
+                            "error": f"No snippet found with ID: {snippet_id}",
+                            "suggestion": "Check the snippet ID is correct",
+                        }
+                    
+                    # Get the document associated with this snippet
+                    doc = session.query(Document).filter(Document.id == snippet.document_id).first()
+                    
+                    if not doc:
+                        return {
+                            "status": "error",
+                            "error": f"Snippet {snippet_id} exists but its associated document was not found",
+                            "suggestion": "This may indicate a database consistency issue",
+                        }
+                    
+                    # Use the document's URL for logging
+                    doc_url = doc.url
+                    logger.info(f"Retrieved document via snippet_id {snippet_id}: {doc_url[:100] if doc_url else 'No URL'}...")
+                else:
+                    # Original logic: find document by URL
+                    doc = session.query(Document).filter(Document.url == url).first()
 
                 if not doc:
                     return {
@@ -649,7 +838,7 @@ class MCPTools:
                 from sqlalchemy import text
 
                 if query:
-                    logger.info(f"Search query provided for document {url[:50]}: '{query}'")
+                    logger.info(f"Search query provided for document {doc.url[:50] if doc.url else 'No URL'}: '{query}'")
                     # First check if the query matches the document using full-text search
                     try:
                         # Check if document matches the search query
@@ -662,7 +851,7 @@ class MCPTools:
                             WHERE url = :url
                             AND markdown_content IS NOT NULL
                             """),
-                            {"url": url, "query": query},
+                            {"url": doc.url, "query": query},
                         ).first()
 
                         if match_result and match_result[0]:  # Document matches the query
@@ -681,7 +870,7 @@ class MCPTools:
                                 AND markdown_content IS NOT NULL
                                 """),
                                 {
-                                    "url": url,
+                                    "url": doc.url,
                                     "query": query,
                                     "max_words": min((max_tokens or 2048) // 4, 500),  # Limit fragment size
                                 },
