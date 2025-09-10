@@ -1,7 +1,6 @@
 """Content hash checking utilities for avoiding redundant LLM extraction."""
 
 
-from typing import Optional
 
 from sqlalchemy import func
 from sqlalchemy.orm import Session
@@ -64,10 +63,10 @@ def get_existing_document_info(session: Session, url: str) -> tuple[int, str, in
 
 
 def find_duplicate_snippet_in_source(
-    session: Session, 
-    code_hash: str, 
+    session: Session,
+    code_hash: str,
     document: Document
-) -> Optional[CodeSnippet]:
+) -> CodeSnippet | None:
     """Find duplicate snippet within the same source (crawl or upload job).
     
     This ensures that duplicate detection is scoped to each source, allowing

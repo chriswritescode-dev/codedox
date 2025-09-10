@@ -1,6 +1,5 @@
 """HTML code extractor with semantic context extraction."""
 
-import asyncio
 import logging
 import re
 from typing import Any
@@ -16,14 +15,11 @@ logger = logging.getLogger(__name__)
 class HTMLCodeExtractor(BaseCodeExtractor):
     """Extract code blocks from HTML with semantic context."""
     
-
-    
-    
     def __init__(self):
         """Initialize the HTML code extractor."""
         self.stats = {"total_blocks": 0, "blocks_by_type": {}, "languages_found": set()}
     
-    async def extract_blocks(self, content: str, source_url: str | None = None, batch_size: int = 5) -> list[ExtractedCodeBlock]:
+    def extract_blocks(self, content: str, source_url: str | None = None) -> list[ExtractedCodeBlock]:
         """
         Extract all code blocks with their preceding context using simplified approach.
         
@@ -35,7 +31,6 @@ class HTMLCodeExtractor(BaseCodeExtractor):
         Args:
             content: Raw HTML content
             source_url: URL of the page (for logging)
-            batch_size: Number of blocks to process before yielding control (default: 5)
             
         Returns:
             List of ExtractedCodeBlock objects
@@ -54,16 +49,7 @@ class HTMLCodeExtractor(BaseCodeExtractor):
         # Track previous code block for each heading
         previous_code_by_heading: dict[tuple[str | None, Tag | None], Tag] = {}
         
-        # For very large documents, use simplified extraction
-        use_simplified = len(code_blocks) > 500
-        if use_simplified:
-            logger.info(f"Using simplified extraction for {len(code_blocks)} blocks to maintain performance")
-        
-        for i, code_element in enumerate(code_blocks):
-            # Yield control every batch_size blocks to prevent blocking
-            if i > 0 and i % batch_size == 0:
-                await asyncio.sleep(0)  # Let other coroutines run
-            
+        for code_element in code_blocks:
             # Skip if already processed
             if code_element in processed_code_blocks:
                 continue
@@ -180,12 +166,7 @@ class HTMLCodeExtractor(BaseCodeExtractor):
                 # Find which child contains current
                 current_index = -1
                 for i, child in enumerate(children):
-                    # Check if current is a descendant of child
-                    # Walk up from current to see if we reach child
-                    temp = current
-                    while temp and temp != child:
-                        temp = getattr(temp, 'parent', None)
-                    if temp == child:
+                    if hasattr(child, 'descendants') and current in child.descendants:
                         current_index = i
                         break
             
@@ -246,66 +227,18 @@ class HTMLCodeExtractor(BaseCodeExtractor):
         code_pos = self._get_element_position(code_element, container)
         prev_code_pos = self._get_element_position(previous_code, container) if previous_code else None
         
-        # More efficient approach: collect elements between heading and code
-        
-        def collect_between_elements(start, end):
-            """Collect text between start and end elements efficiently."""
-            collected = []
+        # Collect all text elements in container
+        for elem in container.descendants:
+            if not hasattr(elem, 'name'):
+                continue
             
-            # If start and end have same parent, collect siblings between them
-            if start and start.parent == end.parent:
-                found_start = False
-                for sibling in start.parent.children:
-                    if sibling == start:
-                        found_start = True
-                        continue
-                    if sibling == end:
-                        break
-                    if found_start and hasattr(sibling, 'name'):
-                        collected.append(sibling)
-                        # Also collect immediate children of siblings (for nested content)
-                        if hasattr(sibling, 'children'):
-                            for child in sibling.children:
-                                if hasattr(child, 'name') and child.name not in ['pre', 'code']:
-                                    collected.append(child)
-                                    if len(collected) > 50:  # Limit total elements
-                                        break
-            else:
-                # For more complex cases, get limited next siblings/elements
-                if start and hasattr(start, 'find_next_siblings'):
-                    # First try siblings
-                    for sibling in start.find_next_siblings(limit=20):
-                        if sibling == end:
-                            break
-                        if hasattr(sibling, 'name'):
-                            collected.append(sibling)
-                    
-                    # If not enough, get some next elements
-                    if len(collected) < 10 and hasattr(start, 'find_all_next'):
-                        for elem in start.find_all_next(limit=30):
-                            if elem == end:
-                                break
-                            if elem not in collected and hasattr(elem, 'name'):
-                                collected.append(elem)
-                                if len(collected) > 30:
-                                    break
+            # Skip the code block itself and its children
+            if elem == code_element or code_element in (elem.descendants if hasattr(elem, 'descendants') else []):
+                continue
             
-            return collected
-        
-        # Get elements between heading/previous code and current code
-        if previous_code:
-            elements_to_process = collect_between_elements(previous_code, code_element)
-        elif heading:
-            elements_to_process = collect_between_elements(heading, code_element)
-        else:
-            # No heading, just get a few elements before the code
-            elements_to_process = []
-            for sibling in code_element.find_previous_siblings(limit=5):
-                if hasattr(sibling, 'name'):
-                    elements_to_process.insert(0, sibling)
-        
-        # Process collected elements
-        for elem in elements_to_process:
+            # Skip previous code block and its children
+            if previous_code and (elem == previous_code or previous_code in (elem.descendants if hasattr(elem, 'descendants') else [])):
+                continue
             
             # Check if this element is inside a <pre> tag (part of a code block)
             if self._is_inside_pre(elem):

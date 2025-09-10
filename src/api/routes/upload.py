@@ -47,12 +47,12 @@ class UploadMarkdownRequest(BaseModel):
     title: str | None = Field(None, description="Optional title")
 
 
-def extract_code_blocks_with_context(content: str, url: str) -> list[ExtractedCodeBlock]:
+async def extract_code_blocks_with_context(content: str, url: str, batch_size: int = 5) -> list[ExtractedCodeBlock]:
     """Extract code blocks from markdown content with surrounding context."""
     from ...crawler.extractors.markdown import MarkdownCodeExtractor
     
     extractor = MarkdownCodeExtractor()
-    blocks = extractor.extract_blocks(content)
+    blocks = await extractor.extract_blocks(content, batch_size=batch_size)
     
     # Set source_url for each block
     for block in blocks:
@@ -97,7 +97,9 @@ async def upload_markdown(
         db.flush()
 
         # Extract code blocks with context
-        code_blocks = extract_code_blocks_with_context(request.content, doc_url)
+        # Get batch size from settings
+        batch_size = settings.crawling.max_concurrent_crawls
+        code_blocks = await extract_code_blocks_with_context(request.content, doc_url, batch_size)
         snippets_count = 0
 
         if code_blocks:

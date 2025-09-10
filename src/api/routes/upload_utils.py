@@ -210,8 +210,8 @@ async def validate_and_read_file(
     return content, filename_without_ext
 
 
-def extract_code_blocks_by_type(
-    content: str, content_type: str, source_url: str | None = None
+async def extract_code_blocks_by_type(
+    content: str, content_type: str, source_url: str | None = None, batch_size: int = 5
 ) -> list[ExtractedCodeBlock]:
     """Extract code blocks based on content type using the factory pattern.
     
@@ -219,6 +219,7 @@ def extract_code_blocks_by_type(
         content: The content to extract from
         content_type: The type of content (markdown, restructuredtext, etc.)
         source_url: Optional source URL for the blocks
+        batch_size: Number of blocks to process before yielding control
         
     Returns:
         List of ExtractedCodeBlock objects
@@ -236,7 +237,7 @@ def extract_code_blocks_by_type(
         extractor = create_extractor(content_type='markdown')
     
     # Extract blocks
-    blocks = extractor.extract_blocks(content)
+    blocks = await extractor.extract_blocks(content, batch_size=batch_size)
     
     # Set source_url for each block
     if source_url:

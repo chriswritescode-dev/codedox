@@ -1,12 +1,15 @@
 """Test that single-line inline code is not extracted as snippets."""
 
+import pytest
+import asyncio
 from src.crawler.extractors.html import HTMLCodeExtractor
 
 
 class TestSingleLineInlineCode:
     """Test filtering of single-line inline code."""
     
-    def test_single_line_inline_not_extracted(self):
+    @pytest.mark.asyncio
+    async def test_single_line_inline_not_extracted(self):
         """Test that ALL single-line inline code is not extracted as snippets."""
         html = """
         <div>
@@ -25,12 +28,13 @@ class TestSingleLineInlineCode:
         """
         
         extractor = HTMLCodeExtractor()
-        blocks = extractor.extract_blocks(html, "test.html")
+        blocks = await extractor.extract_blocks(html, "test.html")
         
         # NONE of these single-line snippets should be extracted
         assert len(blocks) == 0
         
-    def test_multi_line_inline_extracted(self):
+    @pytest.mark.asyncio
+    async def test_multi_line_inline_extracted(self):
         """Test that multi-line inline code IS extracted as snippets."""
         html = """
         <div>
@@ -50,7 +54,7 @@ class TestSingleLineInlineCode:
         """
         
         extractor = HTMLCodeExtractor()
-        blocks = extractor.extract_blocks(html, "test.html")
+        blocks = await extractor.extract_blocks(html, "test.html")
         
         # All multi-line code should be extracted
         assert len(blocks) == 3
@@ -60,7 +64,8 @@ class TestSingleLineInlineCode:
         assert any("key: 'value'" in code for code in code_snippets)
         assert any("'item1'" in code for code in code_snippets)
     
-    def test_single_line_in_description(self):
+    @pytest.mark.asyncio
+    async def test_single_line_in_description(self):
         """Test that single-line inline code still appears in descriptions for nearby multi-line blocks."""
         html = """
         <div>
@@ -75,7 +80,7 @@ const [age, setAge] = useState(0);</code></pre>
         """
         
         extractor = HTMLCodeExtractor()
-        blocks = extractor.extract_blocks(html, "test.html")
+        blocks = await extractor.extract_blocks(html, "test.html")
         
         # Only the pre block should be extracted
         assert len(blocks) == 1
@@ -86,7 +91,8 @@ const [age, setAge] = useState(0);</code></pre>
         assert "useState" in blocks[0].description
         assert "defaultChecked" in blocks[0].description
     
-    def test_edge_cases(self):
+    @pytest.mark.asyncio
+    async def test_edge_cases(self):
         """Test edge cases for inline code filtering."""
         html = """
         <div>
@@ -103,7 +109,7 @@ line2</code></p>
         """
         
         extractor = HTMLCodeExtractor()
-        blocks = extractor.extract_blocks(html, "test.html")
+        blocks = await extractor.extract_blocks(html, "test.html")
         
         # Only multi-line code should be extracted
         assert len(blocks) == 2
@@ -113,7 +119,8 @@ line2</code></p>
         assert any("line1" in code and "line2" in code for code in code_snippets)
         assert any("function test()" in code for code in code_snippets)
     
-    def test_mixed_content(self):
+    @pytest.mark.asyncio
+    async def test_mixed_content(self):
         """Test page with mix of single-line and multi-line code."""
         html = """
         <div>
@@ -129,7 +136,7 @@ line2</code></p>
         """
         
         extractor = HTMLCodeExtractor()
-        blocks = extractor.extract_blocks(html, "test.html")
+        blocks = await extractor.extract_blocks(html, "test.html")
         
         # Should extract the pre block (multi-line) and the JSX example (3+ words)
         assert len(blocks) == 2

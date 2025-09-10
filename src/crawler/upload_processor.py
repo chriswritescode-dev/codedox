@@ -351,7 +351,9 @@ class UploadProcessor:
                     if not title:
                         title = self._extract_title(markdown_content, source_url)
 
-                    code_blocks = self._extract_markdown_code_blocks(markdown_content, source_url)
+                    # Get batch size from settings (defaults to max_concurrent_crawls)
+                    batch_size = self.settings.crawling.max_concurrent_crawls
+                    code_blocks = await self._extract_markdown_code_blocks(markdown_content, source_url, batch_size)
                     logger.info(f"Extracted {len(code_blocks)} code blocks from converted markdown for {source_url}")
 
             elif content_type == "restructuredtext":
@@ -359,7 +361,9 @@ class UploadProcessor:
                 try:
                     markdown_content = content  # Store original RST content
                     title = self._extract_title(content, source_url)
-                    code_blocks = self._extract_code_blocks_by_type(content, content_type, source_url)
+                    # Get batch size from settings (defaults to max_concurrent_crawls)
+                    batch_size = self.settings.crawling.max_concurrent_crawls
+                    code_blocks = await self._extract_code_blocks_by_type(content, content_type, source_url, batch_size)
                     logger.info(f"[_process_file] Extracted {len(code_blocks)} code blocks from RST")
                 except Exception as e:
                     logger.error(f"Failed to process RST content for {source_url}: {e}")
@@ -370,7 +374,9 @@ class UploadProcessor:
                 logger.info(f"[_process_file] Processing as markdown (content_type={content_type}) for {source_url}")
                 markdown_content = content
                 title = self._extract_title(content, source_url)
-                code_blocks = self._extract_markdown_code_blocks(content, source_url)
+                # Get batch size from settings (defaults to max_concurrent_crawls)
+                batch_size = self.settings.crawling.max_concurrent_crawls
+                code_blocks = await self._extract_markdown_code_blocks(content, source_url, batch_size)
                 logger.info(f"[_process_file] Extracted {len(code_blocks)} code blocks from markdown")
 
             return UploadResult(
@@ -420,26 +426,27 @@ class UploadProcessor:
 
         return TitleExtractor.resolve(None, content, source_url)
 
-    def _extract_markdown_code_blocks(self, content: str, source_url: str = None) -> list[ExtractedCodeBlock]:
+    async def _extract_markdown_code_blocks(self, content: str, source_url: str = None, batch_size: int = 5) -> list[ExtractedCodeBlock]:
         """Extract code blocks from markdown content.
 
         Args:
             content: Markdown content
             source_url: Optional source URL for the content
+            batch_size: Number of blocks to process before yielding control
 
         Returns:
             List of ExtractedCodeBlock objects
         """
         extractor = create_extractor(content_type='markdown')
         if extractor:
-            blocks = extractor.extract_blocks(content)
+            blocks = await extractor.extract_blocks(content, batch_size=batch_size)
             for block in blocks:
                 block.source_url = source_url
             return blocks
         return []
     
-    def _extract_code_blocks_by_type(
-        self, content: str, content_type: str, source_url: str = None
+    async def _extract_code_blocks_by_type(
+        self, content: str, content_type: str, source_url: str = None, batch_size: int = 5
     ) -> list[ExtractedCodeBlock]:
         """Extract code blocks based on content type.
         
@@ -447,13 +454,14 @@ class UploadProcessor:
             content: Content to extract from
             content_type: Type of content (markdown, restructuredtext, etc.)
             source_url: Optional source URL
+            batch_size: Number of blocks to process before yielding control
             
         Returns:
             List of ExtractedCodeBlock objects
         """
         extractor = create_extractor(content_type=content_type)
         if extractor:
-            blocks = extractor.extract_blocks(content)
+            blocks = await extractor.extract_blocks(content, batch_size=batch_size)
             for block in blocks:
                 block.source_url = source_url
             return blocks

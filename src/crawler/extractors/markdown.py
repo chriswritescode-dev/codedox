@@ -1,5 +1,6 @@
 """Markdown code extractor with semantic context extraction."""
 
+import asyncio
 import re
 from typing import NamedTuple
 
@@ -20,7 +21,7 @@ class CodeBlockInfo(NamedTuple):
 class MarkdownCodeExtractor(BaseCodeExtractor):
     """Extract code blocks from Markdown with semantic context."""
     
-    def extract_blocks(self, content: str, source_url: str | None = None) -> list[ExtractedCodeBlock]:
+    async def extract_blocks(self, content: str, source_url: str | None = None, batch_size: int = 5) -> list[ExtractedCodeBlock]:
         """Extract code blocks with full semantic context."""
         # Remove frontmatter if present
         _, content = extract_frontmatter(content)
@@ -36,7 +37,10 @@ class MarkdownCodeExtractor(BaseCodeExtractor):
         # Track previous code block for each heading
         previous_code_by_heading = {}
         
-        for block_info in code_blocks:
+        for i, block_info in enumerate(code_blocks):
+            # Yield control every batch_size blocks to prevent blocking
+            if i > 0 and i % batch_size == 0:
+                await asyncio.sleep(0)  # Let other coroutines run
             # Check if we should extract this block
             if not self.should_extract_code_block(block_info.code):
                 continue

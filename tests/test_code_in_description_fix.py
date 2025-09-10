@@ -1,12 +1,14 @@
 """Test that code blocks are never included in descriptions."""
 
+import pytest
 from src.crawler.extractors.html import HTMLCodeExtractor
 
 
 class TestCodeInDescriptionFix:
     """Test that the fix prevents code blocks from being included in descriptions."""
     
-    def test_code_blocks_not_in_description(self):
+    @pytest.mark.asyncio
+    async def test_code_blocks_not_in_description(self):
         """Test that code inside div containers is not included in descriptions."""
         html = """
         <div>
@@ -26,7 +28,7 @@ import asyncio</code></pre>
         """
         
         extractor = HTMLCodeExtractor()
-        blocks = extractor.extract_blocks(html, "test.html")
+        blocks = await extractor.extract_blocks(html, "test.html")
         
         assert len(blocks) == 2
         
@@ -42,7 +44,8 @@ import asyncio</code></pre>
         assert "from bullmq import Worker" not in blocks[1].description
         assert "In order to consume" in blocks[1].description
     
-    def test_inline_code_preserved(self):
+    @pytest.mark.asyncio
+    async def test_inline_code_preserved(self):
         """Test that inline code text is preserved in descriptions."""
         html = """
         <div>
@@ -54,7 +57,7 @@ import asyncio</code></pre>
         """
         
         extractor = HTMLCodeExtractor()
-        blocks = extractor.extract_blocks(html, "test.html")
+        blocks = await extractor.extract_blocks(html, "test.html")
         
         assert len(blocks) == 1
         assert blocks[0].description is not None
@@ -65,7 +68,8 @@ import asyncio</code></pre>
         assert "const worker" not in blocks[0].description
         assert "new Worker" not in blocks[0].description
     
-    def test_nested_code_blocks_excluded(self):
+    @pytest.mark.asyncio
+    async def test_nested_code_blocks_excluded(self):
         """Test that nested code structures are properly excluded."""
         html = """
         <article>
@@ -84,7 +88,7 @@ import asyncio</code></pre>
         """
         
         extractor = HTMLCodeExtractor()
-        blocks = extractor.extract_blocks(html, "test.html")
+        blocks = await extractor.extract_blocks(html, "test.html")
         
         # Should find both code blocks
         assert len(blocks) == 2
@@ -101,7 +105,8 @@ import asyncio</code></pre>
         assert "example code" not in blocks[1].description
         assert "main code block" not in blocks[1].description
     
-    def test_standalone_code_blocks(self):
+    @pytest.mark.asyncio
+    async def test_standalone_code_blocks(self):
         """Test standalone code blocks (not in pre tags)."""
         html = """
         <div>
@@ -116,7 +121,7 @@ import asyncio</code></pre>
         """
         
         extractor = HTMLCodeExtractor()
-        blocks = extractor.extract_blocks(html, "test.html")
+        blocks = await extractor.extract_blocks(html, "test.html")
         
         # Only multi-line code block is extracted (single-line filtered out)
         assert len(blocks) == 1
@@ -129,7 +134,8 @@ import asyncio</code></pre>
         # Description should have the text before the code
         assert "simple example" in blocks[0].description
     
-    def test_inline_button_text_excluded(self):
+    @pytest.mark.asyncio
+    async def test_inline_button_text_excluded(self):
         """Test that inline button text within divs is excluded from descriptions."""
         html = """
         <div>
@@ -150,7 +156,7 @@ function App() {
         """
         
         extractor = HTMLCodeExtractor()
-        blocks = extractor.extract_blocks(html, "test.html")
+        blocks = await extractor.extract_blocks(html, "test.html")
         
         # Should extract the code block
         assert len(blocks) == 1
@@ -166,7 +172,8 @@ function App() {
         assert "Clear all edits" not in blocks[0].description
         assert "Open in CodeSandbox" not in blocks[0].description
     
-    def test_button_text_excluded_from_description(self):
+    @pytest.mark.asyncio
+    async def test_button_text_excluded_from_description(self):
         """Test that button text is not included in descriptions."""
         html = """
         <div>
@@ -184,7 +191,7 @@ function App() {
         """
         
         extractor = HTMLCodeExtractor()
-        blocks = extractor.extract_blocks(html, "test.html")
+        blocks = await extractor.extract_blocks(html, "test.html")
         
         # Should extract the code block
         assert len(blocks) == 1
@@ -199,7 +206,8 @@ function App() {
         assert "Reload" not in blocks[0].description
         assert "Fork" not in blocks[0].description
     
-    def test_syntax_highlighted_code_not_in_description(self):
+    @pytest.mark.asyncio
+    async def test_syntax_highlighted_code_not_in_description(self):
         """Test that syntax-highlighted code with spans is not included in descriptions."""
         html = """
         <div>
@@ -216,7 +224,7 @@ function App() {
         """
         
         extractor = HTMLCodeExtractor()
-        blocks = extractor.extract_blocks(html, "test.html")
+        blocks = await extractor.extract_blocks(html, "test.html")
         
         assert len(blocks) == 2
         
