@@ -5,9 +5,11 @@ CodeDox provides lightning-fast code search using PostgreSQL full-text search.
 ## Search Features
 
 - **Full-Text Search**: PostgreSQL's powerful text search with weighted fields
+- **Enhanced Search Modes**: Standard code search with intelligent markdown fallback for comprehensive results
 - **Fuzzy Matching**: Finds similar terms using pg_trgm extension
 - **Language Filtering**: Search within specific programming languages
 - **Source Filtering**: Limit search to specific documentation sources
+- **Full Documentation Access**: Get complete markdown content from any documentation page
 
 ## Search Interfaces
 
@@ -25,12 +27,17 @@ python cli.py search "useState hook" --source "React"
 {
   "name": "get_content",
   "arguments": {
-    "library_id": "library-id",
+    "library_id": "library-id", 
     "query": "authentication",
-    "max_results": 10
+    "search_mode": "enhanced",
+    "limit": 10
   }
 }
 ```
+
+**Search Modes:**
+- `"code"` (default): Direct code search with markdown fallback for <5 results
+- `"enhanced"`: Always searches markdown docs to find ALL related snippets
 
 ## Search Ranking
 

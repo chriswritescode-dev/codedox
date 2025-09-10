@@ -45,4 +45,20 @@ cd ..
 docker-compose up
 ```
 
-This will start all services including PostgreSQL, API server, and web UI.
+This will start all services including PostgreSQL, API server, web UI, and MCP HTTP endpoints.
+
+## Start Services
+
+After installation, start CodeDox with:
+
+```bash
+# Start all services (API, Web UI, MCP endpoints)
+python cli.py serve
+
+# Available endpoints:
+# - Web UI: http://localhost:5173
+# - API: http://localhost:8000  
+# - MCP Tools: http://localhost:8000/mcp
+```
+
+For AI assistants, connect directly to the MCP endpoint at `http://localhost:8000/mcp` using Streamable HTTP transport.

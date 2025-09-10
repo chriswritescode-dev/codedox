@@ -5,6 +5,7 @@ from datetime import datetime, timedelta, timezone
 from typing import Any
 
 from sqlalchemy import and_, func, or_, text
+from sqlalchemy.dialects.postgresql import ARRAY
 from sqlalchemy.orm import Session
 
 from ..config import get_settings
@@ -51,7 +52,8 @@ class CodeSearcher:
         Returns:
             Tuple of (results, total_count)
         """
-        limit = limit or self.settings.default_max_results
+        if limit is None:
+            limit = self.settings.default_max_results
 
         # Resolve source name to job IDs if provided
         resolved_job_ids = []
@@ -193,14 +195,22 @@ class CodeSearcher:
                         markdown_offset = max(0, offset - direct_results_before)
 
                     # Get snippets from those documents with proper offset
-                    markdown_snippets = self.get_snippets_from_documents(
-                        document_ids=doc_ids,
-                        exclude_snippet_ids=seen_ids,
-                        language=language,
-                        snippet_type=snippet_type,
-                        limit=limit - len(results),  # Only get enough to fill the limit
-                        offset=markdown_offset,  # Apply offset for proper pagination
-                    )
+                    # Calculate remaining limit
+                    remaining_limit = limit - len(results)
+                    
+                    # Skip markdown search if we've already met the limit
+                    if remaining_limit <= 0:
+                        logger.info(f"Already found {len(results)} results, skipping markdown search")
+                        markdown_snippets = []
+                    else:
+                        markdown_snippets = self.get_snippets_from_documents(
+                            document_ids=doc_ids,
+                            exclude_snippet_ids=seen_ids,
+                            language=language,
+                            snippet_type=snippet_type,
+                            limit=remaining_limit,  # Only get enough to fill the limit
+                            offset=markdown_offset,  # Apply offset for proper pagination
+                        )
 
                     # Mark these snippets as discovered via markdown
                     for snippet in markdown_snippets:
@@ -299,13 +309,15 @@ class CodeSearcher:
         Returns:
             List of matching snippets
         """
-        limit = limit or self.settings.default_max_results
+        if limit is None:
+            limit = self.settings.default_max_results
 
         results = (
             self.session.query(CodeSnippet)
             .join(Document)
-            .join(CrawlJob)
-            .filter(CodeSnippet.functions.contains([function_name]))
+            .outerjoin(CrawlJob, Document.crawl_job_id == CrawlJob.id)
+            .outerjoin(UploadJob, Document.upload_job_id == UploadJob.id)
+            .filter(CodeSnippet.functions.any(function_name))
             .limit(limit)
             .all()
         )
@@ -322,13 +334,15 @@ class CodeSearcher:
         Returns:
             List of matching snippets
         """
-        limit = limit or self.settings.default_max_results
+        if limit is None:
+            limit = self.settings.default_max_results
 
         results = (
             self.session.query(CodeSnippet)
             .join(Document)
-            .join(CrawlJob)
-            .filter(CodeSnippet.imports.contains([import_name]))
+            .outerjoin(CrawlJob, Document.crawl_job_id == CrawlJob.id)
+            .outerjoin(UploadJob, Document.upload_job_id == UploadJob.id)
+            .filter(CodeSnippet.imports.any(import_name))
             .limit(limit)
             .all()
         )
@@ -345,7 +359,8 @@ class CodeSearcher:
         Returns:
             List of similar snippets
         """
-        limit = limit or self.settings.default_max_results
+        if limit is None:
+            limit = self.settings.default_max_results
 
         # Use pg_trgm for similarity search
         similarity = func.similarity(CodeSnippet.code_content, text)
@@ -353,7 +368,8 @@ class CodeSearcher:
         results = (
             self.session.query(CodeSnippet, similarity.label("sim_score"))
             .join(Document)
-            .join(CrawlJob)
+            .outerjoin(CrawlJob, Document.crawl_job_id == CrawlJob.id)
+            .outerjoin(UploadJob, Document.upload_job_id == UploadJob.id)
             .filter(
                 similarity > 0.1  # Minimum similarity threshold
             )
@@ -588,14 +604,16 @@ class CodeSearcher:
         Returns:
             List of recent snippets
         """
-        limit = limit or self.settings.default_max_results
+        if limit is None:
+            limit = self.settings.default_max_results
 
         cutoff_time = datetime.now(timezone.utc) - timedelta(hours=hours)
 
         query = (
             self.session.query(CodeSnippet)
             .join(Document)
-            .join(CrawlJob)
+            .outerjoin(CrawlJob, Document.crawl_job_id == CrawlJob.id)
+            .outerjoin(UploadJob, Document.upload_job_id == UploadJob.id)
             .filter(CodeSnippet.created_at >= cutoff_time)
         )
 
@@ -715,7 +733,7 @@ class CodeSearcher:
             query = query.offset(offset)
 
         # Apply limit after ordering
-        if limit:
+        if limit is not None:
             query = query.limit(limit)
 
         return query.all()
@@ -836,11 +854,12 @@ class CodeSearcher:
 
         return related_snippets
 
-    def format_search_results(self, snippets: list[CodeSnippet]) -> str:
+    def format_search_results(self, snippets: list[CodeSnippet], max_snippet_tokens: int | None = None) -> str:
         """Format search results in the specified output format.
 
         Args:
             snippets: List of code snippets to format
+            max_snippet_tokens: Maximum tokens per snippet (if None, no limit)
 
         Returns:
             Formatted string with all results
@@ -869,7 +888,7 @@ class CodeSearcher:
 
                 formatted_results.append("\n".join(context_lines))
 
-            formatted_results.append(snippet.format_output())
+            formatted_results.append(snippet.format_output(max_tokens=max_snippet_tokens))
 
         return "\n".join(formatted_results)
 

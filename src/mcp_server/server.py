@@ -25,66 +25,11 @@ class MCPServer:
         self.server: Server = Server("codedox")
         self.db_manager = get_db_manager()
         self.tools = MCPTools()
-        self._tool_definitions: list[Tool] = []
         self._register_handlers()
 
-    def get_tool_definitions(self) -> list[dict[str, Any]]:
-        """Get tool definitions in a format suitable for HTTP API."""
+    def _build_tool_definitions(self) -> list[Tool]:
+        """Build the core tool definitions."""
         return [
-            {"name": tool.name, "description": tool.description, "input_schema": tool.inputSchema}
-            for tool in self._tool_definitions
-        ]
-
-    async def execute_tool(self, name: str, arguments: dict[str, Any]) -> Any:
-        """Execute a tool by name with given arguments."""
-        logger.debug(f"MCPServer.execute_tool called with name='{name}', arguments={arguments}")
-
-        if name == "init_crawl":
-            return await self.tools.init_crawl(
-                name=arguments.get("name"),
-                start_urls=arguments.get("start_urls"),
-                max_depth=arguments.get("max_depth", 1),
-                domain_filter=arguments.get("domain_filter"),
-                metadata=arguments.get("metadata", {}),
-                max_concurrent_crawls=arguments.get("max_concurrent_crawls"),
-            )
-        elif name == "search_libraries":
-            return await self.tools.search_libraries(
-                query=arguments.get("query", ""),
-                limit=arguments.get("limit", 20),
-                page=arguments.get("page", 1),
-            )
-        elif name == "get_content":
-            return await self.tools.get_content(
-                library_id=arguments.get("library_id"),
-                query=arguments.get("query"),
-                limit=arguments.get("limit", 20),
-                page=arguments.get("page", 1),
-            )
-        elif name == "get_page_markdown":
-            return await self.tools.get_page_markdown(
-                url=arguments.get("url"),
-                query=arguments.get("query"),  # Add the missing query parameter!
-                max_tokens=arguments.get("max_tokens"),
-                chunk_index=arguments.get("chunk_index"),
-            )
-        else:
-            available_tools = [
-                "init_crawl",
-                "search_libraries",
-                "get_content",
-                "get_page_markdown",
-            ]
-            logger.error(f"Unknown tool requested: '{name}'. Available tools: {available_tools}")
-            raise ValueError(
-                f"Unknown tool: '{name}'. Available tools: {', '.join(available_tools)}"
-            )
-
-    def _register_handlers(self) -> None:
-        """Register MCP tool handlers."""
-
-        # Define tools
-        self._tool_definitions = [
             Tool(
                 name="init_crawl",
                 description="Initialize a new web crawl job for documentation",
@@ -178,20 +123,20 @@ class MCPServer:
             ),
             Tool(
                 name="get_content",
-                description="Get code snippets from a library (searches CODE only, not documentation text).\n\n"
+                description="Get code snippets from a library with optional search.\n\n"
+                "**Purpose: Search and retrieve code snippets from documentation**\n"
+                "- Use `library_id` to specify which library to search\n"
+                "- Returns multiple snippets (limited to prevent context overflow)\n"
+                "- Each snippet is truncated to 500 tokens when returning multiple\n"
+                "- For full snippets, use get_snippet() with the snippet ID\n\n"
                 "**IMPORTANT: Each result includes a SOURCE URL - use this with get_page_markdown() for full documentation!**\n\n"
                 "**Search Modes:**\n"
                 "- **'code' (default)**: Direct code search, falls back to markdown if <5 results found\n"
-                "- **'enhanced'**: ALWAYS searches markdown docs to find ALL related snippets, even those without exact keyword matches\n"
-                "  Use 'enhanced' when you want comprehensive results beyond keyword matching!\n\n"
+                "- **'enhanced'**: ALWAYS searches markdown docs to find ALL related snippets\n\n"
                 "**What this searches:**\n"
                 "- Code content, function names, imports\n"
                 "- Code titles and descriptions\n"
-                "- In 'enhanced' mode: Also searches full markdown to discover related code\n"
-                "**Workflow for complete information:**\n"
-                "1. Use get_content() to find code snippets\n"
-                "2. Each result has SOURCE: url\n"
-                "3. Use get_page_markdown(url=SOURCE) for full documentation context\n\n"
+                "- In 'enhanced' mode: Also searches full markdown to discover related code\n\n"
                 "**Library identification:**\n"
                 "- Use library name: 'nextjs', 'react', 'django', etc.\n"
                 "- Or use UUID from search_libraries\n"
@@ -199,9 +144,8 @@ class MCPServer:
                 "**Examples:**\n"
                 "- `library_id: 'react', query: 'useState'` - finds useState code snippets\n"
                 "- `library_id: 'nextjs', query: 'api', search_mode: 'enhanced'` - finds ALL API-related code\n"
-                "- `library_id: 'react', page: 2, limit: 10` - get second page of results\n"
-                "- Then use SOURCE URLs with get_page_markdown() for complete docs if needed\n\n"
-                "Returns formatted code snippets with SOURCE URLs for documentation access.",
+                "- `library_id: 'react', page: 2, limit: 10` - get second page of results\n\n"
+                "Returns formatted code snippets with automatic size limiting to prevent context overflow.",
                 inputSchema={
                     "type": "object",
                     "properties": {
@@ -211,57 +155,107 @@ class MCPServer:
                         },
                         "query": {
                             "type": "string",
-                            "description": "Optional search query to filter content within the library (e.g., 'authentication', 'routing', 'hooks')",
+                            "description": "Optional search query to filter content within the library (e.g., 'authentication', 'routing', 'hooks').",
                         },
                         "limit": {
                             "type": "integer",
                             "default": 20,
                             "minimum": 1,
                             "maximum": 100,
-                            "description": "Maximum results per page (default: 20)",
+                            "description": "Maximum results per page (default: 20).",
                         },
                         "page": {
                             "type": "integer",
                             "default": 1,
                             "minimum": 1,
-                            "description": "Page number for paginated results (1-indexed). Use with limit to control pagination.",
+                            "description": "Page number for paginated results (1-indexed).",
                         },
                         "search_mode": {
                             "type": "string",
                             "enum": ["code", "enhanced"],
                             "default": "code",
-                            "description": "Search strategy: 'code' (default) searches code directly with markdown fallback for <5 results. 'enhanced' always searches markdown docs to find ALL related snippets, even those without matching keywords.",
+                            "description": "Search strategy: 'code' (default) searches code directly with markdown fallback for <5 results. 'enhanced' always searches markdown docs to find ALL related snippets.",
                         },
                     },
                     "required": ["library_id"],
                 },
             ),
             Tool(
-                name="get_page_markdown",
-                description="Get full documentation from a page URL (typically from get_content SOURCE field).\n\n"
-                "**PRIMARY USE: Get complete documentation context after finding code with get_content()**\n\n"
+                name="get_snippet",
+                description="Retrieve a specific code snippet by its ID with customizable token limits.\n\n"
+                "**Purpose: Direct access to individual snippets with size control**\n"
+                "- Use snippet_id to get a specific snippet directly\n"
+                "- Control output size with max_tokens parameter\n"
+                "- Supports chunked reading for large snippets\n\n"
                 "**Features:**\n"
-                "- Get full documentation page from SOURCE URL\n"
+                "- Get full or partial snippet content by ID\n"
+                "- Customize token limit (100-10000 tokens)\n"
+                "- Navigate large snippets with chunk_index\n"
+                "- Automatic truncation with continuation info\n\n"
+                "**Examples:**\n"
+                "- `snippet_id: '24758'` - gets snippet with default 2000 token limit\n"
+                "- `snippet_id: '24758', max_tokens: 500` - gets first 500 tokens\n"
+                "- `snippet_id: '24758', max_tokens: 5000` - gets up to 5000 tokens\n"
+                "- `snippet_id: '24758', chunk_index: 0, max_tokens: 1000` - first 1000-token chunk\n\n"
+                "Returns formatted code snippet with SOURCE URL for documentation.",
+                inputSchema={
+                    "type": "object",
+                    "properties": {
+                        "snippet_id": {
+                            "type": "string",
+                            "description": "The ID of the specific code snippet to retrieve",
+                        },
+                        "max_tokens": {
+                            "type": "integer",
+                            "minimum": 100,
+                            "maximum": 10000,
+                            "default": 2000,
+                            "description": "Maximum tokens to return (100-10000, default: 2000). Useful for controlling context size.",
+                        },
+                        "chunk_index": {
+                            "type": "integer",
+                            "minimum": 0,
+                            "description": "For large snippets, get a specific chunk (0-based). Each chunk size is determined by max_tokens.",
+                        },
+                    },
+                    "required": ["snippet_id"],
+                },
+            ),
+            Tool(
+                name="get_page_markdown",
+                description="Get full documentation from a page URL or snippet ID.\n\n"
+                "**PRIMARY USE: Get complete documentation context after finding code with get_content()**\n\n"
+                "**Two ways to access:**\n"
+                "1. **By URL**: Use SOURCE URL from get_content results\n"
+                "2. **By snippet_id**: Use snippet ID to automatically get the associated document\n\n"
+                "**Features:**\n"
+                "- Get full documentation page from SOURCE URL or snippet ID\n"
                 "- Search WITHIN a specific page using 'query' parameter\n"
                 "- Limit content size with max_tokens for summaries\n"
                 "- Chunk large documents for manageable reading\n\n"
                 "**Common workflows:**\n"
                 "1. After get_content: Use SOURCE URL here for full docs\n"
-                "2. Search in page: Add query='search term' to find specific content\n"
-                "3. Get summary: Use max_tokens=500 for brief overview\n"
-                "4. Navigate large docs: Use chunk_index=0,1,2... for pagination\n\n"
+                "2. Direct snippet access: Use snippet_id to get the document containing that snippet\n"
+                "3. Search in page: Add query='search term' to find specific content\n"
+                "4. Get summary: Use max_tokens=500 for brief overview\n"
+                "5. Navigate large docs: Use chunk_index=0,1,2... for pagination\n\n"
                 "**Examples:**\n"
-                "- `url: 'https://react.dev/reference/useState'` - get full page\n"
+                "- `url: 'https://react.dev/reference/useState'` - get full page by URL\n"
+                "- `snippet_id: '12345'` - get document containing snippet 12345\n"
                 "- `url: '...', query: 'dependencies'` - search for 'dependencies' in that page\n"
-                "- `url: '...', max_tokens: 1000` - get first 1000 tokens only\n"
+                "- `snippet_id: '12345', max_tokens: 1000` - get first 1000 tokens from snippet's document\n"
                 "- `url: '...', chunk_index: 0` - get first chunk of large document\n\n"
-                "**Note:** The query parameter searches WITHIN this single document only, not across all docs.",
+                "**Note:** Provide either 'url' OR 'snippet_id', not both. The query parameter searches WITHIN this single document only, not across all docs.",
                 inputSchema={
                     "type": "object",
                     "properties": {
                         "url": {
                             "type": "string",
                             "description": "The URL of the documentation page (typically from SOURCE field in get_content results)",
+                        },
+                        "snippet_id": {
+                            "type": "string",
+                            "description": "The ID of a code snippet to get its associated document",
                         },
                         "query": {
                             "type": "string",
@@ -279,15 +273,73 @@ class MCPServer:
                         },
 
                     },
-                    "required": ["url"],
+                    "required": [],
                 },
             ),
         ]
 
+    def get_tool_definitions(self) -> list[dict[str, Any]]:
+        """Get tool definitions in a format suitable for HTTP API."""
+        return [
+            {"name": tool.name, "description": tool.description, "input_schema": tool.inputSchema}
+            for tool in self._build_tool_definitions()
+        ]
+
+    async def execute_tool(self, name: str, arguments: dict[str, Any]) -> Any:
+        """Execute a tool by name with given arguments."""
+        logger.debug(f"MCPServer.execute_tool called with name='{name}', arguments={arguments}")
+
+        if name == "init_crawl":
+            return await self.tools.init_crawl(
+                name=arguments.get("name"),
+                start_urls=arguments.get("start_urls"),
+                max_depth=arguments.get("max_depth", 1),
+                domain_filter=arguments.get("domain_filter"),
+                metadata=arguments.get("metadata", {}),
+                max_concurrent_crawls=arguments.get("max_concurrent_crawls"),
+            )
+        elif name == "search_libraries":
+            return await self.tools.search_libraries(
+                query=arguments.get("query", ""),
+                limit=arguments.get("limit", 20),
+                page=arguments.get("page", 1),
+            )
+        elif name == "get_content":
+            return await self.tools.get_content(
+                library_id=arguments.get("library_id"),
+                query=arguments.get("query"),
+                limit=arguments.get("limit", 20),
+                page=arguments.get("page", 1),
+                search_mode=arguments.get("search_mode", "code"),
+            )
+        elif name == "get_snippet":
+            return await self.tools.get_snippet(
+                snippet_id=arguments.get("snippet_id"),
+                max_tokens=arguments.get("max_tokens"),
+                chunk_index=arguments.get("chunk_index"),
+            )
+        elif name == "get_page_markdown":
+            return await self.tools.get_page_markdown(
+                url=arguments.get("url"),
+                snippet_id=arguments.get("snippet_id"),
+                query=arguments.get("query"),
+                max_tokens=arguments.get("max_tokens"),
+                chunk_index=arguments.get("chunk_index"),
+            )
+        else:
+            available_tools = [tool.name for tool in self._build_tool_definitions()]
+            logger.error(f"Unknown tool requested: '{name}'. Available tools: {available_tools}")
+            raise ValueError(
+                f"Unknown tool: '{name}'. Available tools: {', '.join(available_tools)}"
+            )
+
+    def _register_handlers(self) -> None:
+        """Register MCP tool handlers."""
+
         @self.server.list_tools()
         async def list_tools() -> list[Tool]:
             """List available MCP tools."""
-            return self._tool_definitions
+            return self._build_tool_definitions()
 
         @self.server.call_tool()
         async def call_tool(name: str, arguments: dict[str, Any]) -> list[TextContent]:

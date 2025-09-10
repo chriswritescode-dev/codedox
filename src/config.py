@@ -149,6 +149,29 @@ class SearchConfig(BaseSettings):
     markdown_fallback_threshold: int = 5  # Trigger markdown search when direct results < this
     markdown_fallback_enabled: bool = True  # Enable/disable markdown fallback
     markdown_fallback_doc_limit: int = 10  # Max documents to search via markdown
+    
+    # Snippet size limits for MCP get_content
+    max_single_snippet_tokens: int = 2000  # Max tokens when returning single snippet
+    max_multi_snippet_tokens: int = 500  # Max tokens per snippet when returning multiple
+
+
+class TokenConfig(BaseSettings):
+    """Token-related configuration using tiktoken."""
+    
+    model_config = SettingsConfigDict(env_prefix="TOKEN_", extra="allow")
+    
+    # Tiktoken encoding model
+    encoding_model: str = "cl100k_base"  # GPT-4/3.5-turbo encoding
+    
+    # Chunking configuration
+    chunk_size_tokens: int = 2000  # Tokens per chunk for large snippets
+    
+    # Truncation preferences
+    truncation_newline_threshold: float = 0.8  # Look for newline in last 20% of text
+    prefer_line_break_truncation: bool = True  # Prefer truncating at line boundaries
+    
+    # Validation limits
+    max_chunk_index: int = 10000  # Maximum allowed chunk index
 
 
 class APIConfig(BaseSettings):
@@ -267,6 +290,7 @@ class Settings(BaseSettings):
         self.crawling = CrawlingConfig()
         self.code_extraction = CodeExtractionConfig()
         self.search = SearchConfig()
+        self.token = TokenConfig()
         self.api = APIConfig()
         self.mcp_auth = MCPAuthConfig()
         self.upload = UploadConfig()

@@ -8,12 +8,16 @@ CodeDox provides Model Context Protocol (MCP) tools for AI assistants to search 
 The easiest way to use CodeDox with AI assistants is via HTTP when the API server is running:
 
 ```bash
-# Start the API server
+# Start the API server (includes Web UI + MCP HTTP endpoints)
 python cli.py serve
 
-# MCP endpoint is now available at:
+# MCP tools are now available at:
 http://localhost:8000/mcp
 ```
+
+**Supported MCP Transports:**
+- **Streamable HTTP** (MCP 2025-03-26 spec) - Recommended for modern AI assistants
+- **Server-Sent Events (SSE)** (MCP 2024-11-05) - Legacy support
 
 ### Claude Code Configuration
 Add CodeDox to your Claude Code MCP settings (`.claude_code/config.json` or through the UI):
@@ -23,15 +27,22 @@ Add CodeDox to your Claude Code MCP settings (`.claude_code/config.json` or thro
   "mcpServers": {
     "codedox": {
       "url": "http://localhost:8000/mcp",
-      "transport": "sse"
+      "transport": "streamable"
     }
   }
 }
 ```
 
-Or using the Claude CLI:
-```bash
-claude mcp add-json codedox '{"type":"sse","url":"http://localhost:8000/mcp"}'
+Alternative for legacy SSE transport:
+```json
+{
+  "mcpServers": {
+    "codedox": {
+      "url": "http://localhost:8000/mcp/v1/sse",
+      "transport": "sse"
+    }
+  }
+}
 ```
 
 ## Available MCP Tools
@@ -90,7 +101,7 @@ Find available libraries in the database:
 **Returns:** List of matching libraries with IDs, names, descriptions, and snippet counts.
 
 ### 3. get_content
-Retrieve code snippets from a specific library:
+Retrieve code snippets from a specific library with enhanced search modes:
 
 ```json
 {
@@ -99,7 +110,8 @@ Retrieve code snippets from a specific library:
     "library_id": "nextjs",
     "query": "authentication middleware",
     "limit": 20,
-    "page": 1
+    "page": 1,
+    "search_mode": "enhanced"
   }
 }
 ```
@@ -109,31 +121,96 @@ Retrieve code snippets from a specific library:
 - `query`: Search within library content (optional)
 - `limit`: Results per page (default: 20, max: 100)
 - `page`: Page number for pagination (default: 1)
+- `search_mode`: Search strategy:
+  - `"code"` (default): Direct code search with markdown fallback for <5 results
+  - `"enhanced"`: Always searches markdown docs to find ALL related snippets
 
-**Returns:** Formatted code snippets with titles, descriptions, language, and source URLs.
+**Returns:** Formatted code snippets with titles, descriptions, language, and **SOURCE URLs** for full documentation access.
 
-### 4. get_page_markdown
-Get the full markdown content of a documentation page:
+### 4. get_page_markdown ✨
+Get the full markdown content of a documentation page for complete context:
 
 ```json
 {
   "name": "get_page_markdown",
   "arguments": {
     "url": "https://nextjs.org/docs/app/building-your-application/routing",
+    "query": "middleware",
     "max_tokens": 4000,
-    "chunk_index": 0,
-    "chunk_size": 4000
+    "chunk_index": 0
+  }
+}
+```
+
+**Alternative: Access by snippet ID**
+```json
+{
+  "name": "get_page_markdown",
+  "arguments": {
+    "snippet_id": "12345",
+    "max_tokens": 2000
   }
 }
 ```
 
 **Parameters:**
-- `url`: Documentation page URL (typically from snippet results)
-- `max_tokens`: Maximum tokens to return (optional)
-- `chunk_index`: For paginated content (optional)
-- `chunk_size`: Size of each chunk (default: 4000)
+- `url`: Documentation page URL (typically from SOURCE field in get_content results) 
+- `snippet_id`: Alternative - get document containing this specific snippet
+- `query`: Optional search within this specific document only (highlights matches)
+- `max_tokens`: Limit response tokens (default: 2048, useful for summaries)
+- `chunk_index`: Navigate large documents (0-based pagination)
 
-**Returns:** Full markdown content of the documentation page for complete context.
+**Key Features:**
+- **Complete Context**: Get full documentation page, not just code snippets
+- **In-Page Search**: Use `query` parameter to search within specific documents
+- **Smart Chunking**: Large documents automatically chunked with overlap
+- **Token Management**: Control response size for optimal context usage
+
+**Returns:** Full markdown content with metadata, search highlights, and pagination info.
+
+### 5. get_snippet
+Get a specific code snippet by its ID with flexible token management:
+
+```json
+{
+  "name": "get_snippet",
+  "arguments": {
+    "snippet_id": "12345",
+    "max_tokens": 2000,
+    "chunk_index": 0
+  }
+}
+```
+
+**Parameters:**
+- `snippet_id`: The specific snippet ID to retrieve
+- `max_tokens`: Token limit (100-10000, default: 2000)
+- `chunk_index`: Navigate large snippets (0-based)
+
+**Features:**
+- **Direct Access**: Get specific snippets when you know the exact ID
+- **Flexible Sizing**: Control output size from 100 to 10,000 tokens
+- **Smart Chunking**: Large snippets automatically chunked with navigation
+- **Full Metadata**: Includes title, description, language, and source URL
+
+**Returns:** Complete snippet with metadata and smart token management.
+
+## 🚀 What's New in MCP Integration
+
+### HTTP-First Architecture
+- **No Setup Required**: MCP tools instantly available when API server runs
+- **Modern Transport**: Streamable HTTP (MCP 2025-03-26 spec) as primary method
+- **Unified Server**: Single `python cli.py serve` command starts everything
+
+### Enhanced Search & Documentation Access
+- **Enhanced Search Mode**: `search_mode: "enhanced"` finds ALL related snippets via markdown search
+- **Full Documentation Access**: New `get_page_markdown` tool provides complete context from any SOURCE URL
+- **Smart Token Management**: Configurable limits, chunking, and pagination for optimal AI context usage
+
+### Complete AI Assistant Workflow
+1. **Find** libraries with fuzzy matching
+2. **Search** code with enhanced modes  
+3. **Access** full documentation for complete context
 
 ## Direct API Access
 You can also interact with MCP tools directly via REST API:
@@ -147,7 +224,8 @@ curl -X POST http://localhost:8000/mcp/execute/get_content \
   -H "Content-Type: application/json" \
   -d '{
     "library_id": "nextjs",
-    "query": "routing",
+    "query": "routing", 
+    "search_mode": "enhanced",
     "limit": 10
   }'
 ```
@@ -185,21 +263,24 @@ curl -H "Authorization: Bearer your-secret-token" \
 
 ## Usage Examples
 
-### Finding and Using Documentation
-1. Search for available libraries:
-   ```
-   Use search_libraries with query "react"
-   ```
+### Complete Workflow for AI Assistants
+1. **Find Libraries**: Use `search_libraries` with query like "react"
 
-2. Get code snippets from a library:
-   ```
-   Use get_content with library_id from search results
-   ```
+2. **Get Code Snippets**: Use `get_content` with library_id from search results
+   - Each result includes **SOURCE URLs** for full documentation access
+   - Use `search_mode: "enhanced"` for comprehensive results beyond keyword matching
 
-3. Get full page context:
-   ```
-   Use get_page_markdown with URL from snippet results
-   ```
+3. **Get Full Documentation**: Use `get_page_markdown` with SOURCE URLs for complete context
+   - Or use `snippet_id` directly to get the document containing a specific snippet
+   - Use `query` parameter to search within the specific document
+   - Use `max_tokens` for summaries or `chunk_index` for large documents
+
+**Example Workflow:**
+```
+1. search_libraries(query="nextjs") → Returns library info
+2. get_content(library_id="nextjs", query="middleware", search_mode="enhanced") → Returns code snippets with SOURCE URLs
+3. get_page_markdown(url="SOURCE_URL_from_step_2", query="authentication") → Returns full documentation with highlights
+```
 
 ### Starting a New Crawl
 ```
