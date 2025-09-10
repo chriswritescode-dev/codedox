@@ -612,7 +612,6 @@ If you cannot determine the name, respond with "UNKNOWN"."""
         logger.debug(f"Processed {len(code_blocks)} blocks for document {doc.id}: {new_snippet_count} new, {duplicate_count} duplicates")
 
         return new_snippet_count
-        logger.debug(f"Updated existing snippet: {new.title}")
 
 
 

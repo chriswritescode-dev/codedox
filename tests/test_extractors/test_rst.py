@@ -1,6 +1,7 @@
 """Tests for RSTCodeExtractor."""
 
 import pytest
+import asyncio
 
 from src.crawler.extractors.rst import RSTCodeExtractor
 
@@ -8,7 +9,8 @@ from src.crawler.extractors.rst import RSTCodeExtractor
 class TestRSTCodeExtractor:
     """Test the RSTCodeExtractor."""
     
-    def test_extract_code_block_directive(self):
+    @pytest.mark.asyncio
+    async def test_extract_code_block_directive(self):
         """Test extraction of code-block directives."""
         content = """
 Installation
@@ -27,7 +29,7 @@ To install the package, run:
 This will set everything up.
 """
         extractor = RSTCodeExtractor()
-        blocks = extractor.extract_blocks(content)
+        blocks = await extractor.extract_blocks(content)
         
         assert len(blocks) == 1
         assert 'import package' in blocks[0].code
@@ -35,7 +37,8 @@ This will set everything up.
         assert blocks[0].language == 'python'
         assert 'To install the package, run:' in blocks[0].context.description
     
-    def test_extract_literal_block(self):
+    @pytest.mark.asyncio
+    async def test_extract_literal_block(self):
         """Test extraction of literal blocks (::)."""
         content = """
 Configuration
@@ -51,13 +54,14 @@ Create a config file::
 Save it as config.json.
 """
         extractor = RSTCodeExtractor()
-        blocks = extractor.extract_blocks(content)
+        blocks = await extractor.extract_blocks(content)
         
         assert len(blocks) == 1
         assert '"host": "localhost"' in blocks[0].code
         assert blocks[0].language is None  # Literal blocks don't specify language
     
-    def test_skip_single_line_code(self):
+    @pytest.mark.asyncio
+    async def test_skip_single_line_code(self):
         """Test that single-line code is skipped."""
         content = """
 Usage
@@ -72,12 +76,13 @@ Use the ``config.json`` file.
 The inline literal ``myfunction()`` is not extracted.
 """
         extractor = RSTCodeExtractor()
-        blocks = extractor.extract_blocks(content)
+        blocks = await extractor.extract_blocks(content)
         
         # Single line should be skipped
         assert len(blocks) == 0
     
-    def test_extract_multi_line_code(self):
+    @pytest.mark.asyncio
+    async def test_extract_multi_line_code(self):
         """Test extraction of multi-line code blocks."""
         content = """
 Database Schema
@@ -96,13 +101,14 @@ Define your schema:
 This creates the products table.
 """
         extractor = RSTCodeExtractor()
-        blocks = extractor.extract_blocks(content)
+        blocks = await extractor.extract_blocks(content)
         
         assert len(blocks) == 1
         assert 'CREATE TABLE products' in blocks[0].code
         assert blocks[0].language == 'sql'
     
-    def test_underlined_headings(self):
+    @pytest.mark.asyncio
+    async def test_underlined_headings(self):
         """Test different heading styles."""
         content = """
 Main Title
@@ -126,7 +132,7 @@ More content.
         return True
 """
         extractor = RSTCodeExtractor()
-        blocks = extractor.extract_blocks(content)
+        blocks = await extractor.extract_blocks(content)
         
         assert len(blocks) == 2
         # First block should be under Main Title
@@ -134,7 +140,8 @@ More content.
         # Second block under Section Title
         assert 'def section():' in blocks[1].code
     
-    def test_directive_content_extraction(self):
+    @pytest.mark.asyncio
+    async def test_directive_content_extraction(self):
         """Test extraction of content from directives."""
         content = """
 Important Notes
@@ -157,14 +164,15 @@ Important Notes
 The function is critical.
 """
         extractor = RSTCodeExtractor()
-        blocks = extractor.extract_blocks(content)
+        blocks = await extractor.extract_blocks(content)
         
         assert len(blocks) == 1
         desc = blocks[0].context.description
         # Note content should be included
         assert 'important note' in desc
     
-    def test_filter_rst_references(self):
+    @pytest.mark.asyncio
+    async def test_filter_rst_references(self):
         """Test that RST references are filtered."""
         content = """
 Documentation
@@ -180,7 +188,7 @@ See the `API docs <https://example.com>`_ for details.
 Check [#]_ for more info.
 """
         extractor = RSTCodeExtractor()
-        blocks = extractor.extract_blocks(content)
+        blocks = await extractor.extract_blocks(content)
         
         assert len(blocks) == 1
         desc = blocks[0].context.description
@@ -190,7 +198,8 @@ Check [#]_ for more info.
         assert 'https://example.com' not in desc
         assert '[#]_' not in desc
     
-    def test_multiple_blocks_under_heading(self):
+    @pytest.mark.asyncio
+    async def test_multiple_blocks_under_heading(self):
         """Test multiple code blocks under same heading."""
         content = """
 Setup Process
@@ -217,7 +226,7 @@ Then create your app:
 Finally, run it.
 """
         extractor = RSTCodeExtractor()
-        blocks = extractor.extract_blocks(content)
+        blocks = await extractor.extract_blocks(content)
         
         assert len(blocks) == 2
         assert blocks[0].language == 'bash'
@@ -229,7 +238,8 @@ Finally, run it.
         # Second block should mention creating app
         assert 'create your app' in blocks[1].context.description
     
-    def test_code_directive_with_options(self):
+    @pytest.mark.asyncio
+    async def test_code_directive_with_options(self):
         """Test code directive with options."""
         content = """
 Example
@@ -249,7 +259,7 @@ Here's highlighted code:
 The highlighted lines are key.
 """
         extractor = RSTCodeExtractor()
-        blocks = extractor.extract_blocks(content)
+        blocks = await extractor.extract_blocks(content)
         
         assert len(blocks) == 1
         assert 'def example():' in blocks[0].code

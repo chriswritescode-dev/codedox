@@ -1,6 +1,7 @@
 """Tests for HTMLCodeExtractor."""
 
 import pytest
+import asyncio
 
 from src.crawler.extractors.html import HTMLCodeExtractor
 
@@ -8,7 +9,8 @@ from src.crawler.extractors.html import HTMLCodeExtractor
 class TestHTMLCodeExtractor:
     """Test the HTMLCodeExtractor."""
     
-    def test_extract_pre_code_block(self):
+    @pytest.mark.asyncio
+    async def test_extract_pre_code_block(self):
         """Test extraction of <pre><code> blocks."""
         html = """
         <html>
@@ -22,15 +24,16 @@ npm install mongoose</code></pre>
         </html>
         """
         extractor = HTMLCodeExtractor()
-        blocks = extractor.extract_blocks(html)
+        blocks = await extractor.extract_blocks(html)
         
         assert len(blocks) == 1
         assert 'npm install express' in blocks[0].code
         assert 'npm install mongoose' in blocks[0].code
         assert blocks[0].context.title == 'Installation'
-        assert 'To install the package' in blocks[0].context.description
+        assert blocks[0].context.description and 'To install the package' in blocks[0].context.description
     
-    def test_skip_single_line_code(self):
+    @pytest.mark.asyncio
+    async def test_skip_single_line_code(self):
         """Test that single-line <code> blocks are skipped."""
         html = """
         <html>
@@ -44,7 +47,7 @@ app.listen(3000);</code></pre>
         </html>
         """
         extractor = HTMLCodeExtractor()
-        blocks = extractor.extract_blocks(html)
+        blocks = await extractor.extract_blocks(html)
         
         # Only the multi-line pre block should be extracted
         assert len(blocks) == 1
@@ -53,7 +56,8 @@ app.listen(3000);</code></pre>
         assert 'config.json' not in blocks[0].code
         assert 'npm start' not in blocks[0].code
     
-    def test_extract_standalone_multiline_code(self):
+    @pytest.mark.asyncio
+    async def test_extract_standalone_multiline_code(self):
         """Test extraction of multi-line <code> blocks without <pre>."""
         html = """
         <html>
@@ -67,13 +71,14 @@ app.listen(3000);</code></pre>
         </html>
         """
         extractor = HTMLCodeExtractor()
-        blocks = extractor.extract_blocks(html)
+        blocks = await extractor.extract_blocks(html)
         
         assert len(blocks) == 1
         assert 'function hello()' in blocks[0].code
         assert blocks[0].context.title == 'Example'
     
-    def test_nested_heading_detection(self):
+    @pytest.mark.asyncio
+    async def test_nested_heading_detection(self):
         """Test finding headings in nested structures."""
         html = """
         <html>
@@ -92,13 +97,14 @@ api.post('/users')</code></pre>
         </html>
         """
         extractor = HTMLCodeExtractor()
-        blocks = extractor.extract_blocks(html)
+        blocks = await extractor.extract_blocks(html)
         
         assert len(blocks) == 1
         assert blocks[0].context.title == 'API Methods'
         assert 'Call the API' in blocks[0].context.description
     
-    def test_multiple_blocks_under_same_heading(self):
+    @pytest.mark.asyncio
+    async def test_multiple_blocks_under_same_heading(self):
         """Test multiple code blocks under the same heading."""
         html = """
         <html>
@@ -115,7 +121,7 @@ app = Flask(__name__)</code></pre>
         </html>
         """
         extractor = HTMLCodeExtractor()
-        blocks = extractor.extract_blocks(html)
+        blocks = await extractor.extract_blocks(html)
         
         assert len(blocks) == 2
         
@@ -131,7 +137,8 @@ app = Flask(__name__)</code></pre>
         assert blocks[0].context.title == 'Setup Process'
         assert blocks[1].context.title == 'Setup Process'
     
-    def test_skip_button_text(self):
+    @pytest.mark.asyncio
+    async def test_skip_button_text(self):
         """Test that button text is excluded from descriptions."""
         # Test with single-line code that has <3 significant words
         html = """
@@ -147,7 +154,7 @@ app = Flask(__name__)</code></pre>
         </html>
         """
         extractor = HTMLCodeExtractor()
-        blocks = extractor.extract_blocks(html)
+        blocks = await extractor.extract_blocks(html)
         
         assert len(blocks) == 0  # Single line code with <3 significant words should be skipped
         
@@ -165,13 +172,14 @@ console.log("test2");</code></pre>
         </body>
         </html>
         """
-        blocks = extractor.extract_blocks(html)
+        blocks = await extractor.extract_blocks(html)
         assert len(blocks) == 1
         desc = blocks[0].context.description
         assert "Here's the code" in desc
         assert "Copy" not in desc  # Button text should be excluded
     
-    def test_skip_navigation_elements(self):
+    @pytest.mark.asyncio
+    async def test_skip_navigation_elements(self):
         """Test that navigation elements are skipped."""
         html = """
         <html>
@@ -188,7 +196,7 @@ console.log("test2");</code></pre>
         </html>
         """
         extractor = HTMLCodeExtractor()
-        blocks = extractor.extract_blocks(html)
+        blocks = await extractor.extract_blocks(html)
         
         assert len(blocks) == 1
         desc = blocks[0].context.description
@@ -196,7 +204,8 @@ console.log("test2");</code></pre>
         assert 'Home' not in desc
         assert 'Docs' not in desc
     
-    def test_complex_nested_structure(self):
+    @pytest.mark.asyncio
+    async def test_complex_nested_structure(self):
         """Test extraction from complex nested HTML."""
         html = """
         <html>
@@ -220,7 +229,7 @@ npm install express</code></pre>
         </html>
         """
         extractor = HTMLCodeExtractor()
-        blocks = extractor.extract_blocks(html)
+        blocks = await extractor.extract_blocks(html)
         
         assert len(blocks) == 1
         assert 'npm init -y' in blocks[0].code

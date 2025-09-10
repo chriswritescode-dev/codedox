@@ -1,6 +1,7 @@
 """Comprehensive test for code extraction from both markdown and HTML."""
 
 import pytest
+import asyncio
 
 from src.crawler.extractors.markdown import MarkdownCodeExtractor
 from src.crawler.extractors.html import HTMLCodeExtractor
@@ -9,7 +10,8 @@ from src.crawler.extractors.html import HTMLCodeExtractor
 class TestComprehensiveCodeExtraction:
     """Test comprehensive code extraction for both markdown and HTML."""
 
-    def test_markdown_extraction_all_formats(self):
+    @pytest.mark.asyncio
+    async def test_markdown_extraction_all_formats(self):
         """Test markdown extraction handles all CommonMark code block formats."""
         markdown_content = """
 # Test Document
@@ -58,7 +60,7 @@ Regular paragraph before code.
 Regular paragraph after code.
 """
         extractor = MarkdownCodeExtractor()
-        blocks = extractor.extract_blocks(markdown_content)
+        blocks = await extractor.extract_blocks(markdown_content)
         
         # Should find all 6 code blocks
         assert len(blocks) == 6
@@ -77,7 +79,8 @@ Regular paragraph after code.
         c_block = next(b for b in blocks if '#include' in b.code)
         assert '\n\n' in c_block.code or '\n    \n' in c_block.code  # Blank line preserved
 
-    def test_html_extraction_no_duplicates(self):
+    @pytest.mark.asyncio
+    async def test_html_extraction_no_duplicates(self):
         """Test HTML extraction doesn't produce duplicates from nested pre/code."""
         html_content = """
         <html>
@@ -110,7 +113,7 @@ void example3() {}
         """
         
         extractor = HTMLCodeExtractor()
-        blocks = extractor.extract_blocks(html_content, "test.html")
+        blocks = await extractor.extract_blocks(html_content, "test.html")
         
         # Should find exactly 4 blocks, no duplicates
         assert len(blocks) == 4
@@ -125,7 +128,8 @@ void example3() {}
         assert any('const inline' in c for c in contents)
         assert any('example3' in c for c in contents)
 
-    def test_markdown_edge_cases(self):
+    @pytest.mark.asyncio
+    async def test_markdown_edge_cases(self):
         """Test edge cases in markdown extraction."""
         # Test empty code blocks
         content_empty = """
@@ -135,7 +139,7 @@ void example3() {}
     
     """
         extractor = MarkdownCodeExtractor()
-        blocks = extractor.extract_blocks(content_empty)
+        blocks = await extractor.extract_blocks(content_empty)
         assert len(blocks) == 0  # Empty blocks are filtered out
         
         # Test unclosed fence (extracts until end of content)
@@ -145,7 +149,7 @@ def calculate_total(items, tax_rate):
     return sum(items) * (1 + tax_rate)
 """
         extractor = MarkdownCodeExtractor()
-        blocks = extractor.extract_blocks(content_unclosed)
+        blocks = await extractor.extract_blocks(content_unclosed)
         assert len(blocks) == 1  # Unclosed fence extracted until EOF
         assert 'calculate_total' in blocks[0].code
         
@@ -155,5 +159,5 @@ def calculate_total(items, tax_rate):
   pass         # Only 2 spaces
 """
         extractor = MarkdownCodeExtractor()
-        blocks = extractor.extract_blocks(content_mixed)
+        blocks = await extractor.extract_blocks(content_mixed)
         assert len(blocks) == 0  # Less than 4 spaces/tab not extracted

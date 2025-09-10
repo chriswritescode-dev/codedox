@@ -1,6 +1,7 @@
 """Tests for the refactored HTML code extraction algorithm."""
 
 import pytest
+import asyncio
 from src.crawler.extractors.html import HTMLCodeExtractor
 
 
@@ -18,7 +19,8 @@ def assert_not_in_description(text: str, description: str | None) -> None:
 class TestHTMLExtractionRefactor:
     """Test the simplified HTML code extraction approach."""
     
-    def test_simple_heading_paragraph_code(self):
+    @pytest.mark.asyncio
+    async def test_simple_heading_paragraph_code(self):
         """Test simple case: heading → paragraph → code."""
         html = """
         <html>
@@ -31,7 +33,7 @@ class TestHTMLExtractionRefactor:
         """
         
         extractor = HTMLCodeExtractor()
-        blocks = extractor.extract_blocks(html, "test.html")
+        blocks = await extractor.extract_blocks(html, "test.html")
         
         assert len(blocks) == 1
         assert blocks[0].title == "Installation Guide"
@@ -39,7 +41,8 @@ class TestHTMLExtractionRefactor:
         assert "To install the package" in blocks[0].description
         assert "npm install react react-dom my-package" in blocks[0].code
     
-    def test_modern_docs_structure(self):
+    @pytest.mark.asyncio
+    async def test_modern_docs_structure(self):
         """Test modern docs structure like BullMQ."""
         html = """
         <main>
@@ -58,7 +61,7 @@ class TestHTMLExtractionRefactor:
         """
         
         extractor = HTMLCodeExtractor()
-        blocks = extractor.extract_blocks(html, "test.html")
+        blocks = await extractor.extract_blocks(html, "test.html")
         
         assert len(blocks) == 1
         assert blocks[0].title == "Adding jobs in bulk"
@@ -68,7 +71,8 @@ class TestHTMLExtractionRefactor:
         assert_not_in_description("It is possible to add more options", blocks[0].description)
         assert "queue.addBulk" in blocks[0].code
     
-    def test_multiple_code_blocks_one_heading(self):
+    @pytest.mark.asyncio
+    async def test_multiple_code_blocks_one_heading(self):
         """Test multiple code blocks after one heading."""
         html = """
         <div>
@@ -81,7 +85,7 @@ class TestHTMLExtractionRefactor:
         """
         
         extractor = HTMLCodeExtractor()
-        blocks = extractor.extract_blocks(html, "test.html")
+        blocks = await extractor.extract_blocks(html, "test.html")
         
         assert len(blocks) == 2
         
@@ -97,7 +101,8 @@ class TestHTMLExtractionRefactor:
         assert_not_in_description("GET request", blocks[1].description)
         assert "method: 'POST'" in blocks[1].code
     
-    def test_no_heading_found(self):
+    @pytest.mark.asyncio
+    async def test_no_heading_found(self):
         """Test when no heading is found before code."""
         html = """
         <div>
@@ -107,14 +112,15 @@ class TestHTMLExtractionRefactor:
         """
         
         extractor = HTMLCodeExtractor()
-        blocks = extractor.extract_blocks(html, "test.html")
+        blocks = await extractor.extract_blocks(html, "test.html")
         
         assert len(blocks) == 1
         assert blocks[0].title is None
         assert_in_description("documentation without a heading", blocks[0].description)
         assert "console.log" in blocks[0].code
     
-    def test_nested_structure(self):
+    @pytest.mark.asyncio
+    async def test_nested_structure(self):
         """Test deeply nested HTML structure."""
         html = """
         <article>
@@ -139,7 +145,7 @@ class TestHTMLExtractionRefactor:
         """
         
         extractor = HTMLCodeExtractor()
-        blocks = extractor.extract_blocks(html, "test.html")
+        blocks = await extractor.extract_blocks(html, "test.html")
         
         assert len(blocks) == 1
         assert blocks[0].title == "Configuration"
@@ -148,7 +154,8 @@ class TestHTMLExtractionRefactor:
         assert "Add your settings" in blocks[0].description
         assert '"port": 3000' in blocks[0].code
     
-    def test_heading_in_sibling_container(self):
+    @pytest.mark.asyncio
+    async def test_heading_in_sibling_container(self):
         """Test when heading is in a sibling container."""
         html = """
         <div class="doc-section">
@@ -163,14 +170,15 @@ class TestHTMLExtractionRefactor:
         """
         
         extractor = HTMLCodeExtractor()
-        blocks = extractor.extract_blocks(html, "test.html")
+        blocks = await extractor.extract_blocks(html, "test.html")
         
         assert len(blocks) == 1
         assert blocks[0].title == "Database Setup"
         assert "Initialize your database" in blocks[0].description
         assert "createdb myapp" in blocks[0].code
     
-    def test_exclude_content_after_code(self):
+    @pytest.mark.asyncio
+    async def test_exclude_content_after_code(self):
         """Test that content after code block is not included."""
         html = """
         <div>
@@ -183,7 +191,7 @@ class TestHTMLExtractionRefactor:
         """
         
         extractor = HTMLCodeExtractor()
-        blocks = extractor.extract_blocks(html, "test.html")
+        blocks = await extractor.extract_blocks(html, "test.html")
         
         assert len(blocks) == 1
         assert blocks[0].title == "Example Usage"
@@ -191,7 +199,8 @@ class TestHTMLExtractionRefactor:
         assert "After the code block" not in blocks[0].description
         assert "More content after" not in blocks[0].description
     
-    def test_skip_inline_code(self):
+    @pytest.mark.asyncio
+    async def test_skip_inline_code(self):
         """Test that inline code is skipped."""
         html = """
         <div>
@@ -203,14 +212,15 @@ class TestHTMLExtractionRefactor:
         """
         
         extractor = HTMLCodeExtractor()
-        blocks = extractor.extract_blocks(html, "test.html")
+        blocks = await extractor.extract_blocks(html, "test.html")
         
         assert len(blocks) == 1
         assert "batchProcess" in blocks[0].code
         # Inline code should not be extracted as separate block
         assert not any("inline()" in block.code for block in blocks if "inline()" == block.code.strip())
     
-    def test_api_method_extraction(self):
+    @pytest.mark.asyncio
+    async def test_api_method_extraction(self):
         """Test that API method code blocks are properly extracted with title."""
         html = """
         <div class="api-method">
@@ -221,13 +231,14 @@ class TestHTMLExtractionRefactor:
         """
         
         extractor = HTMLCodeExtractor()
-        blocks = extractor.extract_blocks(html, "test.html")
+        blocks = await extractor.extract_blocks(html, "test.html")
         
         assert len(blocks) == 1
         assert blocks[0].title == "POST /api/users"
         assert '"name": "John"' in blocks[0].code and '"email": "john@example.com"' in blocks[0].code
     
-    def test_empty_description(self):
+    @pytest.mark.asyncio
+    async def test_empty_description(self):
         """Test when there's no content between heading and code."""
         html = """
         <div>
@@ -237,7 +248,7 @@ class TestHTMLExtractionRefactor:
         """
         
         extractor = HTMLCodeExtractor()
-        blocks = extractor.extract_blocks(html, "test.html")
+        blocks = await extractor.extract_blocks(html, "test.html")
         
         assert len(blocks) == 1
         assert blocks[0].title == "Quick Example"

@@ -10,13 +10,14 @@ class BaseCodeExtractor(ABC):
     """Abstract base class for all code extractors."""
     
     @abstractmethod
-    def extract_blocks(self, content: str, source_url: str | None = None) -> list[ExtractedCodeBlock]:
+    async def extract_blocks(self, content: str, source_url: str | None = None, batch_size: int = 5) -> list[ExtractedCodeBlock]:
         """
         Extract code blocks with semantic context.
         
         Args:
             content: The source content (markdown, rst, html, etc.)
             source_url: Optional URL of the source
+            batch_size: Number of blocks to process before yielding control (default: 5)
             
         Returns:
             List of extracted code blocks with context

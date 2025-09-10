@@ -1,6 +1,7 @@
 """Tests for MarkdownCodeExtractor."""
 
 import pytest
+import asyncio
 
 from src.crawler.extractors.markdown import MarkdownCodeExtractor
 
@@ -8,7 +9,8 @@ from src.crawler.extractors.markdown import MarkdownCodeExtractor
 class TestMarkdownCodeExtractor:
     """Test the MarkdownCodeExtractor."""
     
-    def test_extract_fenced_code_block(self):
+    @pytest.mark.asyncio
+    async def test_extract_fenced_code_block(self):
         """Test extraction of fenced code blocks."""
         content = """
 # Setting Up
@@ -26,7 +28,7 @@ def setup():
 This will initialize everything.
 """
         extractor = MarkdownCodeExtractor()
-        blocks = extractor.extract_blocks(content)
+        blocks = await extractor.extract_blocks(content)
         
         assert len(blocks) == 1
         assert blocks[0].code.strip() == 'import os\nimport sys\n\ndef setup():\n    print("Setting up...")'
@@ -34,7 +36,8 @@ This will initialize everything.
         assert blocks[0].context.title == 'Setting Up'
         assert 'To set up your project, run:' in blocks[0].context.description
     
-    def test_skip_single_line_code(self):
+    @pytest.mark.asyncio
+    async def test_skip_single_line_code(self):
         """Test that single-line code blocks are skipped."""
         content = """
 # Configuration
@@ -48,12 +51,13 @@ echo "hello"
 The inline code `useState()` is not extracted.
 """
         extractor = MarkdownCodeExtractor()
-        blocks = extractor.extract_blocks(content)
+        blocks = await extractor.extract_blocks(content)
         
         # Only the bash block should be extracted (it's multi-line internally)
         assert len(blocks) == 0  # Single line "echo hello" should be skipped
     
-    def test_extract_multi_line_code(self):
+    @pytest.mark.asyncio
+    async def test_extract_multi_line_code(self):
         """Test extraction of multi-line code blocks."""
         content = """
 # Database Setup
@@ -70,14 +74,15 @@ CREATE TABLE users (
 This creates the users table.
 """
         extractor = MarkdownCodeExtractor()
-        blocks = extractor.extract_blocks(content)
+        blocks = await extractor.extract_blocks(content)
         
         assert len(blocks) == 1
         assert 'CREATE TABLE users' in blocks[0].code
         assert blocks[0].language == 'sql'
         assert blocks[0].context.title == 'Database Setup'
     
-    def test_indented_code_blocks(self):
+    @pytest.mark.asyncio
+    async def test_indented_code_blocks(self):
         """Test extraction of indented code blocks."""
         content = """
 # Example
@@ -92,13 +97,14 @@ Here's an indented code block:
 That was the example.
 """
         extractor = MarkdownCodeExtractor()
-        blocks = extractor.extract_blocks(content)
+        blocks = await extractor.extract_blocks(content)
         
         assert len(blocks) == 1
         assert 'def hello():' in blocks[0].code
         assert blocks[0].language is None  # Indented blocks don't have language
     
-    def test_multiple_code_blocks_under_same_heading(self):
+    @pytest.mark.asyncio
+    async def test_multiple_code_blocks_under_same_heading(self):
         """Test multiple code blocks under the same heading."""
         content = """
 # Setup Guide
@@ -122,7 +128,7 @@ app.listen(3000);
 Finally, run it.
 """
         extractor = MarkdownCodeExtractor()
-        blocks = extractor.extract_blocks(content)
+        blocks = await extractor.extract_blocks(content)
         
         assert len(blocks) == 2
         assert blocks[0].language == 'bash'
@@ -134,7 +140,8 @@ Finally, run it.
         # Second block should have description about creating server
         assert 'create your server' in blocks[1].context.description
     
-    def test_filter_markdown_noise(self):
+    @pytest.mark.asyncio
+    async def test_filter_markdown_noise(self):
         """Test that markdown links and images are filtered."""
         content = """
 # Documentation
@@ -149,7 +156,7 @@ def api_call():
 See more at [GitHub](https://github.com).
 """
         extractor = MarkdownCodeExtractor()
-        blocks = extractor.extract_blocks(content)
+        blocks = await extractor.extract_blocks(content)
         
         assert len(blocks) == 1
         desc = blocks[0].context.description
@@ -159,7 +166,8 @@ See more at [GitHub](https://github.com).
         assert 'https://example.com' not in desc
         assert 'logo.png' not in desc
     
-    def test_setext_headings(self):
+    @pytest.mark.asyncio
+    async def test_setext_headings(self):
         """Test Setext-style headings (underlined)."""
         content = """
 Main Title
@@ -178,13 +186,14 @@ Subtitle
 More content here.
 """
         extractor = MarkdownCodeExtractor()
-        blocks = extractor.extract_blocks(content)
+        blocks = await extractor.extract_blocks(content)
         
         assert len(blocks) == 1
         assert blocks[0].context.title == 'Main Title'
         assert 'under the main title' in blocks[0].context.description
     
-    def test_frontmatter_removal(self):
+    @pytest.mark.asyncio
+    async def test_frontmatter_removal(self):
         """Test that frontmatter is removed."""
         content = """---
 title: My Page
@@ -201,7 +210,7 @@ print("world")
 ```
 """
         extractor = MarkdownCodeExtractor()
-        blocks = extractor.extract_blocks(content)
+        blocks = await extractor.extract_blocks(content)
         
         assert len(blocks) == 1
         assert blocks[0].context.title == 'Actual Content'

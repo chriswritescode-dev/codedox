@@ -1,5 +1,7 @@
 """Tests for HTML code extraction functionality."""
 
+import asyncio
+import pytest
 from bs4 import BeautifulSoup
 
 from src.crawler.extractors.html import HTMLCodeExtractor
@@ -12,7 +14,8 @@ class TestHTMLCodeExtractor:
         """Set up test fixtures."""
         self.extractor = HTMLCodeExtractor()
 
-    def test_extract_code_from_pre_tags(self):
+    @pytest.mark.asyncio
+    async def test_extract_code_from_pre_tags(self):
         """Test extracting code from <pre> tags."""
         html = """
         <html>
@@ -25,12 +28,13 @@ class TestHTMLCodeExtractor:
         """
         BeautifulSoup(html, 'html.parser')
 
-        blocks = self.extractor.extract_blocks(html, "https://test.com")
+        blocks = await self.extractor.extract_blocks(html, "https://test.com")
 
         assert len(blocks) >= 1
         assert "function hello()" in blocks[0].code
 
-    def test_extract_code_from_code_tags(self):
+    @pytest.mark.asyncio
+    async def test_extract_code_from_code_tags(self):
         """Test extracting code from <code> tags inside <pre>."""
         html = """
         <html>
@@ -40,12 +44,13 @@ class TestHTMLCodeExtractor:
         </html>
         """
 
-        blocks = self.extractor.extract_blocks(html, "https://test.com")
+        blocks = await self.extractor.extract_blocks(html, "https://test.com")
 
         assert len(blocks) >= 1
         assert "const userData: UserType = getUserData(userId);" in blocks[0].code
 
-    def test_language_detection_typescript(self):
+    @pytest.mark.asyncio
+    async def test_language_detection_typescript(self):
         """Test TypeScript language detection."""
         html = """
         <pre><code>interface User {
@@ -53,22 +58,24 @@ class TestHTMLCodeExtractor:
     age: number;
 }</code></pre>
         """
-        blocks = self.extractor.extract_blocks(html, "https://test.com")
+        blocks = await self.extractor.extract_blocks(html, "https://test.com")
 
         assert len(blocks) >= 1
 
-    def test_language_detection_javascript(self):
+    @pytest.mark.asyncio
+    async def test_language_detection_javascript(self):
         """Test JavaScript language detection."""
         html = """
         <pre><code>export function calculate(a, b) {
     return a + b;
 }</code></pre>
         """
-        blocks = self.extractor.extract_blocks(html, "https://test.com")
+        blocks = await self.extractor.extract_blocks(html, "https://test.com")
 
         assert len(blocks) >= 1
 
-    def test_language_detection_python(self):
+    @pytest.mark.asyncio
+    async def test_language_detection_python(self):
         """Test Python language detection."""
         html = """
         <pre><code>def fibonacci(n):
@@ -76,22 +83,24 @@ class TestHTMLCodeExtractor:
         return n
     return fibonacci(n-1) + fibonacci(n-2)</code></pre>
         """
-        blocks = self.extractor.extract_blocks(html, "https://test.com")
+        blocks = await self.extractor.extract_blocks(html, "https://test.com")
 
         assert len(blocks) >= 1
 
-    def test_language_detection_bash(self):
+    @pytest.mark.asyncio
+    async def test_language_detection_bash(self):
         """Test Bash language detection."""
         html = """
         <pre><code>#!/bin/bash
 echo "Hello World"
 ls -la</code></pre>
         """
-        blocks = self.extractor.extract_blocks(html, "https://test.com")
+        blocks = await self.extractor.extract_blocks(html, "https://test.com")
 
         assert len(blocks) >= 1
 
-    def test_language_detection_json(self):
+    @pytest.mark.asyncio
+    async def test_language_detection_json(self):
         """Test JSON language detection."""
         html = """
         <pre><code>{
@@ -99,11 +108,12 @@ ls -la</code></pre>
     "version": "1.0.0"
 }</code></pre>
         """
-        blocks = self.extractor.extract_blocks(html, "https://test.com")
+        blocks = await self.extractor.extract_blocks(html, "https://test.com")
 
         assert len(blocks) >= 1
 
-    def test_language_detection_css_import(self):
+    @pytest.mark.asyncio
+    async def test_language_detection_css_import(self):
         """Test CSS language detection with @import statement."""
         html = """
         <pre><code>@import "tailwindcss";
@@ -111,11 +121,12 @@ body {
     margin: 0;
 }</code></pre>
         """
-        blocks = self.extractor.extract_blocks(html, "https://test.com")
+        blocks = await self.extractor.extract_blocks(html, "https://test.com")
 
         assert len(blocks) >= 1
 
-    def test_skip_short_code_blocks(self):
+    @pytest.mark.asyncio
+    async def test_skip_short_code_blocks(self):
         """Test that very short code blocks are skipped."""
         html = """
         <html>
@@ -127,12 +138,13 @@ body {
             </body>
         </html>
         """
-        blocks = self.extractor.extract_blocks(html, "https://test.com")
+        blocks = await self.extractor.extract_blocks(html, "https://test.com")
 
         assert len(blocks) >= 1
         assert "longEnoughFunction" in blocks[0].code
 
-    def test_extract_surrounding_context(self):
+    @pytest.mark.asyncio
+    async def test_extract_surrounding_context(self):
         """Test extraction of surrounding context."""
         html = """
         <html>
@@ -146,7 +158,7 @@ body {
             </body>
         </html>
         """
-        blocks = self.extractor.extract_blocks(html, "https://test.com")
+        blocks = await self.extractor.extract_blocks(html, "https://test.com")
 
         assert len(blocks) >= 1
         # Check that context is extracted
@@ -154,7 +166,8 @@ body {
         assert blocks[0].description is not None
         assert "This function handles user login" in blocks[0].description
 
-    def test_stats_tracking(self):
+    @pytest.mark.asyncio
+    async def test_stats_tracking(self):
         """Test that statistics are properly tracked."""
         html = """
         <html>
@@ -166,12 +179,13 @@ body {
         """
         BeautifulSoup(html, 'html.parser')
 
-        blocks = self.extractor.extract_blocks(html, "https://test.com")
+        blocks = await self.extractor.extract_blocks(html, "https://test.com")
 
         assert len(blocks) >= 2
         assert self.extractor.stats['total_blocks'] >= 2
 
-    def test_extract_from_complex_nested_structure(self):
+    @pytest.mark.asyncio
+    async def test_extract_from_complex_nested_structure(self):
         """Test extraction from complex nested HTML structure."""
         html = """
         <html>
@@ -190,12 +204,13 @@ body {
             </body>
         </html>
         """
-        blocks = self.extractor.extract_blocks(html, "https://test.com")
+        blocks = await self.extractor.extract_blocks(html, "https://test.com")
 
         assert len(blocks) >= 1
         assert "ApiResponse" in blocks[0].code
 
-    def test_handle_empty_code_blocks(self):
+    @pytest.mark.asyncio
+    async def test_handle_empty_code_blocks(self):
         """Test handling of empty or whitespace-only code blocks."""
         html = """
         <html>
@@ -209,7 +224,7 @@ body {
             </body>
         </html>
         """
-        blocks = self.extractor.extract_blocks(html, "https://test.com")
+        blocks = await self.extractor.extract_blocks(html, "https://test.com")
 
         # Only the valid function should be extracted
         assert len(blocks) >= 1

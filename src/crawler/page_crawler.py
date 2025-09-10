@@ -659,8 +659,11 @@ class PageCrawler:
             # Use HTML extraction
             logger.info(f"Using HTML extraction for {result.url}")
             
+            # Get batch size from job config (matches max_concurrent_crawls)
+            batch_size = job_config.get("max_concurrent_crawls", 5) if job_config else 5
+            
             # Extract code blocks from HTML content
-            extracted_blocks = self.html_extractor.extract_blocks(html_content, result.url)
+            extracted_blocks = await self.html_extractor.extract_blocks(html_content, result.url, batch_size=batch_size)
             
             # Use ExtractedCodeBlock directly
             html_blocks.extend(extracted_blocks)

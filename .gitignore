@@ -8,6 +8,7 @@ build/
 develop-eggs/
 demo/
 dist/
+tmp/
 site/
 downloads/
 eggs/
