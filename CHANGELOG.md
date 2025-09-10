@@ -5,6 +5,17 @@ All notable changes to CodeDox will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## 0.3.2 - 2025-09-10
+
+### Added
+- get_snippet() tool for direct snippet retrieval with token management
+- Token utilities for smart truncation and chunking of large content
+- Validation utilities for input sanitization and security
+
+### Improved
+- Search engine with better pagination and markdown fallback logic
+- Documentation updated to emphasize HTTP MCP endpoints and enhanced workflows
+
 ## 0.3.1 - 2025-09-09
 
 ### 🔧 Performance Improvements
