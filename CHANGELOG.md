@@ -5,6 +5,21 @@ All notable changes to CodeDox will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## 0.3.1 - 2025-09-09
+
+### 🔧 Performance Improvements
+
+**Large Document Processing**
+- Made code extractors async with batch processing to prevent blocking
+- Added batch_size parameter to control processing intervals (default: 5)
+- Optimized HTML element traversal for better performance with large documents
+
+**Code Extraction Engine**
+- Updated all extractors (HTML, Markdown, RST) to use async/await pattern
+- Added performance monitoring for large document processing
+- Improved memory efficiency during code block extraction
+- Enhanced error handling for timeout scenarios
+
 ## 0.3.0 - 2025-09-07
 
 ### 🚀 Major Features & Improvements
