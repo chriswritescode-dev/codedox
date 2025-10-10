@@ -368,7 +368,7 @@ async def reload_settings() -> dict[str, str]:
 
 
 class TestLLMRequest(BaseModel):
-    api_key: str = Field(..., description="API key to test")
+    api_key: str | None = Field(None, description="API key to test (optional, uses .env if not provided)")
     base_url: str | None = Field(None, description="Base URL (optional)")
     model: str = Field(default="gpt-4o-mini", description="Model name")
     extra_params: str = Field(default="{}", description="Extra parameters JSON")
@@ -383,8 +383,21 @@ async def test_llm_connection(request: TestLLMRequest) -> dict[str, Any]:
         
         start_time = time.time()
         
+        # Use provided API key or fall back to settings
+        api_key = request.api_key
+        if not api_key or '••••' in api_key:
+            settings = get_settings()
+            api_key = settings.code_extraction.llm_api_key.get_secret_value()
+        
+        if not api_key:
+            return {
+                "status": "error",
+                "message": "No API key configured. Please set CODE_LLM_API_KEY in .env or provide one in settings.",
+                "error": "Missing API key",
+            }
+        
         client = OpenAI(
-            api_key=request.api_key,
+            api_key=api_key,
             base_url=request.base_url if request.base_url else None,
         )
         
