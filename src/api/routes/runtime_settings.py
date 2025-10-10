@@ -1,3 +1,4 @@
+import json
 import logging
 from typing import Any
 
@@ -39,6 +40,11 @@ SETTING_METADATA = {
             "default": 1000,
             "min": 100,
             "max": 10000,
+        },
+        "CODE_LLM_EXTRA_PARAMS": {
+            "type": "json",
+            "description": "Custom JSON parameters for LLM requests (e.g., {\"temperature\": 0.7, \"extra_body\": {\"chat_template_kwargs\": {\"enable_thinking\": false}}})",
+            "default": "{}",
         },
     },
     "crawling": {
@@ -307,6 +313,15 @@ async def update_setting(
                 status_code=400, detail=f"Value must be one of: {', '.join(metadata['options'])}"
             )
     
+    elif metadata["type"] == "json":
+        if isinstance(value, str):
+            try:
+                json.loads(value)
+            except json.JSONDecodeError as e:
+                raise HTTPException(status_code=400, detail=f"Invalid JSON format: {str(e)}")
+        elif not isinstance(value, dict):
+            raise HTTPException(status_code=400, detail="Value must be a JSON string or object")
+    
     runtime = get_runtime_settings()
     runtime.set(key, value, category)
     
@@ -356,6 +371,7 @@ class TestLLMRequest(BaseModel):
     api_key: str = Field(..., description="API key to test")
     base_url: str | None = Field(None, description="Base URL (optional)")
     model: str = Field(default="gpt-4o-mini", description="Model name")
+    extra_params: str = Field(default="{}", description="Extra parameters JSON")
 
 
 @router.post("/settings/test-llm")
@@ -372,11 +388,27 @@ async def test_llm_connection(request: TestLLMRequest) -> dict[str, Any]:
             base_url=request.base_url if request.base_url else None,
         )
         
-        response = client.chat.completions.create(
-            model=request.model,
-            messages=[{"role": "user", "content": "Hello"}],
-            max_tokens=5,
-        )
+        # Parse extra parameters
+        extra_params = {}
+        try:
+            if request.extra_params and request.extra_params != "{}":
+                extra_params = json.loads(request.extra_params)
+        except json.JSONDecodeError as e:
+            return {
+                "status": "error",
+                "message": "Invalid JSON in extra parameters",
+                "error": str(e),
+            }
+        
+        # Build request parameters
+        request_params = {
+            "model": request.model,
+            "messages": [{"role": "user", "content": "Hello"}],
+            "max_tokens": 5,
+        }
+        request_params.update(extra_params)
+        
+        response = client.chat.completions.create(**request_params)
         
         elapsed_time = time.time() - start_time
         

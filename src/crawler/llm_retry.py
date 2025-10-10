@@ -1,6 +1,7 @@
 """Async retry mechanism for LLM description generation."""
 
 import asyncio
+import json
 import logging
 import os
 
@@ -118,12 +119,29 @@ class LLMDescriptionGenerator:
                         )
                         logger.debug(f"Using LLM model: {model}")
                         logger.info(f"Starting LLM call for code block from {url} (attempt {attempt + 1})")
-                        response = await self.client.chat.completions.create(
-                            model=model,
-                            messages=[{"role": "user", "content": prompt}],
-                            temperature=0.1,
-                            max_tokens=self.settings.code_extraction.llm_max_tokens,
-                        )
+                        
+                        # Parse custom parameters from settings
+                        extra_params = {}
+                        try:
+                            extra_params_str = self.settings.code_extraction.llm_extra_params
+                            if extra_params_str and extra_params_str != "{}":
+                                extra_params = json.loads(extra_params_str)
+                                logger.debug(f"Using custom LLM parameters: {extra_params}")
+                        except (json.JSONDecodeError, AttributeError) as e:
+                            logger.warning(f"Failed to parse llm_extra_params: {e}")
+                        
+                        # Build request parameters
+                        request_params = {
+                            "model": model,
+                            "messages": [{"role": "user", "content": prompt}],
+                            "temperature": 0.1,
+                            "max_tokens": self.settings.code_extraction.llm_max_tokens,
+                        }
+                        
+                        # Merge custom parameters
+                        request_params.update(extra_params)
+                        
+                        response = await self.client.chat.completions.create(**request_params)
 
                         logger.info(f"LLM call completed for code block from {url}")
 

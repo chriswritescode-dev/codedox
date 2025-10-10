@@ -125,6 +125,10 @@ class CodeExtractionConfig(BaseSettings):
     llm_max_tokens: int = Field(
         default=1000, description="Maximum tokens for LLM title and description generation"
     )
+    llm_extra_params: str = Field(
+        default="{}",
+        description="Custom JSON parameters for LLM requests (e.g., temperature, extra_body)",
+    )
     enable_context_extraction: bool = Field(
         default=True, description="Extract surrounding context for code blocks"
     )
