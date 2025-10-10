@@ -7,7 +7,8 @@
     "CODE_LLM_API_KEY": "",
     "CODE_LLM_BASE_URL": null,
     "CODE_LLM_EXTRACTION_MODEL": "gpt-4o-mini",
-    "CODE_LLM_MAX_TOKENS": 1000
+    "CODE_LLM_MAX_TOKENS": 1000,
+    "CODE_LLM_EXTRA_PARAMS": "{}"
   },
   
   "crawling": {

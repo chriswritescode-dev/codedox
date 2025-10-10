@@ -121,6 +121,10 @@ export default function Settings() {
     const apiKey = editedValues['CODE_LLM_API_KEY'] || llmSettings.find(s => s.key === 'CODE_LLM_API_KEY')?.value
     const baseUrl = editedValues['CODE_LLM_BASE_URL'] || llmSettings.find(s => s.key === 'CODE_LLM_BASE_URL')?.value
     const model = editedValues['CODE_LLM_EXTRACTION_MODEL'] || llmSettings.find(s => s.key === 'CODE_LLM_EXTRACTION_MODEL')?.value
+    const extraParams =
+      editedValues["CODE_LLM_EXTRA_PARAMS"] ||
+      llmSettings.find((s) => s.key === "CODE_LLM_EXTRA_PARAMS")?.value ||
+      "{}";
 
     if (!apiKey || apiKey.includes('••••')) {
       toast.error('Please enter a valid API key')
@@ -129,11 +133,16 @@ export default function Settings() {
 
     setTesting(true)
     try {
-      const response = await fetch('/api/settings/test-llm', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ api_key: apiKey, base_url: baseUrl, model }),
-      })
+      const response = await fetch("/api/settings/test-llm", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          api_key: apiKey,
+          base_url: baseUrl,
+          model,
+          extra_params: extraParams,
+        }),
+      });
 
       const result = await response.json()
 
@@ -203,11 +212,43 @@ export default function Settings() {
       )
     }
 
+    if (setting.type === "json") {
+      return (
+        <div className="space-y-2">
+          <div className="flex items-center justify-between">
+            <label className="text-sm font-medium text-foreground">
+              {setting.description}
+            </label>
+            {isModified && (
+              <button
+                onClick={() => handleReset(category, setting.key)}
+                className="text-xs text-muted-foreground hover:text-foreground transition-colors"
+              >
+                Reset
+              </button>
+            )}
+          </div>
+          <textarea
+            value={currentValue || "{}"}
+            onChange={(e) => handleValueChange(setting.key, e.target.value)}
+            placeholder='{"temperature": 0.7, "extra_body": {"chat_template_kwargs": {"enable_thinking": false}}}'
+            rows={4}
+            className="w-full px-3 py-2 bg-background border border-input rounded-md focus:outline-none focus:ring-2 focus:ring-primary text-foreground font-mono text-sm"
+          />
+          <p className="text-xs text-muted-foreground">
+            Enter valid JSON. Example: disable thinking mode for vLLM/SGLang
+          </p>
+        </div>
+      );
+    }
+
     if (setting.options) {
       return (
         <div className="space-y-2">
           <div className="flex items-center justify-between">
-            <label className="text-sm font-medium text-foreground">{setting.description}</label>
+            <label className="text-sm font-medium text-foreground">
+              {setting.description}
+            </label>
             {isModified && (
               <button
                 onClick={() => handleReset(category, setting.key)}
@@ -218,16 +259,18 @@ export default function Settings() {
             )}
           </div>
           <select
-            value={currentValue || ''}
+            value={currentValue || ""}
             onChange={(e) => handleValueChange(setting.key, e.target.value)}
             className="w-full px-3 py-2 bg-background border border-input rounded-md focus:outline-none focus:ring-2 focus:ring-primary text-foreground"
           >
-            {setting.options.map(option => (
-              <option key={option} value={option}>{option}</option>
+            {setting.options.map((option) => (
+              <option key={option} value={option}>
+                {option}
+              </option>
             ))}
           </select>
         </div>
-      )
+      );
     }
 
     return (
