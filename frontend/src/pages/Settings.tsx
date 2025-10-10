@@ -76,6 +76,16 @@ export default function Settings() {
           settings![cat as Category].some(s => s.key === key)
         ) as Category
         
+        // Validate JSON fields before saving
+        const setting = settings![category].find(s => s.key === key)
+        if (setting?.type === 'json' && typeof value === 'string') {
+          try {
+            JSON.parse(value)
+          } catch (e) {
+            throw new Error(`Invalid JSON in ${key}: ${e instanceof Error ? e.message : 'Parse error'}`)
+          }
+        }
+        
         if (!updates[category]) updates[category] = {}
         updates[category][key] = value
       })
@@ -86,7 +96,10 @@ export default function Settings() {
         body: JSON.stringify({ updates }),
       })
 
-      if (!response.ok) throw new Error('Failed to save settings')
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({ detail: 'Unknown error' }))
+        throw new Error(errorData.detail || 'Failed to save settings')
+      }
 
       toast.dismiss(savingToast)
       toast.success('✓ Settings saved successfully', { duration: 3000 })
@@ -241,12 +254,12 @@ export default function Settings() {
           <textarea
             value={currentValue || "{}"}
             onChange={(e) => handleValueChange(setting.key, e.target.value)}
-            placeholder='{"temperature": 0.7, "extra_body": {"chat_template_kwargs": {"enable_thinking": false}}}'
+            placeholder='{"extra_body": {"chat_template_kwargs": {"enable_thinking": false}}}'
             rows={4}
             className="w-full px-3 py-2 bg-background border border-input rounded-md focus:outline-none focus:ring-2 focus:ring-primary text-foreground font-mono text-sm"
           />
           <p className="text-xs text-muted-foreground">
-            Enter valid JSON. Example: disable thinking mode for vLLM/SGLang
+            Valid JSON required. Use <code className="bg-secondary px-1 rounded">:</code> not <code className="bg-secondary px-1 rounded">=</code>, and <code className="bg-secondary px-1 rounded">false</code> not <code className="bg-secondary px-1 rounded">False</code>
           </p>
         </div>
       );
