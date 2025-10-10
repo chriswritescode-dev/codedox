@@ -58,7 +58,14 @@ fi
 # Install Playwright browsers
 echo ""
 echo "🌐 Installing Playwright browsers..."
-crawl4ai-setup
+if command -v crawl4ai-setup &> /dev/null; then
+    crawl4ai-setup
+elif command -v playwright &> /dev/null; then
+    playwright install
+else
+    echo "⚠️  Warning: Could not find crawl4ai-setup or playwright command"
+    echo "   Please run 'playwright install' manually after setup completes"
+fi
 
 # Install frontend dependencies
 if [ -d "frontend" ]; then

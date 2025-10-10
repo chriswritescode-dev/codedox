@@ -286,9 +286,21 @@ class PageCrawler:
                 logger.debug(f"Cancellation stack trace: {traceback.format_exc()}")
             raise
         except Exception as e:
+            error_msg = str(e)
+            
+            if "Executable doesn't exist" in error_msg and "playwright" in error_msg.lower():
+                logger.error("Playwright browsers are not installed. Please run: playwright install")
+                logger.error("Or use the setup script: ./setup.sh")
+                detailed_error = (
+                    "Playwright browsers not installed. "
+                    "Run 'playwright install' or './setup.sh' to install required browsers."
+                )
+                await record_failed_page(job_id, url, detailed_error)
+                raise RuntimeError(detailed_error) from e
+            
             logger.error(f"Error crawling {url}: {e}", exc_info=True)
-            if "cancelled" not in str(e).lower():
-                await record_failed_page(job_id, url, str(e))
+            if "cancelled" not in error_msg.lower():
+                await record_failed_page(job_id, url, error_msg)
             return None
 
     async def crawl_multiple_urls(
@@ -455,15 +467,26 @@ class PageCrawler:
             logger.error(f"AttributeError in multi-URL crawl: {e}", exc_info=True)
             logger.error(f"Error details - Dispatcher type: {type(dispatcher) if 'dispatcher' in locals() else 'Not available'}")
             logger.error(f"Available dispatcher methods: {[method for method in dir(dispatcher) if not method.startswith('_')]} if 'dispatcher' in locals() else 'Not available'")
-            # Record failed URLs
             for url in urls:
                 await record_failed_page(job_id, url, str(e))
             return []
         except Exception as e:
+            error_msg = str(e)
+            
+            if "Executable doesn't exist" in error_msg and "playwright" in error_msg.lower():
+                logger.error("Playwright browsers are not installed. Please run: playwright install")
+                logger.error("Or use the setup script: ./setup.sh")
+                detailed_error = (
+                    "Playwright browsers not installed. "
+                    "Run 'playwright install' or './setup.sh' to install required browsers."
+                )
+                for url in urls:
+                    await record_failed_page(job_id, url, detailed_error)
+                raise RuntimeError(detailed_error) from e
+            
             logger.error(f"Error in multi-URL crawl: {e}", exc_info=True)
-            # Record failed URLs
             for url in urls:
-                await record_failed_page(job_id, url, str(e))
+                await record_failed_page(job_id, url, error_msg)
             return []
 
     async def _is_job_cancelled(self, job_id: str) -> bool:
