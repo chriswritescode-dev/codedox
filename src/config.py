@@ -10,10 +10,19 @@ from pydantic import Field
 from pydantic.types import SecretStr
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
-# Load .env file before anything else
 load_dotenv()
 
 logger = logging.getLogger(__name__)
+
+
+def _get_runtime_override(category: str, key: str) -> Any | None:
+    try:
+        from src.runtime_settings import get_runtime_settings
+        runtime = get_runtime_settings()
+        return runtime.get(key, category)
+    except Exception as e:
+        logger.debug(f"Failed to get runtime override for {key}: {e}")
+        return None
 
 
 class DatabaseConfig(BaseSettings):
@@ -284,7 +293,6 @@ class Settings(BaseSettings):
         """Initialize settings with sub-configurations."""
         super().__init__(**kwargs)
 
-        # Initialize sub-configurations
         self.database = DatabaseConfig()
         self.mcp = MCPConfig()
         self.crawling = CrawlingConfig()
@@ -295,6 +303,45 @@ class Settings(BaseSettings):
         self.mcp_auth = MCPAuthConfig()
         self.upload = UploadConfig()
         self.logging = LoggingConfig()
+        
+        self._apply_runtime_overrides()
+    
+    def _apply_runtime_overrides(self) -> None:
+        try:
+            from src.runtime_settings import get_runtime_settings
+            runtime = get_runtime_settings()
+            overrides = runtime.get_all()
+            
+            for category, settings_dict in overrides.items():
+                if not isinstance(settings_dict, dict):
+                    continue
+                    
+                config_map = {
+                    "llm": self.code_extraction,
+                    "crawling": self.crawling,
+                    "search": self.search,
+                    "security": self.mcp_auth,
+                    "api": self.api,
+                    "advanced": None,
+                }
+                
+                config_obj = config_map.get(category)
+                if config_obj is None:
+                    if category == "advanced":
+                        for key, value in settings_dict.items():
+                            if key.startswith("UPLOAD_"):
+                                setattr(self.upload, key.replace("UPLOAD_", "").lower(), value)
+                            elif key.startswith("LOG_"):
+                                setattr(self.logging, key.replace("LOG_", "").lower(), value)
+                    continue
+                
+                for key, value in settings_dict.items():
+                    attr_name = key.replace(f"{category.upper()}_", "").lower()
+                    if hasattr(config_obj, attr_name):
+                        setattr(config_obj, attr_name, value)
+                        logger.debug(f"Applied runtime override: {category}.{attr_name} = {value}")
+        except Exception as e:
+            logger.warning(f"Failed to apply runtime overrides: {e}")
 
     def setup_logging(self) -> None:
         """Configure logging based on settings."""

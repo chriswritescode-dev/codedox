@@ -14,7 +14,7 @@ from ..constants import __app_name__, __version__
 from ..database import get_db
 from .mcp_routes import router as mcp_router
 from .mcp_streamable import router as mcp_streamable_router
-from .routes import crawl_jobs, search, snippets, sources, statistics, upload
+from .routes import crawl_jobs, runtime_settings, search, snippets, sources, statistics, upload
 from .websocket import websocket_endpoint
 
 # Setup logging
@@ -105,6 +105,7 @@ app.include_router(search.router, prefix="/api", tags=["search"])
 app.include_router(snippets.router, prefix="/api", tags=["snippets"])
 app.include_router(statistics.router, prefix="/api", tags=["statistics"])
 app.include_router(upload.router, prefix="/api", tags=["upload"])
+app.include_router(runtime_settings.router, prefix="/api", tags=["settings"])
 app.include_router(mcp_router, tags=["mcp"])
 app.include_router(mcp_streamable_router, tags=["mcp-streamable"])
 

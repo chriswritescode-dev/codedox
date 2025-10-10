@@ -74,6 +74,7 @@ CL*
 .env.local
 .env.*.local
 config.local.yaml
+config.runtime.json
 
 # Debug scripts
 debug_*.py
