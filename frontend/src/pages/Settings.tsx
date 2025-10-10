@@ -355,7 +355,7 @@ export default function Settings() {
                 <button
                   onClick={handleTestLLM}
                   disabled={testing}
-                  className="flex items-center gap-2 px-4 py-2 bg-white text-foreground border border-border rounded-md hover:bg-secondary/50 disabled:opacity-50 transition-colors"
+                  className="flex items-center gap-2 px-4 py-2 bg-white text-black border border-border rounded-md hover:bg-secondary/50 disabled:opacity-50 transition-colors"
                 >
                   <TestTube2 className="w-4 h-4" />
                   {testing ? 'Testing...' : 'Test Connection'}
