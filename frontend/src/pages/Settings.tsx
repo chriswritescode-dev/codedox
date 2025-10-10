@@ -66,6 +66,8 @@ export default function Settings() {
 
   const handleSave = async () => {
     setSaving(true)
+    const savingToast = toast.loading('Saving settings...')
+    
     try {
       const updates: Record<string, Record<string, any>> = {}
       
@@ -86,11 +88,13 @@ export default function Settings() {
 
       if (!response.ok) throw new Error('Failed to save settings')
 
-      toast.success('Settings saved successfully')
+      toast.dismiss(savingToast)
+      toast.success('✓ Settings saved successfully', { duration: 3000 })
       setEditedValues({})
       await loadSettings()
     } catch (error) {
-      toast.error('Failed to save settings')
+      toast.dismiss(savingToast)
+      toast.error(`✗ Failed to save settings\n${error instanceof Error ? error.message : 'Unknown error'}`, { duration: 5000 })
       console.error(error)
     } finally {
       setSaving(false)
@@ -105,13 +109,13 @@ export default function Settings() {
 
       if (!response.ok) throw new Error('Failed to reset setting')
 
-      toast.success('Setting reset to default')
+      toast.success('✓ Setting reset to default', { duration: 2000 })
       const newEdited = { ...editedValues }
       delete newEdited[key]
       setEditedValues(newEdited)
       await loadSettings()
     } catch (error) {
-      toast.error('Failed to reset setting')
+      toast.error(`✗ Failed to reset setting\n${error instanceof Error ? error.message : 'Unknown error'}`, { duration: 4000 })
       console.error(error)
     }
   }
@@ -124,6 +128,8 @@ export default function Settings() {
     const extraParams = editedValues['CODE_LLM_EXTRA_PARAMS'] || llmSettings.find(s => s.key === 'CODE_LLM_EXTRA_PARAMS')?.value || '{}'
 
     setTesting(true)
+    const loadingToast = toast.loading('Testing LLM connection...')
+    
     try {
       const response = await fetch('/api/settings/test-llm', {
         method: 'POST',
@@ -138,13 +144,25 @@ export default function Settings() {
 
       const result = await response.json()
 
+      toast.dismiss(loadingToast)
+
       if (result.status === 'success') {
-        toast.success(`Connection successful! Latency: ${result.latency_ms}ms`)
+        toast.success(
+          `✓ Connection successful!\nModel: ${result.model}\nLatency: ${result.latency_ms}ms`,
+          { duration: 4000 }
+        )
       } else {
-        toast.error(result.message)
+        toast.error(
+          `✗ Connection failed\n${result.message}`,
+          { duration: 6000 }
+        )
       }
     } catch (error) {
-      toast.error('Failed to test LLM connection')
+      toast.dismiss(loadingToast)
+      toast.error(
+        `✗ Failed to test LLM connection\n${error instanceof Error ? error.message : 'Unknown error'}`,
+        { duration: 6000 }
+      )
       console.error(error)
     } finally {
       setTesting(false)
@@ -355,7 +373,7 @@ export default function Settings() {
                 <button
                   onClick={handleTestLLM}
                   disabled={testing}
-                  className="flex items-center gap-2 px-4 py-2 bg-white text-black border border-border rounded-md hover:bg-secondary/50 disabled:opacity-50 transition-colors"
+                  className="flex items-center gap-2 px-4 py-2 bg-white text-black border border-border rounded-md hover:bg-gray-100 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
                 >
                   <TestTube2 className="w-4 h-4" />
                   {testing ? 'Testing...' : 'Test Connection'}
