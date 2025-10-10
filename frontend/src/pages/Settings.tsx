@@ -157,19 +157,19 @@ export default function Settings() {
     if (setting.type === 'boolean') {
       return (
         <div className="flex items-center justify-between">
-          <label className="flex items-center space-x-3">
+          <label className="flex items-center space-x-3 cursor-pointer">
             <input
               type="checkbox"
               checked={currentValue}
               onChange={(e) => handleValueChange(setting.key, e.target.checked)}
-              className="w-4 h-4 text-blue-600 rounded focus:ring-2 focus:ring-blue-500"
+              className="w-4 h-4 text-primary rounded focus:ring-2 focus:ring-primary"
             />
-            <span className="text-sm font-medium">{setting.description}</span>
+            <span className="text-sm font-medium text-foreground">{setting.description}</span>
           </label>
           {isModified && (
             <button
               onClick={() => handleReset(category, setting.key)}
-              className="text-xs text-gray-500 hover:text-gray-700"
+              className="text-xs text-muted-foreground hover:text-foreground transition-colors"
             >
               Reset
             </button>
@@ -182,11 +182,11 @@ export default function Settings() {
       return (
         <div className="space-y-2">
           <div className="flex items-center justify-between">
-            <label className="text-sm font-medium text-gray-700">{setting.description}</label>
+            <label className="text-sm font-medium text-foreground">{setting.description}</label>
             {isModified && (
               <button
                 onClick={() => handleReset(category, setting.key)}
-                className="text-xs text-gray-500 hover:text-gray-700"
+                className="text-xs text-muted-foreground hover:text-foreground transition-colors"
               >
                 Reset
               </button>
@@ -197,7 +197,7 @@ export default function Settings() {
             value={currentValue || ''}
             onChange={(e) => handleValueChange(setting.key, e.target.value)}
             placeholder="Enter API key"
-            className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+            className="w-full px-3 py-2 bg-background border border-input rounded-md focus:outline-none focus:ring-2 focus:ring-primary text-foreground"
           />
         </div>
       )
@@ -207,11 +207,11 @@ export default function Settings() {
       return (
         <div className="space-y-2">
           <div className="flex items-center justify-between">
-            <label className="text-sm font-medium text-gray-700">{setting.description}</label>
+            <label className="text-sm font-medium text-foreground">{setting.description}</label>
             {isModified && (
               <button
                 onClick={() => handleReset(category, setting.key)}
-                className="text-xs text-gray-500 hover:text-gray-700"
+                className="text-xs text-muted-foreground hover:text-foreground transition-colors"
               >
                 Reset
               </button>
@@ -220,7 +220,7 @@ export default function Settings() {
           <select
             value={currentValue || ''}
             onChange={(e) => handleValueChange(setting.key, e.target.value)}
-            className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+            className="w-full px-3 py-2 bg-background border border-input rounded-md focus:outline-none focus:ring-2 focus:ring-primary text-foreground"
           >
             {setting.options.map(option => (
               <option key={option} value={option}>{option}</option>
@@ -233,11 +233,11 @@ export default function Settings() {
     return (
       <div className="space-y-2">
         <div className="flex items-center justify-between">
-          <label className="text-sm font-medium text-gray-700">{setting.description}</label>
+          <label className="text-sm font-medium text-foreground">{setting.description}</label>
           {isModified && (
             <button
               onClick={() => handleReset(category, setting.key)}
-              className="text-xs text-gray-500 hover:text-gray-700"
+              className="text-xs text-muted-foreground hover:text-foreground transition-colors"
             >
               Reset
             </button>
@@ -254,7 +254,7 @@ export default function Settings() {
           }}
           min={setting.min}
           max={setting.max}
-          className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+          className="w-full px-3 py-2 bg-background border border-input rounded-md focus:outline-none focus:ring-2 focus:ring-primary text-foreground"
         />
       </div>
     )
@@ -263,7 +263,7 @@ export default function Settings() {
   if (loading) {
     return (
       <div className="flex items-center justify-center h-64">
-        <div className="text-gray-500">Loading settings...</div>
+        <div className="text-muted-foreground">Loading settings...</div>
       </div>
     )
   }
@@ -271,7 +271,7 @@ export default function Settings() {
   if (!settings) {
     return (
       <div className="flex items-center justify-center h-64">
-        <div className="text-red-500">Failed to load settings</div>
+        <div className="text-destructive">Failed to load settings</div>
       </div>
     )
   }
@@ -279,71 +279,73 @@ export default function Settings() {
   const hasChanges = Object.keys(editedValues).length > 0
 
   return (
-    <div className="max-w-4xl mx-auto p-6">
-      <div className="mb-6">
-        <h1 className="text-2xl font-bold flex items-center gap-2">
-          <SettingsIcon className="w-6 h-6" />
-          Settings
-        </h1>
-        <p className="text-gray-600 mt-1">Configure CodeDox runtime settings</p>
-      </div>
-
-      <div className="bg-white rounded-lg shadow">
-        <div className="border-b border-gray-200">
-          <nav className="flex -mb-px">
-            {Object.keys(CATEGORY_LABELS).map((cat) => (
-              <button
-                key={cat}
-                onClick={() => setActiveTab(cat as Category)}
-                className={`px-6 py-3 text-sm font-medium border-b-2 ${
-                  activeTab === cat
-                    ? 'border-blue-500 text-blue-600'
-                    : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-                }`}
-              >
-                {CATEGORY_LABELS[cat as Category]}
-              </button>
-            ))}
-          </nav>
+    <div className="flex flex-col h-full py-8">
+      <div className="flex-1 space-y-6 max-w-5xl mx-auto w-full px-4">
+        <div className="mb-6">
+          <h1 className="text-3xl font-bold flex items-center gap-2">
+            <SettingsIcon className="w-8 h-8" />
+            Settings
+          </h1>
+          <p className="text-muted-foreground mt-1">Configure CodeDox runtime settings</p>
         </div>
 
-        <div className="p-6 space-y-6">
-          {settings[activeTab].map((setting) => (
-            <div key={setting.key} className="pb-4 border-b border-gray-100 last:border-0">
-              {renderSettingInput(setting, activeTab)}
+        <div className="bg-secondary/50 rounded-lg overflow-hidden">
+          <div className="border-b border-border">
+            <nav className="flex flex-wrap -mb-px">
+              {Object.keys(CATEGORY_LABELS).map((cat) => (
+                <button
+                  key={cat}
+                  onClick={() => setActiveTab(cat as Category)}
+                  className={`px-6 py-3 text-sm font-medium border-b-2 transition-colors ${
+                    activeTab === cat
+                      ? 'border-primary text-primary'
+                      : 'border-transparent text-muted-foreground hover:text-foreground hover:border-border'
+                  }`}
+                >
+                  {CATEGORY_LABELS[cat as Category]}
+                </button>
+              ))}
+            </nav>
+          </div>
+
+          <div className="p-6 space-y-6">
+            {settings[activeTab].map((setting) => (
+              <div key={setting.key} className="pb-4 border-b border-border/50 last:border-0">
+                {renderSettingInput(setting, activeTab)}
+              </div>
+            ))}
+
+            <div className="flex items-center gap-3 pt-4 flex-wrap">
+              {activeTab === 'llm' && (
+                <button
+                  onClick={handleTestLLM}
+                  disabled={testing}
+                  className="flex items-center gap-2 px-4 py-2 bg-purple-600 text-white rounded-md hover:bg-purple-700 disabled:opacity-50 transition-colors"
+                >
+                  <TestTube2 className="w-4 h-4" />
+                  {testing ? 'Testing...' : 'Test Connection'}
+                </button>
+              )}
+              
+              <button
+                onClick={handleSave}
+                disabled={!hasChanges || saving}
+                className="flex items-center gap-2 px-4 py-2 bg-primary text-primary-foreground rounded-md hover:bg-primary/90 disabled:opacity-50 transition-colors"
+              >
+                <Save className="w-4 h-4" />
+                {saving ? 'Saving...' : 'Save Changes'}
+              </button>
+
+              {hasChanges && (
+                <button
+                  onClick={() => setEditedValues({})}
+                  className="flex items-center gap-2 px-4 py-2 text-muted-foreground hover:text-foreground border border-border rounded-md transition-colors"
+                >
+                  <RotateCcw className="w-4 h-4" />
+                  Discard Changes
+                </button>
+              )}
             </div>
-          ))}
-
-          <div className="flex items-center gap-3 pt-4">
-            {activeTab === 'llm' && (
-              <button
-                onClick={handleTestLLM}
-                disabled={testing}
-                className="flex items-center gap-2 px-4 py-2 bg-purple-600 text-white rounded-md hover:bg-purple-700 disabled:opacity-50"
-              >
-                <TestTube2 className="w-4 h-4" />
-                {testing ? 'Testing...' : 'Test Connection'}
-              </button>
-            )}
-            
-            <button
-              onClick={handleSave}
-              disabled={!hasChanges || saving}
-              className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:opacity-50"
-            >
-              <Save className="w-4 h-4" />
-              {saving ? 'Saving...' : 'Save Changes'}
-            </button>
-
-            {hasChanges && (
-              <button
-                onClick={() => setEditedValues({})}
-                className="flex items-center gap-2 px-4 py-2 text-gray-600 hover:text-gray-800"
-              >
-                <RotateCcw className="w-4 h-4" />
-                Discard Changes
-              </button>
-            )}
           </div>
         </div>
       </div>
