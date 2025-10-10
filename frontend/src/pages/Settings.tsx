@@ -123,11 +123,6 @@ export default function Settings() {
     const model = editedValues['CODE_LLM_EXTRACTION_MODEL'] || llmSettings.find(s => s.key === 'CODE_LLM_EXTRACTION_MODEL')?.value
     const extraParams = editedValues['CODE_LLM_EXTRA_PARAMS'] || llmSettings.find(s => s.key === 'CODE_LLM_EXTRA_PARAMS')?.value || '{}'
 
-    if (!apiKey || apiKey.includes('••••')) {
-      toast.error('Please enter a valid API key')
-      return
-    }
-
     setTesting(true)
     try {
       const response = await fetch('/api/settings/test-llm', {
