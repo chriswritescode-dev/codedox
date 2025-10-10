@@ -178,11 +178,11 @@ def _get_current_value(category: str, key: str) -> Any:
     settings = get_settings()
     
     config_map = {
-        "llm": settings.code_extraction,
-        "crawling": settings.crawling,
-        "search": settings.search,
-        "security": settings.mcp_auth,
-        "api": settings.api,
+        "llm": ("code_extraction", "CODE_"),
+        "crawling": ("crawling", "CRAWL_"),
+        "search": ("search", "SEARCH_"),
+        "security": ("mcp_auth", "MCP_AUTH_"),
+        "api": ("api", "API_"),
     }
     
     if category == "advanced":
@@ -193,11 +193,15 @@ def _get_current_value(category: str, key: str) -> Any:
             attr_name = key.replace("LOG_", "").lower()
             return getattr(settings.logging, attr_name, None)
     
-    config_obj = config_map.get(category)
-    if config_obj:
-        prefix = category.upper() + "_"
+    if category in config_map:
+        config_name, prefix = config_map[category]
+        config_obj = getattr(settings, config_name)
         attr_name = key.replace(prefix, "").lower()
-        return getattr(config_obj, attr_name, None)
+        value = getattr(config_obj, attr_name, None)
+        
+        if hasattr(value, 'get_secret_value'):
+            return value.get_secret_value()
+        return value
     
     return None
 
