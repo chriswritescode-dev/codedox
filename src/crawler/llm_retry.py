@@ -111,11 +111,12 @@ class LLMDescriptionGenerator:
                     try:
                         logger.debug(f"LLM title/description attempt {attempt + 1} for code block from {url}")
 
-                        # Make completion call
+                        # Get fresh settings to pick up runtime updates (self.settings is stale after runtime changes)
+                        fresh_settings = get_settings()
                         model = (
                             self.custom_model
                             if self.custom_model
-                            else self.settings.code_extraction.llm_extraction_model
+                            else fresh_settings.code_extraction.llm_extraction_model
                         )
                         logger.debug(f"Using LLM model: {model}")
                         logger.info(f"Starting LLM call for code block from {url} (attempt {attempt + 1})")
@@ -123,7 +124,7 @@ class LLMDescriptionGenerator:
                         # Parse custom parameters from settings
                         extra_params = {}
                         try:
-                            extra_params_str = self.settings.code_extraction.llm_extra_params
+                            extra_params_str = fresh_settings.code_extraction.llm_extra_params
                             if extra_params_str and extra_params_str != "{}":
                                 extra_params = json.loads(extra_params_str)
                                 logger.debug(f"Using custom LLM parameters: {extra_params}")
@@ -135,7 +136,7 @@ class LLMDescriptionGenerator:
                             "model": model,
                             "messages": [{"role": "user", "content": prompt}],
                             "temperature": 0.1,
-                            "max_tokens": self.settings.code_extraction.llm_max_tokens,
+                            "max_tokens": fresh_settings.code_extraction.llm_max_tokens,
                         }
                         
                         # Merge custom parameters
