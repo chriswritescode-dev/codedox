@@ -121,10 +121,7 @@ export default function Settings() {
     const apiKey = editedValues['CODE_LLM_API_KEY'] || llmSettings.find(s => s.key === 'CODE_LLM_API_KEY')?.value
     const baseUrl = editedValues['CODE_LLM_BASE_URL'] || llmSettings.find(s => s.key === 'CODE_LLM_BASE_URL')?.value
     const model = editedValues['CODE_LLM_EXTRACTION_MODEL'] || llmSettings.find(s => s.key === 'CODE_LLM_EXTRACTION_MODEL')?.value
-    const extraParams =
-      editedValues["CODE_LLM_EXTRA_PARAMS"] ||
-      llmSettings.find((s) => s.key === "CODE_LLM_EXTRA_PARAMS")?.value ||
-      "{}";
+    const extraParams = editedValues['CODE_LLM_EXTRA_PARAMS'] || llmSettings.find(s => s.key === 'CODE_LLM_EXTRA_PARAMS')?.value || '{}'
 
     if (!apiKey || apiKey.includes('••••')) {
       toast.error('Please enter a valid API key')
@@ -133,16 +130,16 @@ export default function Settings() {
 
     setTesting(true)
     try {
-      const response = await fetch("/api/settings/test-llm", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          api_key: apiKey,
-          base_url: baseUrl,
+      const response = await fetch('/api/settings/test-llm', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ 
+          api_key: apiKey, 
+          base_url: baseUrl, 
           model,
-          extra_params: extraParams,
+          extra_params: extraParams 
         }),
-      });
+      })
 
       const result = await response.json()
 
@@ -363,7 +360,7 @@ export default function Settings() {
                 <button
                   onClick={handleTestLLM}
                   disabled={testing}
-                  className="flex items-center gap-2 px-4 py-2 bg-purple-600 text-white rounded-md hover:bg-purple-700 disabled:opacity-50 transition-colors"
+                  className="flex items-center gap-2 px-4 py-2 text-primary border border-primary rounded-md hover:bg-primary/10 disabled:opacity-50 transition-colors"
                 >
                   <TestTube2 className="w-4 h-4" />
                   {testing ? 'Testing...' : 'Test Connection'}
