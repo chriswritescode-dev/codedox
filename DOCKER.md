@@ -85,7 +85,7 @@ CODE_LLM_EXTRACTION_MODEL=gpt-4o-mini
 ### Volumes
 
 - `postgres_data` - PostgreSQL data persistence
-- `./logs:/app/logs` - Application logs
+- `logs_data` - Application logs (Docker volume, prevents permission issues)
 
 ## Common Operations
 
@@ -106,11 +106,15 @@ docker-compose up -d
 # Start specific services
 docker-compose up -d postgres api
 
-# View logs
+# View container logs
 docker-compose logs -f
 
 # View specific service logs
 docker-compose logs -f api
+
+# View application logs (from logs volume)
+./docker-logs.sh -f
+./docker-logs.sh -n 500  # Last 500 lines
 ```
 
 ### Stop Services
@@ -145,8 +149,14 @@ docker-compose exec api curl http://localhost:8000/health
 # Shell into container
 docker-compose exec api /bin/bash
 
-# View real-time logs
+# View real-time container logs
 docker-compose logs -f --tail=100
+
+# View application logs from volume
+./docker-logs.sh -f
+
+# Access logs directory in container
+docker-compose exec api ls -la /app/logs
 ```
 
 ## Upgrading CodeDox
@@ -252,6 +262,32 @@ This script will:
    - PostgreSQL needs time to initialize
    - Wait for health checks before starting dependent services
 
+### Log Permission Issues
+
+If you encounter permission errors with logs when switching between Docker and local development:
+
+**Solution**: Logs are now stored in a Docker volume (`logs_data`) instead of being mounted from the host. This prevents permission conflicts between host and container users.
+
+**Accessing logs**:
+```bash
+# View logs in real-time
+./docker-logs.sh -f
+
+# View last N lines
+./docker-logs.sh -n 500
+
+# For external DB setup
+./docker-logs.sh --external-db -f
+```
+
+**Legacy bind mount (if needed)**:
+If you need direct file access, you can revert to bind mounts by editing docker-compose.yml:
+```yaml
+volumes:
+  - ./logs:/app/logs  # Instead of logs_data:/app/logs
+```
+Note: This may cause permission issues when switching between Docker and local development.
+
 ## Production Considerations
 
 1. **Security**
@@ -261,7 +297,8 @@ This script will:
 
 2. **Persistence**
    - Back up `postgres_data` volume regularly
-   - Consider external PostgreSQL for production
+   - Consider external PostgreSQL for production (see DOCKER-EXTERNAL-DB.md)
+   - Logs stored in `logs_data` volume (use ./docker-logs.sh to access)
 
 3. **Scaling**
    - Use Docker Swarm or Kubernetes for multi-node
