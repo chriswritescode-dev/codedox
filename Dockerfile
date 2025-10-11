@@ -64,8 +64,12 @@ RUN curl -LsSf https://astral.sh/uv/install.sh | sh && \
     mv /root/.local/bin/uvx /usr/local/bin/ && \
     chmod +x /usr/local/bin/uv /usr/local/bin/uvx
 
-# Create non-root user
-RUN useradd -m -u 1000 codedox
+# Install sudo for entrypoint script
+RUN apt-get update && apt-get install -y sudo && rm -rf /var/lib/apt/lists/*
+
+# Create non-root user and configure sudo
+RUN useradd -m -u 1000 codedox && \
+    echo "codedox ALL=(ALL) NOPASSWD: /bin/chown, /bin/chmod" >> /etc/sudoers
 
 # Set working directory
 WORKDIR /app
