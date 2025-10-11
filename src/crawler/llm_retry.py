@@ -1,6 +1,7 @@
 """Async retry mechanism for LLM description generation."""
 
 import asyncio
+import json
 import logging
 import os
 
@@ -110,25 +111,74 @@ class LLMDescriptionGenerator:
                     try:
                         logger.debug(f"LLM title/description attempt {attempt + 1} for code block from {url}")
 
-                        # Make completion call
+                        # Get fresh settings to pick up runtime updates (self.settings is stale after runtime changes)
+                        fresh_settings = get_settings()
                         model = (
                             self.custom_model
                             if self.custom_model
-                            else self.settings.code_extraction.llm_extraction_model
+                            else fresh_settings.code_extraction.llm_extraction_model
                         )
                         logger.debug(f"Using LLM model: {model}")
                         logger.info(f"Starting LLM call for code block from {url} (attempt {attempt + 1})")
-                        response = await self.client.chat.completions.create(
-                            model=model,
-                            messages=[{"role": "user", "content": prompt}],
-                            temperature=0.1,
-                            max_tokens=self.settings.code_extraction.llm_max_tokens,
-                        )
+                        
+                        # Parse custom parameters from settings
+                        extra_params = {}
+                        try:
+                            extra_params_str = fresh_settings.code_extraction.llm_extra_params
+                            if extra_params_str and extra_params_str != "{}":
+                                extra_params = json.loads(extra_params_str)
+                                logger.info(f"Using custom LLM parameters: {extra_params}")
+                        except (json.JSONDecodeError, AttributeError) as e:
+                            logger.warning(f"Failed to parse llm_extra_params: {e}")
+                        
+                        # Build request parameters
+                        request_params = {
+                            "model": model,
+                            "messages": [{"role": "user", "content": prompt}],
+                            "temperature": 0.1,
+                            "max_tokens": fresh_settings.code_extraction.llm_max_tokens,
+                        }
+                        
+                        # Merge custom parameters
+                        if extra_params:
+                            logger.info(f"Merging extra_params into request: {extra_params}")
+                            request_params.update(extra_params)
+                        
+                        logger.info(f"Final request params: {request_params}")
+                        response = await self.client.chat.completions.create(**request_params)
 
                         logger.info(f"LLM call completed for code block from {url}")
 
                         # Extract and parse response
-                        content = response.choices[0].message.content.strip()
+                        raw_content = response.choices[0].message.content
+                        
+                        # Handle None content - check for alternative response formats
+                        if raw_content is None:
+                            # Some models might use tool_calls or other fields
+                            message = response.choices[0].message
+                            
+                            # Log detailed error information
+                            logger.error(f"LLM returned None content for URL: {url}")
+                            logger.error(f"Model: {model}")
+                            logger.error(f"Full response: {response.model_dump() if hasattr(response, 'model_dump') else str(response)}")
+                            logger.error(f"Message attributes: {dir(message)}")
+                            
+                            # Check if there's a tool_call or function_call
+                            if hasattr(message, 'tool_calls') and message.tool_calls:
+                                logger.error(f"Response has tool_calls instead of content: {message.tool_calls}")
+                            elif hasattr(message, 'function_call') and message.function_call:
+                                logger.error(f"Response has function_call instead of content: {message.function_call}")
+                            
+                            if extra_params:
+                                logger.error(f"Extra params may be causing issues: {extra_params}")
+                                logger.error("Hint: Try removing extra_params or ensure they're compatible with your model")
+                            
+                            raise ValueError(
+                                f"LLM returned None content. Model: {model}. "
+                                f"This may indicate incompatible model configuration or extra_params."
+                            )
+                        
+                        content = raw_content.strip()
 
                         # Parse language, title and description
                         language = None
