@@ -35,7 +35,7 @@ services:
       postgres:
         condition: service_healthy
     volumes:
-      - ./logs:/app/logs
+      - logs_data:/app/logs
     command: python -m uvicorn src.api.main:app --host 0.0.0.0 --port 8000
 
   # Note: MCP server runs in stdio mode and is exposed via the API server
@@ -91,6 +91,7 @@ services:
 
 volumes:
   postgres_data:
+  logs_data:
 
 networks:
   default:

@@ -3,6 +3,13 @@ set -e
 
 echo "Starting CodeDox Docker entrypoint..."
 
+# Fix permissions for logs directory mounted from host
+if [ -d "/app/logs" ]; then
+  echo "Setting permissions for logs directory..."
+  sudo chown -R codedox:codedox /app/logs 2>/dev/null || true
+  sudo chmod -R 755 /app/logs 2>/dev/null || true
+fi
+
 # Wait for PostgreSQL to be ready using Python
 echo "Waiting for PostgreSQL..."
 until python3 -c 'import psycopg, os, sys; conn = psycopg.connect(host=os.environ["DB_HOST"], port=os.environ["DB_PORT"], dbname=os.environ["DB_NAME"], user=os.environ["DB_USER"], password=os.environ["DB_PASSWORD"]); conn.close()' 2>/dev/null; do
