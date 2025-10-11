@@ -9,6 +9,7 @@ import {
   Upload,
   FileSearch,
   Plus,
+  Settings,
 } from "lucide-react";
 import { useState, useEffect } from "react";
 import { DocumentSearchModal } from "./DocumentSearchModal";
@@ -23,6 +24,7 @@ const navigation = [
   { name: "Sources", href: "/sources", icon: Database },
   { name: "Crawl Jobs", href: "/crawl", icon: Briefcase },
   { name: "Upload", href: "/upload", icon: Upload },
+  { name: "Settings", href: "/settings", icon: Settings },
 ];
 
 export default function Layout() {
@@ -100,14 +102,14 @@ export default function Layout() {
           <div className="px-3 pt-4 pb-2 space-y-2">
             <button
               onClick={() => setCrawlDialogOpen(true)}
-              className="cursor-pointer w-full flex items-center gap-2 px-3 py-2.5 text-sm bg-primary hover:bg-primary/90 text-primary-foreground rounded-lg transition-all font-medium shadow-sm hover:shadow-md"
+              className="cursor-pointer w-full flex items-center gap-2 px-3 py-2.5 text-sm bg-primary hover:bg-primary/90 text-primary-foreground rounded-lg transition-all font-semibold shadow-lg hover:shadow-xl border border-primary/30 transform hover:-translate-y-0.5"
             >
               <Plus className="h-4 w-4" />
               <span className="flex-1 text-left">New Crawl</span>
             </button>
             <button
               onClick={() => setDocumentSearchOpen(true)}
-              className="cursor-pointer w-full flex items-center gap-2 px-3 py-2 text-sm bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700 rounded-lg transition-colors text-gray-600 dark:text-gray-400"
+              className="cursor-pointer w-full flex items-center gap-2 px-3 py-2.5 text-sm bg-slate-100 dark:bg-slate-700 hover:bg-slate-200 dark:hover:bg-slate-600 border-2 border-slate-300 dark:border-slate-500 rounded-lg transition-all text-slate-800 dark:text-slate-200 shadow-md hover:shadow-lg font-medium"
             >
               <FileSearch className="h-4 w-4" />
               <span className="flex-1 text-left">Markdown Pages</span>
