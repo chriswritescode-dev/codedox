@@ -138,6 +138,7 @@ export default function Settings() {
     const apiKey = editedValues['CODE_LLM_API_KEY'] || llmSettings.find(s => s.key === 'CODE_LLM_API_KEY')?.value
     const baseUrl = editedValues['CODE_LLM_BASE_URL'] || llmSettings.find(s => s.key === 'CODE_LLM_BASE_URL')?.value
     const model = editedValues['CODE_LLM_EXTRACTION_MODEL'] || llmSettings.find(s => s.key === 'CODE_LLM_EXTRACTION_MODEL')?.value
+    const maxTokens = editedValues['CODE_LLM_MAX_TOKENS'] || llmSettings.find(s => s.key === 'CODE_LLM_MAX_TOKENS')?.value
     const extraParams = editedValues['CODE_LLM_EXTRA_PARAMS'] || llmSettings.find(s => s.key === 'CODE_LLM_EXTRA_PARAMS')?.value || '{}'
 
     setTesting(true)
@@ -151,6 +152,7 @@ export default function Settings() {
           api_key: apiKey, 
           base_url: baseUrl, 
           model,
+          max_tokens: maxTokens,
           extra_params: extraParams 
         }),
       })
@@ -161,8 +163,8 @@ export default function Settings() {
 
       if (result.status === 'success') {
         toast.success(
-          `✓ Connection successful!\nModel: ${result.model}\nLatency: ${result.latency_ms}ms`,
-          { duration: 4000 }
+          `✓ ${result.message}`,
+          { duration: 6000 }
         )
       } else {
         toast.error(
