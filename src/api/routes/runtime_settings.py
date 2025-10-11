@@ -371,6 +371,7 @@ class TestLLMRequest(BaseModel):
     api_key: str | None = Field(None, description="API key to test (optional, uses .env if not provided)")
     base_url: str | None = Field(None, description="Base URL (optional)")
     model: str = Field(default="gpt-4o-mini", description="Model name")
+    max_tokens: int | None = Field(None, description="Max tokens (optional, uses settings if not provided)")
     extra_params: str = Field(default="{}", description="Extra parameters JSON")
 
 
@@ -413,11 +414,18 @@ async def test_llm_connection(request: TestLLMRequest) -> dict[str, Any]:
                 "error": str(e),
             }
         
-        # Build request parameters
+        # Get max_tokens from request or fall back to settings
+        max_tokens = request.max_tokens
+        if max_tokens is None:
+            settings = get_settings()
+            max_tokens = settings.code_extraction.llm_max_tokens
+        
+        # Build request parameters with simple test message using exact settings
         request_params = {
             "model": request.model,
-            "messages": [{"role": "user", "content": "Hello"}],
-            "max_tokens": 5,
+            "messages": [{"role": "user", "content": "Are you ready?"}],
+            "max_tokens": max_tokens,
+            "temperature": 0.1,
         }
         request_params.update(extra_params)
         
@@ -425,11 +433,31 @@ async def test_llm_connection(request: TestLLMRequest) -> dict[str, Any]:
         
         elapsed_time = time.time() - start_time
         
+        # Parse response
+        message = response.choices[0].message
+        content = message.content
+        finish_reason = response.choices[0].finish_reason
+        
+        # Check for reasoning content (DeepSeek R1 style models)
+        reasoning_content = None
+        if hasattr(message, 'reasoning_content'):
+            reasoning_content = message.reasoning_content
+        
+        # Build response message
+        if content:
+            response_text = content
+        elif reasoning_content:
+            response_text = f"[No content - reasoning only: {reasoning_content[:100]}...]"
+        else:
+            response_text = "[No response content]"
+        
         return {
             "status": "success",
-            "message": "LLM connection successful",
+            "message": f"Model: {response.model}\nLatency: {int(elapsed_time * 1000)}ms\nResponse: {response_text}",
             "model": response.model,
             "latency_ms": int(elapsed_time * 1000),
+            "response": response_text,
+            "finish_reason": finish_reason,
         }
     except Exception as e:
         error_msg = str(e)

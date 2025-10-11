@@ -140,8 +140,11 @@ class LLMDescriptionGenerator:
                         }
                         
                         # Merge custom parameters
-                        request_params.update(extra_params)
+                        if extra_params:
+                            logger.info(f"Merging extra_params into request: {extra_params}")
+                            request_params.update(extra_params)
                         
+                        logger.info(f"Final request params: {request_params}")
                         response = await self.client.chat.completions.create(**request_params)
 
                         logger.info(f"LLM call completed for code block from {url}")

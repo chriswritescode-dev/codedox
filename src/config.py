@@ -340,10 +340,23 @@ class Settings(BaseSettings):
                     continue
                 
                 for key, value in settings_dict.items():
-                    attr_name = key.replace(f"{category.upper()}_", "").lower()
-                    if hasattr(config_obj, attr_name):
-                        setattr(config_obj, attr_name, value)
-                        logger.debug(f"Applied runtime override: {category}.{attr_name} = {value}")
+                    # Map setting keys to attribute names based on config prefix
+                    prefix_map = {
+                        "llm": "CODE_",
+                        "crawling": "CRAWL_",
+                        "search": "SEARCH_",
+                        "security": "MCP_AUTH_",
+                        "api": "API_",
+                    }
+                    
+                    prefix = prefix_map.get(category, f"{category.upper()}_")
+                    if key.startswith(prefix):
+                        attr_name = key[len(prefix):].lower()
+                        if hasattr(config_obj, attr_name):
+                            setattr(config_obj, attr_name, value)
+                            logger.debug(f"Applied runtime override: {category}.{attr_name} = {value}")
+                    else:
+                        logger.warning(f"Setting key '{key}' doesn't match expected prefix '{prefix}' for category '{category}'")
         except Exception as e:
             logger.warning(f"Failed to apply runtime overrides: {e}")
 
