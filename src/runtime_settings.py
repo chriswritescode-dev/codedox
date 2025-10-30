@@ -1,6 +1,7 @@
 import json
 import logging
 import os
+from collections.abc import Callable
 from datetime import datetime
 from pathlib import Path
 from threading import Lock
@@ -14,6 +15,7 @@ class RuntimeSettingsManager:
         self.config_path = Path(config_path)
         self._lock = Lock()
         self._settings: dict[str, dict[str, Any]] = {}
+        self._observers: list[Callable[[], None]] = []
         self._load()
 
     def _load(self) -> None:
@@ -75,12 +77,27 @@ class RuntimeSettingsManager:
                     return cat_settings[key]
             return None
 
+    def add_observer(self, callback: Callable[[], None]) -> None:
+        with self._lock:
+            if callback not in self._observers:
+                self._observers.append(callback)
+                logger.info(f"Added settings observer: {callback.__name__}")
+    
+    def _notify_observers(self) -> None:
+        for callback in self._observers:
+            try:
+                callback()
+                logger.debug(f"Notified observer: {callback.__name__}")
+            except Exception as e:
+                logger.error(f"Observer callback error ({callback.__name__}): {e}")
+    
     def set(self, key: str, value: Any, category: str) -> None:
         with self._lock:
             if category not in self._settings:
                 self._settings[category] = {}
             self._settings[category][key] = value
         self._save()
+        self._notify_observers()
 
     def reset(self, key: str, category: str) -> None:
         with self._lock:
@@ -89,6 +106,7 @@ class RuntimeSettingsManager:
                 if not self._settings[category]:
                     del self._settings[category]
         self._save()
+        self._notify_observers()
 
     def get_all(self) -> dict[str, dict[str, Any]]:
         with self._lock:
@@ -101,6 +119,7 @@ class RuntimeSettingsManager:
                     self._settings[category] = {}
                 self._settings[category].update(settings)
         self._save()
+        self._notify_observers()
 
     def reload(self) -> None:
         self._load()

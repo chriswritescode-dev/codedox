@@ -48,9 +48,12 @@ class PageCrawler:
         """
         self.browser_config = browser_config
         self.db_manager = get_db_manager()
-        self.settings = get_settings()
-        self.description_generator = None  # Initialize on demand with custom config
+        self.description_generator = None
         self.html_extractor = HTMLCodeExtractor()
+    
+    @property
+    def settings(self):
+        return get_settings()
 
     async def crawl_page(
         self,

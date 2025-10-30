@@ -16,6 +16,7 @@ interface SourceDetailState {
   selectedLanguage: string;
   deleteModalOpen: boolean;
   deleteMatchesModalOpen: boolean;
+  regenerateModalOpen: boolean;
   debouncedSnippetsSearch: string;
   
   // Computed values
@@ -32,10 +33,12 @@ interface SourceDetailState {
   setSelectedLanguage: (lang: string) => void;
   setDeleteModalOpen: (open: boolean) => void;
   setDeleteMatchesModalOpen: (open: boolean) => void;
+  setRegenerateModalOpen: (open: boolean) => void;
   
   // Mutations
   deleteMutation: UseMutationResult<{ message: string }, Error, void, unknown>;
   deleteMatchesMutation: UseMutationResult<{ deleted_count: number; source_id: string; source_name: string }, Error, void, unknown>;
+  regenerateMutation: UseMutationResult<any, Error, void, unknown>;
   updateSourceNameMutation: UseMutationResult<Source, Error, { name: string; version?: string }, unknown>;
   
   // Query data
@@ -62,6 +65,7 @@ export function useSourceDetail(id: string): SourceDetailState {
   const [selectedLanguage, setSelectedLanguage] = useState(searchParams.get("language") || "");
   const [deleteModalOpen, setDeleteModalOpen] = useState(false);
   const [deleteMatchesModalOpen, setDeleteMatchesModalOpen] = useState(false);
+  const [regenerateModalOpen, setRegenerateModalOpen] = useState(false);
 
   // Tab management
   const tabFromUrl = searchParams.get("tab") as TabType | null;
@@ -215,6 +219,25 @@ export function useSourceDetail(id: string): SourceDetailState {
     },
   });
 
+  const regenerateMutation = useMutation({
+    mutationFn: () => api.regenerateDescriptions(id!, false),
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ["source-snippets", id] });
+      queryClient.invalidateQueries({ queryKey: ["source", id] });
+      setRegenerateModalOpen(false);
+      toast.success(
+        `Regenerated descriptions for ${data.changed_snippets} of ${data.total_snippets} snippets`
+      );
+    },
+    onError: (error) => {
+      console.error("Failed to regenerate descriptions:", error);
+      toast.error(
+        "Failed to regenerate descriptions: " +
+          (error instanceof Error ? error.message : "Unknown error")
+      );
+    },
+  });
+
 
   // Computed values
   const snippetsTotalPages = useMemo(
@@ -236,6 +259,7 @@ export function useSourceDetail(id: string): SourceDetailState {
     selectedLanguage,
     deleteModalOpen,
     deleteMatchesModalOpen,
+    regenerateModalOpen,
     debouncedSnippetsSearch,
     snippetsPerPage,
     docsPerPage,
@@ -248,8 +272,10 @@ export function useSourceDetail(id: string): SourceDetailState {
     setSelectedLanguage,
     setDeleteModalOpen,
     setDeleteMatchesModalOpen,
+    setRegenerateModalOpen,
     deleteMutation,
     deleteMatchesMutation,
+    regenerateMutation,
     updateSourceNameMutation,
     source,
     documents,

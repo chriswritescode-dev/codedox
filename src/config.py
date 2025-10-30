@@ -340,7 +340,6 @@ class Settings(BaseSettings):
                     continue
                 
                 for key, value in settings_dict.items():
-                    # Map setting keys to attribute names based on config prefix
                     prefix_map = {
                         "llm": "CODE_",
                         "crawling": "CRAWL_",
@@ -353,12 +352,33 @@ class Settings(BaseSettings):
                     if key.startswith(prefix):
                         attr_name = key[len(prefix):].lower()
                         if hasattr(config_obj, attr_name):
+                            current_value = getattr(config_obj, attr_name)
+                            if hasattr(current_value, 'get_secret_value'):
+                                from pydantic.types import SecretStr
+                                value = SecretStr(value)
                             setattr(config_obj, attr_name, value)
                             logger.debug(f"Applied runtime override: {category}.{attr_name} = {value}")
                     else:
                         logger.warning(f"Setting key '{key}' doesn't match expected prefix '{prefix}' for category '{category}'")
         except Exception as e:
             logger.warning(f"Failed to apply runtime overrides: {e}")
+    
+    def reload_runtime_overrides(self) -> None:
+        logger.info("Reloading runtime settings overrides")
+        
+        self.database = DatabaseConfig()
+        self.mcp = MCPConfig()
+        self.crawling = CrawlingConfig()
+        self.code_extraction = CodeExtractionConfig()
+        self.search = SearchConfig()
+        self.token = TokenConfig()
+        self.api = APIConfig()
+        self.mcp_auth = MCPAuthConfig()
+        self.upload = UploadConfig()
+        self.logging = LoggingConfig()
+        
+        self._apply_runtime_overrides()
+        logger.info("Runtime settings overrides reloaded successfully")
 
     def setup_logging(self) -> None:
         """Configure logging based on settings."""
@@ -396,6 +416,15 @@ def get_settings() -> Settings:
     if _settings is None:
         _settings = Settings()
         _settings.setup_logging()
+        
+        try:
+            from src.runtime_settings import get_runtime_settings
+            runtime = get_runtime_settings()
+            runtime.add_observer(_settings.reload_runtime_overrides)
+            logger.info("Registered settings observer for runtime changes")
+        except Exception as e:
+            logger.warning(f"Failed to register settings observer: {e}")
+    
     return _settings
 
 

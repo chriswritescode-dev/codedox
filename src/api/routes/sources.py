@@ -1074,6 +1074,55 @@ class RecrawlRequest(BaseModel):
     )
 
 
+class RegenerateDescriptionsRequest(BaseModel):
+    """Request model for regenerating LLM descriptions."""
+
+    preview_only: bool = Field(
+        default=True, description="Preview changes without applying them"
+    )
+    max_concurrent: int = Field(
+        default=5, ge=1, le=20, description="Maximum concurrent LLM requests"
+    )
+
+
+@router.post("/sources/{source_id}/regenerate-descriptions")
+async def regenerate_source_descriptions(
+    source_id: str,
+    request: RegenerateDescriptionsRequest = RegenerateDescriptionsRequest(),
+    db: Session = Depends(get_db),
+) -> dict[str, Any]:
+    """Regenerate LLM descriptions for all snippets in a source."""
+    from ...crawler.llm_regenerate import LLMRegenerator
+    
+    source = db.query(CrawlJob).filter_by(id=source_id).first()
+    if not source:
+        source = db.query(UploadJob).filter_by(id=source_id).first()
+        if not source:
+            raise HTTPException(status_code=404, detail="Source not found")
+    
+    settings = get_settings()
+    if not settings.code_extraction.enable_llm_extraction:
+        raise HTTPException(
+            status_code=400,
+            detail="LLM extraction is disabled. Enable it in settings first."
+        )
+    
+    try:
+        regenerator = LLMRegenerator()
+        result = await regenerator.regenerate_source_metadata(
+            session=db,
+            source_id=source_id,
+            preview_only=request.preview_only,
+            max_concurrent=request.max_concurrent
+        )
+        
+        return result
+    
+    except Exception as e:
+        logger.error(f"Failed to regenerate descriptions: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @router.post("/sources/{source_id}/recrawl")
 async def recrawl_source(
     source_id: str, request: RecrawlRequest = RecrawlRequest(), db: Session = Depends(get_db)
