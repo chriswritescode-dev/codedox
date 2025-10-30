@@ -10,6 +10,7 @@ interface SettingMetadata {
   description: string
   is_modified: boolean
   options?: string[]
+  dynamic_options?: boolean
   min?: number
   max?: number
 }
@@ -41,10 +42,31 @@ export default function Settings() {
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [testing, setTesting] = useState(false)
+  const [availableModels, setAvailableModels] = useState<string[]>([])
+  const [loadingModels, setLoadingModels] = useState(false)
 
   useEffect(() => {
     loadSettings()
+    loadModels()
   }, [])
+
+  const loadModels = async () => {
+    setLoadingModels(true)
+    try {
+      const response = await fetch('/api/settings/list-models')
+      if (!response.ok) throw new Error('Failed to load models')
+      const data = await response.json()
+      if (data.status === 'success' && data.models) {
+        setAvailableModels(data.models)
+      } else if (data.status === 'error') {
+        console.warn('Could not load models:', data.message)
+      }
+    } catch (error) {
+      console.error('Failed to load models:', error)
+    } finally {
+      setLoadingModels(false)
+    }
+  }
 
   const loadSettings = async () => {
     try {
@@ -140,6 +162,8 @@ export default function Settings() {
     const model = editedValues['CODE_LLM_EXTRACTION_MODEL'] || llmSettings.find(s => s.key === 'CODE_LLM_EXTRACTION_MODEL')?.value
     const maxTokens = editedValues['CODE_LLM_MAX_TOKENS'] || llmSettings.find(s => s.key === 'CODE_LLM_MAX_TOKENS')?.value
     const extraParams = editedValues['CODE_LLM_EXTRA_PARAMS'] || llmSettings.find(s => s.key === 'CODE_LLM_EXTRA_PARAMS')?.value || '{}'
+
+    console.log('Test LLM - Model:', model, 'Edited:', editedValues['CODE_LLM_EXTRACTION_MODEL'], 'Settings:', llmSettings.find(s => s.key === 'CODE_LLM_EXTRACTION_MODEL')?.value)
 
     setTesting(true)
     const loadingToast = toast.loading('Testing LLM connection...')
@@ -263,6 +287,66 @@ export default function Settings() {
           <p className="text-xs text-muted-foreground">
             Valid JSON required. Use <code className="bg-secondary px-1 rounded">:</code> not <code className="bg-secondary px-1 rounded">=</code>, and <code className="bg-secondary px-1 rounded">false</code> not <code className="bg-secondary px-1 rounded">False</code>
           </p>
+        </div>
+      );
+    }
+
+    if (setting.key === 'CODE_LLM_EXTRACTION_MODEL') {
+      let options: string[] = []
+      if (availableModels.length > 0) {
+        options = [...availableModels]
+        if (currentValue && !options.includes(currentValue)) {
+          options = [currentValue, ...options]
+        }
+      } else {
+        options = [currentValue || setting.default_value].filter(Boolean) as string[]
+      }
+      
+      return (
+        <div className="space-y-2">
+          <div className="flex items-center justify-between">
+            <label className="text-sm font-medium text-foreground">
+              {setting.description}
+            </label>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={loadModels}
+                disabled={loadingModels}
+                className="text-xs text-muted-foreground hover:text-foreground transition-colors disabled:opacity-50"
+              >
+                {loadingModels ? 'Loading...' : availableModels.length > 0 ? 'Refresh Models' : 'Load Models'}
+              </button>
+              {isModified && (
+                <button
+                  onClick={() => handleReset(category, setting.key)}
+                  className="text-xs text-muted-foreground hover:text-foreground transition-colors"
+                >
+                  Reset
+                </button>
+              )}
+            </div>
+          </div>
+          <select
+            value={currentValue || ""}
+            onChange={(e) => handleValueChange(setting.key, e.target.value)}
+            className="w-full px-3 py-2 bg-background border border-input rounded-md focus:outline-none focus:ring-2 focus:ring-primary text-foreground"
+          >
+            {options.map((option) => (
+              <option key={option} value={option}>
+                {option}
+              </option>
+            ))}
+          </select>
+          {availableModels.length === 0 && (
+            <p className="text-xs text-muted-foreground">
+              Click "Load Models" to fetch available models from your LLM provider
+            </p>
+          )}
+          {availableModels.length > 0 && (
+            <p className="text-xs text-muted-foreground">
+              {availableModels.length} model{availableModels.length !== 1 ? 's' : ''} available
+            </p>
+          )}
         </div>
       );
     }

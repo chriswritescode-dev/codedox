@@ -404,6 +404,25 @@ class APIClient {
     })
   }
 
+  async regenerateDescriptions(id: string, previewOnly: boolean = false, maxConcurrent: number = 5): Promise<{
+    source_id: string
+    source_name: string
+    total_snippets: number
+    processed_snippets: number
+    changed_snippets: number
+    failed_snippets: number
+    preview: any[]
+    preview_only: boolean
+  }> {
+    return this.fetch(`/sources/${id}/regenerate-descriptions`, {
+      method: 'POST',
+      body: JSON.stringify({
+        preview_only: previewOnly,
+        max_concurrent: maxConcurrent
+      })
+    })
+  }
+
   // Crawl Jobs
   async getCrawlJobs(): Promise<CrawlJob[]> {
     return this.fetch<CrawlJob[]>('/crawl-jobs')

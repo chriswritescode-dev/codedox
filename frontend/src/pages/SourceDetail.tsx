@@ -34,6 +34,10 @@ export default function SourceDetail() {
   const handleConfirmDelete = () => {
     state.deleteMutation.mutate();
   };
+
+  const handleConfirmRegenerate = () => {
+    state.regenerateMutation.mutate();
+  };
   
   const handleUpdateSourceName = async (_sourceId: string, newName: string, newVersion?: string) => {
     await state.updateSourceNameMutation.mutateAsync({ 
@@ -118,11 +122,15 @@ export default function SourceDetail() {
               source={state.source}
               deleteModalOpen={state.deleteModalOpen}
               deleteMatchesModalOpen={state.deleteMatchesModalOpen}
+              regenerateModalOpen={state.regenerateModalOpen}
               deleteMutation={state.deleteMutation}
               deleteMatchesMutation={state.deleteMatchesMutation}
+              regenerateMutation={state.regenerateMutation}
               setDeleteModalOpen={state.setDeleteModalOpen}
               setDeleteMatchesModalOpen={state.setDeleteMatchesModalOpen}
+              setRegenerateModalOpen={state.setRegenerateModalOpen}
               handleConfirmDelete={handleConfirmDelete}
+              handleConfirmRegenerate={handleConfirmRegenerate}
             />
           </div>
 

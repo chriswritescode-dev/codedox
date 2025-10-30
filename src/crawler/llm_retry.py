@@ -24,22 +24,45 @@ class LLMDescriptionGenerator:
         model: str | None = None
     ):
         """Initialize LLM description generator."""
-        self.settings = get_settings()
         self.client = None
         self.custom_model = model
+        self.custom_api_key = api_key
+        self.custom_base_url = base_url
+        self._last_settings_hash = None
         self._init_client(api_key=api_key, base_url=base_url)
+    
+    @property
+    def settings(self):
+        return get_settings()
 
+    def _get_settings_hash(self) -> str:
+        import hashlib
+        settings = self.settings.code_extraction
+        values = [
+            str(settings.llm_api_key.get_secret_value() if not self.custom_api_key else self.custom_api_key),
+            str(settings.llm_base_url if not self.custom_base_url else self.custom_base_url),
+            str(settings.llm_extraction_model if not self.custom_model else self.custom_model),
+            str(settings.enable_llm_extraction),
+        ]
+        return hashlib.md5("".join(values).encode()).hexdigest()
+    
+    def _should_reinit_client(self) -> bool:
+        current_hash = self._get_settings_hash()
+        if current_hash != self._last_settings_hash:
+            logger.info("LLM settings changed, reinitializing client")
+            self._last_settings_hash = current_hash
+            return True
+        return False
+    
     def _init_client(
         self, api_key: str | None = None, base_url: str | None = None
     ):
         """Initialize OpenAI client if API key is available."""
         if api_key or self.settings.code_extraction.llm_api_key:
-            # Use custom api_key if provided, otherwise use from settings
             client_api_key = api_key
             if not client_api_key:
                 client_api_key = self.settings.code_extraction.llm_api_key.get_secret_value()
 
-            # Custom api_key takes precedence for base_url
             client_base_url = base_url
             if not client_base_url and hasattr(
                 self.settings.code_extraction, "llm_base_url"
@@ -49,6 +72,8 @@ class LLMDescriptionGenerator:
             self.client = openai.AsyncOpenAI(
                 api_key=client_api_key, base_url=client_base_url
             )
+            
+            self._last_settings_hash = self._get_settings_hash()
 
     async def generate_titles_and_descriptions_batch(
         self,
@@ -69,6 +94,9 @@ class LLMDescriptionGenerator:
         Returns:
             List of code blocks with titles and descriptions added
         """
+        
+        if self._should_reinit_client():
+            self._init_client(api_key=self.custom_api_key, base_url=self.custom_base_url)
 
         if semaphore is None:
             if max_concurrent is None:

@@ -20,7 +20,10 @@ class ResultProcessor:
     def __init__(self):
         """Initialize result processor."""
         self.db_manager = get_db_manager()
-        self.settings = get_settings()
+    
+    @property
+    def settings(self):
+        return get_settings()
 
     def cleanup(self):
         """Cleanup resources."""

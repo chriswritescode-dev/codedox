@@ -30,9 +30,10 @@ SETTING_METADATA = {
             "default": None,
         },
         "CODE_LLM_EXTRACTION_MODEL": {
-            "type": "string",
+            "type": "select",
             "description": "Model name for extraction",
             "default": "gpt-4o-mini",
+            "dynamic_options": True,
         },
         "CODE_LLM_MAX_TOKENS": {
             "type": "integer",
@@ -373,6 +374,45 @@ class TestLLMRequest(BaseModel):
     model: str = Field(default="gpt-4o-mini", description="Model name")
     max_tokens: int | None = Field(None, description="Max tokens (optional, uses settings if not provided)")
     extra_params: str = Field(default="{}", description="Extra parameters JSON")
+
+
+@router.get("/settings/list-models")
+async def list_available_models() -> dict[str, Any]:
+    try:
+        from openai import OpenAI
+        
+        settings = get_settings()
+        api_key = settings.code_extraction.llm_api_key.get_secret_value()
+        
+        if not api_key:
+            return {
+                "status": "error",
+                "message": "No API key configured",
+                "models": []
+            }
+        
+        base_url = settings.code_extraction.llm_base_url
+        
+        client = OpenAI(
+            api_key=api_key,
+            base_url=base_url if base_url else None,
+        )
+        
+        models_response = client.models.list()
+        models = [model.id for model in models_response.data]
+        
+        return {
+            "status": "success",
+            "models": sorted(models),
+            "count": len(models)
+        }
+    except Exception as e:
+        logger.error(f"Failed to list models: {e}")
+        return {
+            "status": "error",
+            "message": str(e),
+            "models": []
+        }
 
 
 @router.post("/settings/test-llm")
