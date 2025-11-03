@@ -5,7 +5,7 @@ from datetime import datetime
 from typing import Any
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, Header, HTTPException, Query
 from pydantic import BaseModel, Field
 from sqlalchemy import func, or_
 from sqlalchemy.orm import Session
@@ -1090,9 +1090,13 @@ async def regenerate_source_descriptions(
     source_id: str,
     request: RegenerateDescriptionsRequest = RegenerateDescriptionsRequest(),
     db: Session = Depends(get_db),
+    x_client_id: str | None = Header(None, description="Client ID for WebSocket progress updates"),
 ) -> dict[str, Any]:
     """Regenerate LLM descriptions for all snippets in a source."""
+    import asyncio
+
     from ...crawler.llm_regenerate import LLMRegenerator
+    from ..websocket import get_connection_manager
     
     source = db.query(CrawlJob).filter_by(id=source_id).first()
     if not source:
@@ -1107,20 +1111,61 @@ async def regenerate_source_descriptions(
             detail="LLM extraction is disabled. Enable it in settings first."
         )
     
-    try:
-        regenerator = LLMRegenerator()
-        result = await regenerator.regenerate_source_metadata(
-            session=db,
-            source_id=source_id,
-            preview_only=request.preview_only,
-            max_concurrent=request.max_concurrent
-        )
-        
-        return result
+    # Get WebSocket manager for progress updates
+    websocket_manager = get_connection_manager()
+    logger.info(f"Starting regeneration for source {source_id}, client_id: {x_client_id}")
     
-    except Exception as e:
-        logger.error(f"Failed to regenerate descriptions: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+    async def run_regeneration():
+        """Run regeneration in background with its own DB session."""
+        from ...database.connection import get_db_manager
+        
+        db_manager = get_db_manager()
+        
+        try:
+            with db_manager.session_scope() as bg_session:
+                regenerator = LLMRegenerator(websocket_manager=websocket_manager)
+                
+                result = await regenerator.regenerate_source_metadata(
+                    session=bg_session,
+                    source_id=source_id,
+                    preview_only=request.preview_only,
+                    max_concurrent=request.max_concurrent,
+                    client_id=x_client_id
+                )
+                
+                logger.info(f"Regeneration completed for source {source_id}, result: {result}")
+                
+                # Send completion message via WebSocket
+                if x_client_id and websocket_manager:
+                    from ...constants import WebSocketMessageType
+                    logger.info(f"Sending completion message to client {x_client_id}")
+                    await websocket_manager.send_message(x_client_id, {
+                        "type": WebSocketMessageType.REGENERATION_COMPLETE,
+                        "source_id": source_id,
+                        "result": result
+                    })
+            
+        except Exception as e:
+            from ...constants import WebSocketMessageType
+            logger.error(f"Failed to regenerate descriptions: {e}")
+            
+            # Send error message via WebSocket
+            if x_client_id and websocket_manager:
+                await websocket_manager.send_message(x_client_id, {
+                    "type": WebSocketMessageType.REGENERATION_ERROR,
+                    "source_id": source_id,
+                    "error": str(e)
+                })
+    
+    # Start regeneration in background
+    asyncio.create_task(run_regeneration())
+    
+    # Return immediately with started status
+    return {
+        "status": "started",
+        "source_id": source_id,
+        "message": "Regeneration started. Progress updates will be sent via WebSocket."
+    }
 
 
 @router.post("/sources/{source_id}/recrawl")

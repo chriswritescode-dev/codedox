@@ -1,5 +1,6 @@
 import { Routes, Route } from 'react-router-dom'
 import { Toaster } from 'react-hot-toast'
+import { WebSocketProvider } from './contexts/WebSocketContext'
 import Layout from './components/Layout'
 import Dashboard from './pages/Dashboard'
 import Search from './pages/Search'
@@ -14,7 +15,7 @@ import Settings from './pages/Settings'
 
 function App() {
   return (
-    <>
+    <WebSocketProvider>
       <Toaster />
       <Routes>
         <Route path="/" element={<Layout />}>
@@ -30,7 +31,7 @@ function App() {
           <Route path="settings" element={<Settings />} />
         </Route>
       </Routes>
-    </>
+    </WebSocketProvider>
   )
 }
 

@@ -9,6 +9,8 @@ from typing import Any
 
 from sqlalchemy.orm import Session
 
+from ..api.websocket import ConnectionManager
+from ..constants import WebSocketMessageType
 from ..database import CodeSnippet, CrawlJob, Document
 from .extractors.models import TITLE_AND_DESCRIPTION_PROMPT
 from .language_mapping import normalize_language
@@ -59,16 +61,41 @@ class SnippetChange:
 class LLMRegenerator(LLMDescriptionGenerator):
     """Handles regeneration of snippet metadata using LLM."""
 
-    def __init__(self, model: str | None = None, custom_prompt: str | None = None):
+    def __init__(self, model: str | None = None, custom_prompt: str | None = None, websocket_manager: ConnectionManager | None = None):
         """Initialize regenerator with optional custom model and prompt.
         
         Args:
             model: Optional LLM model to use (defaults to settings)
             custom_prompt: Optional custom prompt template
+            websocket_manager: Optional WebSocket manager for progress updates
         """
         super().__init__()
         self.model = model or self.settings.code_extraction.llm_extraction_model
         self.custom_prompt = custom_prompt or TITLE_AND_DESCRIPTION_PROMPT
+        self.websocket_manager = websocket_manager
+
+    async def _send_progress_update(
+        self,
+        source_id: str,
+        client_id: str | None,
+        progress: RegenerationProgress
+    ) -> None:
+        """Send progress update via WebSocket if available."""
+        if not self.websocket_manager or not client_id:
+            return
+            
+        await self.websocket_manager.send_message(client_id, {
+            "type": WebSocketMessageType.REGENERATION_PROGRESS,
+            "source_id": source_id,
+            "progress": {
+                "total_snippets": progress.total_snippets,
+                "processed_snippets": progress.processed_snippets,
+                "changed_snippets": progress.changed_snippets,
+                "failed_snippets": progress.failed_snippets,
+                "percentage": progress.percentage,
+                "current_snippet": progress.current_snippet
+            }
+        })
 
     async def regenerate_source_metadata(
         self,
@@ -76,7 +103,8 @@ class LLMRegenerator(LLMDescriptionGenerator):
         source_id: str,
         preview_only: bool = True,
         progress_callback: Callable[[RegenerationProgress], None] | None = None,
-        max_concurrent: int = 5
+        max_concurrent: int = 5,
+        client_id: str | None = None
     ) -> dict[str, Any]:
         """Regenerate metadata for all snippets in a source.
         
@@ -129,21 +157,20 @@ class LLMRegenerator(LLMDescriptionGenerator):
         async def process_snippet(snippet: CodeSnippet) -> SnippetChange | None:
             async with semaphore:
                 try:
-                    # Update progress
                     progress.current_snippet = snippet.title or f"Snippet {snippet.id}"
                     if progress_callback:
                         progress_callback(progress)
+                    await self._send_progress_update(source_id, client_id, progress)
 
-                    # Generate new metadata
                     change = await self._regenerate_snippet_metadata(snippet)
 
-                    # Update progress
                     progress.processed_snippets += 1
                     if change and change.has_changes:
                         progress.changed_snippets += 1
 
                     if progress_callback:
                         progress_callback(progress)
+                    await self._send_progress_update(source_id, client_id, progress)
 
                     return change
 
@@ -153,6 +180,7 @@ class LLMRegenerator(LLMDescriptionGenerator):
                     progress.failed_snippets += 1
                     if progress_callback:
                         progress_callback(progress)
+                    await self._send_progress_update(source_id, client_id, progress)
                     return None
 
         # Process all snippets concurrently

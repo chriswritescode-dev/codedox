@@ -81,11 +81,29 @@ export const useSourceMutations = () => {
     },
   })
 
+  const regenerateMutation = useMutation({
+    mutationFn: (sourceId: string) => api.regenerateDescriptions(sourceId, false, 5),
+    onSuccess: (data: any) => {
+      queryClient.invalidateQueries({ queryKey: ["sources"] })
+      toast.success(
+        `Regenerated descriptions for ${data.changed_snippets} of ${data.total_snippets} snippets`
+      )
+    },
+    onError: (error) => {
+      console.error("Failed to regenerate descriptions:", error)
+      toast.error(
+        "Failed to regenerate descriptions: " +
+          (error instanceof Error ? error.message : "Unknown error")
+      )
+    },
+  })
+
   return {
     deleteMutation,
     bulkDeleteMutation,
     filteredDeleteMutation,
     updateSourceNameMutation,
-    recrawlMutation
+    recrawlMutation,
+    regenerateMutation
   }
 }
