@@ -1,6 +1,6 @@
 """CodeDox constants and version information."""
 
-__version__ = "0.3.2"
+__version__ = "0.3.5"
 __author__ = "Chris Scott"
 __description__ = "Documentation Code Extraction and Search System"
 __app_name__ = "CodeDox"
@@ -50,3 +50,19 @@ def get_content_type_for_extension(file_path):
 
 # Pre-computed values for performance
 ALL_SUPPORTED_EXTENSIONS = get_all_supported_extensions()
+
+# WebSocket message types - single source of truth
+class WebSocketMessageType:
+    SUBSCRIBE = "subscribe"
+    UNSUBSCRIBE = "unsubscribe"
+    SUBSCRIBED = "subscribed"
+    UNSUBSCRIBED = "unsubscribed"
+    PING = "ping"
+    PONG = "pong"
+    ERROR = "error"
+    REGENERATION_PROGRESS = "regeneration_progress"
+    REGENERATION_COMPLETE = "regeneration_complete"
+    REGENERATION_ERROR = "regeneration_error"
+    CRAWL_UPDATE = "crawl_update"
+    CRAWL_PROGRESS = "crawl_progress"
+    CRAWL_COMPLETE = "crawl_complete"

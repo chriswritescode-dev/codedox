@@ -2,7 +2,6 @@ import React, { useState, useCallback } from "react";
 import { useSearchParams } from "react-router-dom";
 import { api } from "../lib/api";
 import { ConfirmationDialog } from '../components/ConfirmationDialog'
-import { RecrawlDialog } from '../components/RecrawlDialog'
 import { PaginationControls } from '../components/PaginationControls'
 import { useToast } from '../hooks/useToast'
 import { SourceGrid } from "../components/sources/SourceGrid";
@@ -34,12 +33,7 @@ export default function Sources() {
   const [filteredDeleteCount, setFilteredDeleteCount] = useState<number | null>(
     null,
   );
-  const [recrawlDialogOpen, setRecrawlDialogOpen] = useState(false);
-  const [sourceToRecrawl, setSourceToRecrawl] = useState<{
-    id: string;
-    name: string;
-    base_url: string;
-  } | null>(null);
+  
 
   const updateUrlParams = useCallback(
     (updates: Record<string, string | null>) => {
@@ -89,21 +83,13 @@ export default function Sources() {
     filteredDeleteMutation,
     updateSourceNameMutation,
     recrawlMutation,
+    regenerateMutation,
   } = useSourceMutations();
 
   // Sources are now filtered server-side
   const filteredSources = sources?.sources || [];
 
-  const handleDeleteClick = useCallback(
-    (e: React.MouseEvent, source: { id: string; name: string }) => {
-      e.preventDefault(); // Prevent navigation
-      e.stopPropagation(); // Prevent checkbox toggle
-      setSourceToDelete(source);
-      setIsBulkDelete(false);
-      setDeleteModalOpen(true);
-    },
-    [],
-  );
+  
 
   const handleBulkDelete = useCallback(async () => {
     // Check if all sources matching the filter are selected
@@ -236,32 +222,35 @@ export default function Sources() {
     [updateUrlParams],
   );
 
-  const handleRecrawlClick = useCallback(
-    (
-      e: React.MouseEvent,
-      source: { id: string; name: string; base_url: string },
-    ) => {
-      e.preventDefault();
-      e.stopPropagation();
-      setSourceToRecrawl(source);
-      setRecrawlDialogOpen(true);
+  
+
+  const handleRecrawl = useCallback(
+    (sourceId: string, options?: { ignoreHash?: boolean }) => {
+      recrawlMutation.mutate({ sourceId, ignoreHash: options?.ignoreHash || false });
     },
-    [],
+    [recrawlMutation],
   );
 
-  const handleRecrawlConfirm = useCallback(
-    (ignoreHash: boolean) => {
-      if (sourceToRecrawl) {
-        recrawlMutation.mutate({
-          sourceId: sourceToRecrawl.id,
-          ignoreHash,
-        });
-        setRecrawlDialogOpen(false);
-        setSourceToRecrawl(null);
+  const handleRegenerate = useCallback(
+    (sourceId: string) => {
+      regenerateMutation.mutate(sourceId);
+    },
+    [regenerateMutation],
+  );
+
+  const handleDelete = useCallback(
+    (sourceId: string) => {
+      const source = filteredSources.find(s => s.id === sourceId);
+      if (source) {
+        setSourceToDelete(source);
+        setIsBulkDelete(false);
+        setDeleteModalOpen(true);
       }
     },
-    [sourceToRecrawl, recrawlMutation],
+    [filteredSources],
   );
+
+  
 
   if (isLoading) {
     return (
@@ -327,10 +316,13 @@ export default function Sources() {
               sources={filteredSources}
               selectedSources={selectedSources}
               onToggleSelect={toggleSelectSource}
-              onDelete={handleDeleteClick}
-              onRecrawl={handleRecrawlClick}
+              onDelete={handleDelete}
+              onRecrawl={handleRecrawl}
+              onRegenerate={handleRegenerate}
               onUpdateName={handleUpdateSourceName}
               isPendingRecrawl={recrawlMutation.isPending}
+              isPendingRegenerate={regenerateMutation.isPending}
+              isPendingDelete={deleteMutation.isPending}
             />
           </div>
         )}
@@ -367,19 +359,7 @@ export default function Sources() {
         }}
       />
 
-      {sourceToRecrawl && (
-        <RecrawlDialog
-          isOpen={recrawlDialogOpen}
-          sourceName={sourceToRecrawl.name}
-          sourceUrl={sourceToRecrawl.base_url}
-          onConfirm={handleRecrawlConfirm}
-          onCancel={() => {
-            setRecrawlDialogOpen(false);
-            setSourceToRecrawl(null);
-          }}
-          isRecrawling={recrawlMutation.isPending}
-        />
-      )}
+      
 
       {/* Pagination Controls */}
       {sources && (

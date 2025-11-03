@@ -2,7 +2,8 @@ import { useEffect, useState } from "react";
 import { useParams, Link } from "react-router-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { api } from "../lib/api";
-import { useWebSocket } from "../hooks/useWebSocket";
+import { useWebSocketSubscription } from "../hooks/useWebSocketSubscription";
+import { WebSocketMessageType } from "../lib/websocketTypes";
 import { useToast } from "../hooks/useToast";
 import {
   ArrowLeft,
@@ -18,6 +19,7 @@ import {
 } from "lucide-react";
 import CrawlProgress from "../components/CrawlProgress";
 import { ConfirmationDialog } from "../components/ConfirmationDialog";
+import { ActionDialog } from "../components/ActionDialog";
 import { FailedPagesList } from "../components/FailedPagesList";
 
 export default function CrawlDetail() {
@@ -31,27 +33,34 @@ export default function CrawlDetail() {
   const [currentUrl, setCurrentUrl] = useState<string>();
   const [showFailedPages, setShowFailedPages] = useState(false);
 
-  // WebSocket for real-time updates
-  const { subscribe, unsubscribe } = useWebSocket({
-    onMessage: (message) => {
-      if (message.type === "crawl_update" && message.job_id === id) {
-        // Update current URL if provided
-        if (message.data?.current_url) {
-          setCurrentUrl(message.data.current_url);
-        }
-        // Invalidate the query to refresh the data
-        queryClient.invalidateQueries({ queryKey: ["crawl-job", id] });
-      }
-    },
+  const { lastMessage } = useWebSocketSubscription({
+    jobId: id,
+    messageType: WebSocketMessageType.CRAWL_UPDATE,
+    enabled: !!id,
   });
 
-  // Subscribe to updates for this job
   useEffect(() => {
-    if (id) {
-      subscribe(id);
-      return () => unsubscribe(id);
+    if (!lastMessage || lastMessage.job_id !== id) return;
+
+    if (lastMessage.data?.current_url) {
+      setCurrentUrl(lastMessage.data.current_url);
     }
-  }, [id, subscribe, unsubscribe]);
+    
+    queryClient.setQueryData(["crawl-job", id], (oldData: any) => {
+      if (!oldData) return oldData;
+      
+      return {
+        ...oldData,
+        urls_crawled: lastMessage.data?.urls_crawled ?? oldData.urls_crawled,
+        total_pages: lastMessage.data?.total_pages ?? oldData.total_pages,
+        snippets_extracted: lastMessage.data?.snippets_extracted ?? oldData.snippets_extracted,
+        documents_crawled: lastMessage.data?.documents_crawled ?? oldData.documents_crawled,
+        crawl_progress: lastMessage.data?.crawl_progress ?? oldData.crawl_progress,
+        crawl_phase: lastMessage.data?.crawl_phase ?? oldData.crawl_phase,
+        status: lastMessage.status ?? oldData.status,
+      };
+    });
+  }, [lastMessage, id, queryClient]);
 
   const {
     data: job,
@@ -342,31 +351,25 @@ export default function CrawlDetail() {
       />
 
       {/* Recrawl Confirmation Dialog */}
-      <ConfirmationDialog
+      <ActionDialog
         isOpen={recrawlModalOpen}
-        title="Confirm Recrawl"
+        type="recrawl"
         message="Are you sure you want to recrawl this job? This will create a new crawl job with the same configuration."
-        confirmText="Recrawl"
-        cancelText="Cancel"
         onConfirm={confirmRecrawl}
         onCancel={() => setRecrawlModalOpen(false)}
-        variant="default"
         isConfirming={recrawlMutation.isPending}
       />
 
       {/* Retry Failed Pages Confirmation Dialog */}
-      <ConfirmationDialog
+      <ActionDialog
         isOpen={retryModalOpen}
-        title="Confirm Retry"
-        message={`Are you sure you want to retry ${retryUrls.length} failed page(s)?`}
-        confirmText="Retry"
-        cancelText="Cancel"
+        type="retry"
+        itemCount={retryUrls.length}
         onConfirm={confirmRetryFailedPages}
         onCancel={() => {
           setRetryModalOpen(false);
           setRetryUrls([]);
         }}
-        variant="default"
         isConfirming={recrawlMutation.isPending}
       />
     </div>

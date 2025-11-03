@@ -1,41 +1,53 @@
-import { useEffect, useRef, useState, useCallback } from 'react'
+import { createContext, useContext, useEffect, useRef, useState, useCallback, ReactNode } from 'react'
+import { getClientId } from '../lib/api'
+import { WebSocketMessageType } from '../lib/websocketTypes'
 
 interface WebSocketMessage {
   type: string
   [key: string]: any
 }
 
-interface UseWebSocketOptions {
-  onMessage?: (message: WebSocketMessage) => void
-  onError?: (error: Event) => void
-  onOpen?: () => void
-  onClose?: () => void
+interface WebSocketContextValue {
+  isConnected: boolean
+  sendMessage: (message: WebSocketMessage) => void
+  subscribe: (jobId: string) => void
+  unsubscribe: (jobId: string) => void
+  addMessageListener: (listener: (message: WebSocketMessage) => void) => () => void
+}
+
+const WebSocketContext = createContext<WebSocketContextValue | null>(null)
+
+interface WebSocketProviderProps {
+  children: ReactNode
   reconnectInterval?: number
   maxReconnectAttempts?: number
 }
 
-export function useWebSocket(options: UseWebSocketOptions = {}) {
-  const {
-    onMessage,
-    onError,
-    onOpen,
-    onClose,
-    reconnectInterval = 5000,
-    maxReconnectAttempts = 5,
-  } = options
-
+export function WebSocketProvider({
+  children,
+  reconnectInterval = 5000,
+  maxReconnectAttempts = 5,
+}: WebSocketProviderProps) {
   const [isConnected, setIsConnected] = useState(false)
   const [reconnectAttempts, setReconnectAttempts] = useState(0)
   const wsRef = useRef<WebSocket | null>(null)
   const reconnectTimeoutRef = useRef<ReturnType<typeof setTimeout>>()
+  const isConnectingRef = useRef(false)
+  const messageListenersRef = useRef<Set<(message: WebSocketMessage) => void>>(new Set())
 
   const connect = useCallback(() => {
-    // Generate a unique client ID
-    const clientId = `web-${Date.now()}-${Math.random()
-      .toString(36)
-      .substring(2, 15)}`;
-    
-    // Use environment variable with fallback
+    if (isConnectingRef.current || (wsRef.current && wsRef.current.readyState === WebSocket.CONNECTING)) {
+      return
+    }
+
+    isConnectingRef.current = true
+
+    if (wsRef.current) {
+      wsRef.current.close()
+      wsRef.current = null
+    }
+
+    const clientId = getClientId()
     const wsBase = import.meta.env.VITE_WS_URL || '/ws'
     const wsUrl = wsBase.startsWith('ws') 
       ? `${wsBase}/${clientId}` 
@@ -46,33 +58,31 @@ export function useWebSocket(options: UseWebSocketOptions = {}) {
       wsRef.current = ws
 
       ws.onopen = () => {
-        console.log('WebSocket connected')
+        console.log('Global WebSocket connected')
         setIsConnected(true)
         setReconnectAttempts(0)
-        onOpen?.()
+        isConnectingRef.current = false
       }
 
       ws.onmessage = (event) => {
         try {
           const message = JSON.parse(event.data)
-          onMessage?.(message)
+          messageListenersRef.current.forEach(listener => listener(message))
         } catch (error) {
           console.error('Failed to parse WebSocket message:', error)
         }
       }
 
       ws.onerror = (error) => {
-        console.error('WebSocket error:', error)
-        onError?.(error)
+        console.error('Global WebSocket error:', error)
       }
 
       ws.onclose = () => {
-        console.log('WebSocket disconnected')
+        console.log('Global WebSocket disconnected')
         setIsConnected(false)
         wsRef.current = null
-        onClose?.()
+        isConnectingRef.current = false
 
-        // Attempt to reconnect
         if (reconnectAttempts < maxReconnectAttempts) {
           console.log(`Reconnecting in ${reconnectInterval / 1000} seconds...`)
           reconnectTimeoutRef.current = setTimeout(() => {
@@ -83,8 +93,9 @@ export function useWebSocket(options: UseWebSocketOptions = {}) {
       }
     } catch (error) {
       console.error('Failed to create WebSocket:', error)
+      isConnectingRef.current = false
     }
-  }, [onMessage, onError, onOpen, onClose, reconnectInterval, maxReconnectAttempts, reconnectAttempts])
+  }, [reconnectInterval, maxReconnectAttempts, reconnectAttempts])
 
   const disconnect = useCallback(() => {
     if (reconnectTimeoutRef.current) {
@@ -94,6 +105,7 @@ export function useWebSocket(options: UseWebSocketOptions = {}) {
       wsRef.current.close()
       wsRef.current = null
     }
+    setIsConnected(false)
   }, [])
 
   const sendMessage = useCallback((message: WebSocketMessage) => {
@@ -105,12 +117,19 @@ export function useWebSocket(options: UseWebSocketOptions = {}) {
   }, [])
 
   const subscribe = useCallback((jobId: string) => {
-    sendMessage({ type: 'subscribe', job_id: jobId })
+    sendMessage({ type: WebSocketMessageType.SUBSCRIBE, job_id: jobId })
   }, [sendMessage])
 
   const unsubscribe = useCallback((jobId: string) => {
-    sendMessage({ type: 'unsubscribe', job_id: jobId })
+    sendMessage({ type: WebSocketMessageType.UNSUBSCRIBE, job_id: jobId })
   }, [sendMessage])
+
+  const addMessageListener = useCallback((listener: (message: WebSocketMessage) => void) => {
+    messageListenersRef.current.add(listener)
+    return () => {
+      messageListenersRef.current.delete(listener)
+    }
+  }, [])
 
   useEffect(() => {
     connect()
@@ -119,11 +138,21 @@ export function useWebSocket(options: UseWebSocketOptions = {}) {
     }
   }, [])
 
-  return {
+  const value: WebSocketContextValue = {
     isConnected,
     sendMessage,
     subscribe,
     unsubscribe,
-    reconnectAttempts,
+    addMessageListener,
   }
+
+  return <WebSocketContext.Provider value={value}>{children}</WebSocketContext.Provider>
+}
+
+export function useWebSocketContext() {
+  const context = useContext(WebSocketContext)
+  if (!context) {
+    throw new Error('useWebSocketContext must be used within WebSocketProvider')
+  }
+  return context
 }

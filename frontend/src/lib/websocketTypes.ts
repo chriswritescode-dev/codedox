@@ -1,0 +1,15 @@
+export enum WebSocketMessageType {
+  SUBSCRIBE = 'subscribe',
+  UNSUBSCRIBE = 'unsubscribe',
+  SUBSCRIBED = 'subscribed',
+  UNSUBSCRIBED = 'unsubscribed',
+  PING = 'ping',
+  PONG = 'pong',
+  ERROR = 'error',
+  REGENERATION_PROGRESS = 'regeneration_progress',
+  REGENERATION_COMPLETE = 'regeneration_complete',
+  REGENERATION_ERROR = 'regeneration_error',
+  CRAWL_UPDATE = 'crawl_update',
+  CRAWL_PROGRESS = 'crawl_progress',
+  CRAWL_COMPLETE = 'crawl_complete',
+}

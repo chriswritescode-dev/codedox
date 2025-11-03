@@ -16,7 +16,7 @@ import {
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { SourceDocumentsTab } from "../components/SourceDocumentsTab";
 import { SourceSnippetsTab } from "../components/SourceSnippetsTab";
-import { SourceActions } from "../components/SourceActions";
+import { SourceActionsMenu } from "../components/SourceActionsMenu";
 import { EditableSourceName } from "../components/EditableSourceName";
 import { PaginationControls } from "../components/PaginationControls";
 
@@ -33,6 +33,10 @@ export default function SourceDetail() {
   
   const handleConfirmDelete = () => {
     state.deleteMutation.mutate();
+  };
+
+  const handleConfirmRegenerate = () => {
+    state.regenerateMutation.mutate();
   };
   
   const handleUpdateSourceName = async (_sourceId: string, newName: string, newVersion?: string) => {
@@ -114,15 +118,18 @@ export default function SourceDetail() {
                 )}
               </div>
             </div>
-            <SourceActions
+            <SourceActionsMenu
               source={state.source}
-              deleteModalOpen={state.deleteModalOpen}
-              deleteMatchesModalOpen={state.deleteMatchesModalOpen}
-              deleteMutation={state.deleteMutation}
-              deleteMatchesMutation={state.deleteMatchesMutation}
-              setDeleteModalOpen={state.setDeleteModalOpen}
-              setDeleteMatchesModalOpen={state.setDeleteMatchesModalOpen}
-              handleConfirmDelete={handleConfirmDelete}
+              onRecrawl={(options) => {
+                state.recrawlMutation.mutate({ ignoreHash: options?.ignoreHash || false });
+              }}
+              onRegenerate={handleConfirmRegenerate}
+              onDelete={handleConfirmDelete}
+              isRecrawling={state.recrawlMutation.isPending}
+              isRegenerating={state.regenerateMutation.isPending}
+              isDeleting={state.deleteMutation.isPending}
+              variant="buttons"
+              size="md"
             />
           </div>
 
