@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "codedox"
-version = "0.3.2"
+version = "0.3.5"
 description = "Documentation Code Extractor with MCP integration for documentation crawling and code search"
 authors = ["Chris Scott"]
 readme = "README.md"
