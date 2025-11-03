@@ -6,6 +6,8 @@ from typing import Any
 
 from fastapi import WebSocket, WebSocketDisconnect
 
+from ..constants import WebSocketMessageType
+
 logger = logging.getLogger(__name__)
 
 
@@ -30,14 +32,46 @@ class ConnectionManager:
             del self.subscriptions[client_id]
             logger.info(f"Client {client_id} disconnected")
 
-    async def send_message(self, client_id: str, message: dict[str, Any]) -> None:
-        """Send a message to a specific client."""
-        if client_id in self.active_connections:
-            try:
-                await self.active_connections[client_id].send_json(message)
-            except Exception as e:
-                logger.error(f"Error sending message to {client_id}: {e}")
-                self.disconnect(client_id)
+    async def send_message(self, client_id: str, message: dict[str, Any]) -> bool:
+        """Send a message to a specific client.
+        
+        Args:
+            client_id: The client identifier
+            message: The message payload to send
+            
+        Returns:
+            True if message was sent successfully, False otherwise
+            
+        Note:
+            RuntimeError typically indicates WebSocket is closed/closing.
+            Failed sends automatically disconnect the client.
+        """
+        if client_id not in self.active_connections:
+            logger.warning(
+                f"Client {client_id} not in active connections. "
+                f"Active: {list(self.active_connections.keys())}"
+            )
+            return False
+            
+        websocket = self.active_connections[client_id]
+        try:
+            logger.debug(f"Sending {message.get('type', 'unknown')} to {client_id}")
+            await websocket.send_json(message)
+            logger.debug(f"Message sent to {client_id}")
+            return True
+            
+        except RuntimeError as e:
+            logger.warning(f"WebSocket closed for {client_id}: {e}")
+            self.disconnect(client_id)
+            return False
+            
+        except Exception as e:
+            logger.error(
+                f"Unexpected error sending to {client_id}: "
+                f"{type(e).__name__}: {e}"
+            )
+            self.disconnect(client_id)
+            return False
 
     async def broadcast(self, message: dict[str, Any]) -> None:
         """Broadcast a message to all connected clients."""
@@ -87,6 +121,11 @@ class ConnectionManager:
 manager = ConnectionManager()
 
 
+def get_connection_manager() -> ConnectionManager:
+    """Get the global connection manager instance."""
+    return manager
+
+
 async def websocket_endpoint(websocket: WebSocket, client_id: str) -> None:
     """WebSocket endpoint handler."""
     await manager.connect(websocket, client_id)
@@ -100,36 +139,36 @@ async def websocket_endpoint(websocket: WebSocket, client_id: str) -> None:
                 message = json.loads(data)
                 message_type = message.get("type")
 
-                if message_type == "subscribe":
+                if message_type == WebSocketMessageType.SUBSCRIBE:
                     job_id = message.get("job_id")
                     if job_id:
                         manager.subscribe(client_id, job_id)
                         await manager.send_message(client_id, {
-                            "type": "subscribed",
+                            "type": WebSocketMessageType.SUBSCRIBED,
                             "job_id": job_id
                         })
 
-                elif message_type == "unsubscribe":
+                elif message_type == WebSocketMessageType.UNSUBSCRIBE:
                     job_id = message.get("job_id")
                     if job_id:
                         manager.unsubscribe(client_id, job_id)
                         await manager.send_message(client_id, {
-                            "type": "unsubscribed",
+                            "type": WebSocketMessageType.UNSUBSCRIBED,
                             "job_id": job_id
                         })
 
-                elif message_type == "ping":
-                    await manager.send_message(client_id, {"type": "pong"})
+                elif message_type == WebSocketMessageType.PING:
+                    await manager.send_message(client_id, {"type": WebSocketMessageType.PONG})
 
                 else:
                     await manager.send_message(client_id, {
-                        "type": "error",
+                        "type": WebSocketMessageType.ERROR,
                         "message": f"Unknown message type: {message_type}"
                     })
 
             except json.JSONDecodeError:
                 await manager.send_message(client_id, {
-                    "type": "error",
+                    "type": WebSocketMessageType.ERROR,
                     "message": "Invalid JSON"
                 })
 
@@ -143,7 +182,7 @@ async def websocket_endpoint(websocket: WebSocket, client_id: str) -> None:
 async def notify_crawl_update(job_id: str, status: str, data: dict[str, Any]) -> None:
     """Notify subscribers about crawl job updates."""
     message = {
-        "type": "crawl_update",
+        "type": WebSocketMessageType.CRAWL_UPDATE,
         "job_id": job_id,
         "status": status,
         "data": data,

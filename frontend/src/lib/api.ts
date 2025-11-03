@@ -127,7 +127,28 @@ export interface Statistics {
   recent_jobs?: Job[];
 }
 
+const CLIENT_ID_KEY = 'codedox_client_id';
+
+function generateClientId(): string {
+  let clientId = sessionStorage.getItem(CLIENT_ID_KEY);
+  if (!clientId) {
+    clientId = `web-${Date.now()}-${Math.random().toString(36).substring(2, 15)}`;
+    sessionStorage.setItem(CLIENT_ID_KEY, clientId);
+  }
+  return clientId;
+}
+
 class APIClient {
+  private readonly clientId: string;
+
+  constructor() {
+    this.clientId = generateClientId();
+  }
+
+  getClientId(): string {
+    return this.clientId;
+  }
+
   async fetch<T>(endpoint: string, options?: RequestInit): Promise<T> {
     const url = `${API_BASE_URL}${endpoint}`;
     
@@ -138,6 +159,7 @@ class APIClient {
         ? { ...options?.headers }
         : {
             'Content-Type': 'application/json',
+            'X-Client-ID': this.clientId || '',
             ...options?.headers,
           };
       
@@ -658,6 +680,9 @@ class APIClient {
 }
 
 export const api = new APIClient()
+
+// Export client ID for WebSocket usage
+export const getClientId = () => api.getClientId();
 
 // Export individual methods for convenience
 export const uploadMarkdown = api.uploadMarkdown.bind(api)

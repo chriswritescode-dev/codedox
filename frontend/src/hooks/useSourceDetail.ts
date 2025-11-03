@@ -39,6 +39,7 @@ interface SourceDetailState {
   deleteMutation: UseMutationResult<{ message: string }, Error, void, unknown>;
   deleteMatchesMutation: UseMutationResult<{ deleted_count: number; source_id: string; source_name: string }, Error, void, unknown>;
   regenerateMutation: UseMutationResult<any, Error, void, unknown>;
+  recrawlMutation: UseMutationResult<any, Error, { ignoreHash: boolean }, unknown>;
   updateSourceNameMutation: UseMutationResult<Source, Error, { name: string; version?: string }, unknown>;
   
   // Query data
@@ -222,17 +223,29 @@ export function useSourceDetail(id: string): SourceDetailState {
   const regenerateMutation = useMutation({
     mutationFn: () => api.regenerateDescriptions(id!, false),
     onSuccess: (data) => {
-      queryClient.invalidateQueries({ queryKey: ["source-snippets", id] });
-      queryClient.invalidateQueries({ queryKey: ["source", id] });
-      setRegenerateModalOpen(false);
-      toast.success(
-        `Regenerated descriptions for ${data.changed_snippets} of ${data.total_snippets} snippets`
-      );
+      // Don't close modal or show success - WebSocket will handle completion
+      console.log('Regeneration started:', data);
     },
     onError: (error) => {
       console.error("Failed to regenerate descriptions:", error);
       toast.error(
-        "Failed to regenerate descriptions: " +
+        "Failed to start regeneration: " +
+          (error instanceof Error ? error.message : "Unknown error")
+      );
+    },
+  });
+
+  const recrawlMutation = useMutation({
+    mutationFn: ({ ignoreHash }: { ignoreHash: boolean }) => 
+      api.recrawlSource(id!, ignoreHash),
+    onSuccess: (data) => {
+      // Navigate to the crawl detail page
+      window.location.href = `/crawl/${data.id}`;
+    },
+    onError: (error) => {
+      console.error("Failed to recrawl source:", error);
+      toast.error(
+        "Failed to recrawl source: " +
           (error instanceof Error ? error.message : "Unknown error")
       );
     },
@@ -276,6 +289,7 @@ export function useSourceDetail(id: string): SourceDetailState {
     deleteMutation,
     deleteMatchesMutation,
     regenerateMutation,
+    recrawlMutation,
     updateSourceNameMutation,
     source,
     documents,
