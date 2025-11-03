@@ -1,7 +1,8 @@
 import React, { memo } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { FileText, Code, Trash2, Check, RefreshCw } from 'lucide-react'
+import { FileText, Code, Check } from 'lucide-react'
 import { EditableSourceName } from '../EditableSourceName'
+import { SourceActionsMenu } from '../SourceActionsMenu'
 import { Source } from '../../lib/api'
 import { cn } from '../../lib/utils'
 
@@ -9,20 +10,26 @@ interface SourceCardProps {
   source: Source
   isSelected: boolean
   onToggleSelect: (id: string) => void
-  onDelete: (e: React.MouseEvent, source: { id: string; name: string }) => void
-  onRecrawl: (e: React.MouseEvent, source: { id: string; name: string; base_url: string }) => void
+  onRecrawl: (options?: { ignoreHash?: boolean }) => void
+  onRegenerate: () => void
+  onDelete: () => void
   onUpdateName: (id: string, name: string) => Promise<void>
   isPendingRecrawl: boolean
+  isPendingRegenerate: boolean
+  isPendingDelete: boolean
 }
 
 export const SourceCard = memo(({
   source,
   isSelected,
   onToggleSelect,
-  onDelete,
   onRecrawl,
+  onRegenerate,
+  onDelete,
   onUpdateName,
-  isPendingRecrawl
+  isPendingRecrawl,
+  isPendingRegenerate,
+  isPendingDelete
 }: SourceCardProps) => {
   const navigate = useNavigate()
 
@@ -61,29 +68,17 @@ export const SourceCard = memo(({
       </div>
 
       <div className="flex items-start justify-end mb-4">
-        <div className="flex items-center gap-2">
-          <button
-            onClick={(e) => {
-              e.stopPropagation();
-              onRecrawl(e, source);
-            }}
-            className="p-1 text-muted-foreground hover:text-primary hover:bg-primary/10 rounded-md opacity-0 group-hover:opacity-100 transition-opacity"
-            title="Recrawl source"
-            disabled={isPendingRecrawl}
-          >
-            <RefreshCw className="h-4 w-4" />
-          </button>
-          <button
-            onClick={(e) => {
-              e.stopPropagation();
-              onDelete(e, source);
-            }}
-            className="p-1 text-muted-foreground hover:text-destructive hover:bg-destructive/10 rounded-md opacity-0 group-hover:opacity-100 transition-opacity"
-            title="Delete source"
-          >
-            <Trash2 className="h-4 w-4" />
-          </button>
-        </div>
+        <SourceActionsMenu
+          source={source}
+          onRecrawl={onRecrawl}
+          onRegenerate={onRegenerate}
+          onDelete={onDelete}
+          isRecrawling={isPendingRecrawl}
+          isRegenerating={isPendingRegenerate}
+          isDeleting={isPendingDelete}
+          variant="dropdown"
+          size="sm"
+        />
       </div>
 
       <div className="mb-4">
