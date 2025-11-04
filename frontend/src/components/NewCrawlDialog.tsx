@@ -1,9 +1,9 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { useQuery } from '@tanstack/react-query';
+
 import { useToast } from '../hooks/useToast';
 import { useKeyboardShortcut } from '../hooks/useKeyboardShortcut';
 import { ConfirmationDialog } from './ConfirmationDialog';
-import { api, SourceOption } from '../lib/api';
+import { SourceOption } from '../lib/api';
 import { useSources } from '../hooks/useSources';
 import {
   DialogHeader,
@@ -56,12 +56,7 @@ export const NewCrawlDialog: React.FC<NewCrawlDialogProps> = ({
   const shouldLoadSources = useMemo(() => isOpen && mode === 'update', [isOpen, mode]);
   const { sources, isLoading: isLoadingSources } = useSources(shouldLoadSources);
   
-  const { data: sourceDetails } = useQuery({
-    queryKey: ['source-details', selectedSource?.id],
-    queryFn: () => api.getSource(selectedSource!.id),
-    enabled: !!selectedSource && mode === 'update',
-    staleTime: 5 * 60 * 1000,
-  });
+
   
   const [formData, setFormData] = useState({
     name: '',
@@ -80,16 +75,16 @@ export const NewCrawlDialog: React.FC<NewCrawlDialogProps> = ({
   const [showConfirmDialog, setShowConfirmDialog] = useState(false);
   const [pendingSubmit, setPendingSubmit] = useState<PendingSubmit | null>(null);
 
-  useEffect(() => {
-    if (sourceDetails && mode === 'update') {
+useEffect(() => {
+    if (selectedSource && mode === 'update') {
       setFormData(prev => ({
         ...prev,
-        name: sourceDetails.name,
-        version: sourceDetails.version || '',
-        base_url: sourceDetails.base_url,
+        name: selectedSource.name,
+        version: selectedSource.version || '',
+        base_url: selectedSource.base_url,
       }));
     }
-  }, [sourceDetails, mode]);
+  }, [selectedSource, mode]);
 
   const handleModeChange = (newMode: DialogMode) => {
     setMode(newMode);
@@ -226,21 +221,20 @@ export const NewCrawlDialog: React.FC<NewCrawlDialogProps> = ({
               }}
               onChange={(field, value) => setFormData({ ...formData, [field]: value })}
               onBaseUrlChange={(value) => {
-                if (mode === 'create') {
-                  setFormData((prev) => {
-                    let domain = prev.domain_filter;
-                    if (!prev.domain_filter && value) {
-                      try {
-                        const parsed = new URL(value);
-                        domain = parsed.hostname;
-                      } catch (err) {
-                        // Invalid URL, keep existing domain
-                      }
+                setFormData((prev) => {
+                  let domain = prev.domain_filter;
+                  if (mode === 'create' && !prev.domain_filter && value) {
+                    try {
+                      const parsed = new URL(value);
+                      domain = parsed.hostname;
+                    } catch (err) {
+                      // Invalid URL, keep existing domain
                     }
-                    return { ...prev, base_url: value, domain_filter: domain };
-                  });
-                }
+                  }
+                  return { ...prev, base_url: value, domain_filter: domain };
+                });
               }}
+              selectedSource={selectedSource}
             />
 
             {/* Update-specific fields */}
