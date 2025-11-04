@@ -76,6 +76,19 @@ Optimize crawl speed with configurable concurrent sessions while respecting serv
 - `crawl resume`: Continue failed crawl
 - `crawl health`: Monitor crawler health
 
+### Source Updates
+
+**Recrawl Source:**
+Re-crawl an existing source to refresh content without changing configuration.
+
+**Update Source:**
+Update an existing source with new crawl settings:
+- Change base URL to crawl different sections
+- Add URL patterns to expand coverage
+- Exclude URL patterns to skip certain pages
+- Update version information
+- Modify crawl depth and concurrency settings
+
 ## Code Extraction
 
 ### HTML-Based Extraction
@@ -252,9 +265,10 @@ curl -H "Authorization: Bearer your-token" \
 
 - View all documentation sources
 - Browse extracted snippets
-- Re-crawl with updated settings
+- Recrawl sources to refresh content
+- Update sources with new crawl settings
 - Delete sources and associated data
-- Edit source names
+- Edit source names and versions
 
 **Crawl Monitoring:**
 

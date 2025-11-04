@@ -1,8 +1,8 @@
 import { useQuery } from "@tanstack/react-query";
-import { api } from '../lib/api'
+import { api } from "../lib/api";
 import { FileText, Code, Database, Clock } from "lucide-react";
 import { Link } from "react-router-dom";
-import QuickSearch from '../components/QuickSearch'
+import QuickSearch from "../components/QuickSearch";
 
 export default function Dashboard() {
   const {
@@ -33,7 +33,7 @@ export default function Dashboard() {
   return (
     <div className="flex flex-col h-full py-8">
       <div className="flex-1 space-y-6">
-        <h1 className="text-center text-3xl font-bold">CodeDoX Dashboard</h1>
+        <h1 className="text-center text-3xl font-bold">CODEDOX Dashboard</h1>
 
         <QuickSearch />
 
