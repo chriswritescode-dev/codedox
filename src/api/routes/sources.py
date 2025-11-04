@@ -1092,10 +1092,6 @@ class UpdateSourceCrawlRequest(BaseModel):
     max_concurrent_crawls: int | None = Field(
         default=None, ge=1, le=100, description="Maximum concurrent crawl sessions"
     )
-    content_mode: str | None = Field(
-        default=None,
-        description="Content update mode: 'add_only', 'update_changed', or 'full_recrawl'"
-    )
     version: str | None = Field(
         default=None, max_length=50, description="New version for this crawl"
     )
@@ -1214,13 +1210,6 @@ async def update_source_crawl(
     if original_job.status != "completed":
         raise HTTPException(status_code=400, detail="Can only update completed sources")
 
-    # Validate content_mode
-    if request.content_mode and request.content_mode not in ["add_only", "update_changed", "full_recrawl"]:
-        raise HTTPException(
-            status_code=400,
-            detail="content_mode must be one of: 'add_only', 'update_changed', 'full_recrawl'"
-        )
-
     # Get original configuration
     original_config = original_job.config or {}
     original_url_patterns = original_config.get("url_patterns", original_config.get("include_patterns", []))
@@ -1252,7 +1241,6 @@ async def update_source_crawl(
         "original_source_id": source_id,
         "original_name": original_job.name,
         "update_started_at": datetime.utcnow().isoformat(),
-        "content_mode": request.content_mode or "add_only",
         "changes_summary": {
             "new_url_patterns": request.add_url_patterns or [],
             "excluded_patterns": exclude_patterns,

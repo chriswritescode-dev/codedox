@@ -29,9 +29,8 @@ export interface UpdateSourceCrawlData {
   max_depth?: number
   max_pages?: number
   max_concurrent_crawls?: number
-  content_mode?: 'add_only' | 'update_changed' | 'full_recrawl'
   version?: string
-  source_id: string  // Required for version-specific updates
+  source_id: string
 }
 
 export interface CrawlJob {
