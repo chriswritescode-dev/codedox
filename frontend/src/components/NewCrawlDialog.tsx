@@ -9,7 +9,6 @@ import { api, SourceOption } from '../lib/api';
 import { useSources } from '../hooks/useSources';
 
 type DialogMode = 'create' | 'update';
-type ContentMode = 'add_only' | 'update_changed' | 'full_recrawl';
 
 interface CrawlSubmitData {
   name?: string;
@@ -22,7 +21,6 @@ interface CrawlSubmitData {
   max_concurrent_crawls?: number;
   add_url_patterns?: string[];
   exclude_url_patterns?: string[];
-  content_mode?: ContentMode;
 }
 
 interface PendingSubmit {
@@ -69,7 +67,6 @@ export const NewCrawlDialog: React.FC<NewCrawlDialogProps> = ({
     max_concurrent_crawls: 5,
     add_url_patterns: '',
     exclude_url_patterns: '',
-    content_mode: 'add_only' as ContentMode,
   });
   
   const [maxConcurrentInput, setMaxConcurrentInput] = useState('5');
@@ -103,7 +100,6 @@ export const NewCrawlDialog: React.FC<NewCrawlDialogProps> = ({
         max_concurrent_crawls: 5,
         add_url_patterns: '',
         exclude_url_patterns: '',
-        content_mode: 'add_only',
       });
       setMaxConcurrentInput('5');
     }
@@ -121,7 +117,6 @@ export const NewCrawlDialog: React.FC<NewCrawlDialogProps> = ({
       max_concurrent_crawls: 5,
       add_url_patterns: '',
       exclude_url_patterns: '',
-      content_mode: 'add_only' as ContentMode,
     });
     setMaxConcurrentInput('5');
     setSelectedSource(null);
@@ -168,7 +163,6 @@ export const NewCrawlDialog: React.FC<NewCrawlDialogProps> = ({
       exclude_url_patterns: mode === 'update' && formData.exclude_url_patterns
         ? formData.exclude_url_patterns.split(',').map(p => p.trim()).filter(p => p)
         : undefined,
-      content_mode: mode === 'update' ? formData.content_mode : undefined,
     };
 
     // Show confirmation dialog for update mode
@@ -343,25 +337,6 @@ export const NewCrawlDialog: React.FC<NewCrawlDialogProps> = ({
             {/* Update-specific fields */}
             {mode === 'update' && selectedSource && (
               <>
-                <div>
-                  <label htmlFor="content_mode" className="block text-sm font-medium mb-1">
-                    Content Update Mode
-                  </label>
-                  <select
-                    id="content_mode"
-                    value={formData.content_mode}
-                    onChange={(e) => setFormData({ ...formData, content_mode: e.target.value as ContentMode })}
-                    className="w-full px-3 py-2 border border-input rounded-md bg-background focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent transition-all"
-                  >
-                    <option value="add_only">Add new content only</option>
-                    <option value="update_changed">Update changed content</option>
-                    <option value="full_recrawl">Recrawl everything</option>
-                  </select>
-                  <p className="text-xs text-muted-foreground mt-1">
-                    Choose how to handle existing content during this update
-                  </p>
-                </div>
-
                 <div>
                   <label htmlFor="add_url_patterns" className="block text-sm font-medium mb-1">
                     Additional URL Patterns <span className="text-xs text-muted-foreground">(optional)</span>
