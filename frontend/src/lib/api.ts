@@ -21,6 +21,7 @@ export interface SourceOption {
   documents_count: number
   snippets_count: number
   created_at: string
+  base_url: string
 }
 
 export interface UpdateSourceCrawlData {
