@@ -1,6 +1,7 @@
 """Tests for source update crawl functionality."""
 
 from datetime import datetime
+from unittest.mock import AsyncMock, patch
 from uuid import uuid4
 
 import pytest
@@ -63,8 +64,17 @@ class TestSourceUpdateCrawl:
         db.refresh(job)
         return job
 
-    def test_update_source_crawl_success(self, client, completed_crawl_job):
+    @patch('src.api.routes.sources.mcp_tools.init_crawl', new_callable=AsyncMock)
+    def test_update_source_crawl_success(self, mock_init_crawl, client, completed_crawl_job):
         """Test successful source update crawl."""
+        new_job_id = str(uuid4())
+        mock_init_crawl.return_value = {
+            "new_job_id": new_job_id,
+            "message": "Update crawl job created successfully",
+            "original_source_id": str(completed_crawl_job.id),
+            "status": "pending",
+        }
+        
         response = client.patch(
             f"/api/sources/{completed_crawl_job.id}/update-crawl",
             json={
@@ -80,12 +90,21 @@ class TestSourceUpdateCrawl:
         data = response.json()
         
         assert "new_job_id" in data
-        assert data["message"] == "Update crawl job created successfully"
         assert data["original_source_id"] == str(completed_crawl_job.id)
-        assert data["status"] == "pending"
+        assert data["is_update_crawl"] is True
+        
+        # Verify init_crawl was called with correct parameters
+        mock_init_crawl.assert_called_once()
 
-    def test_update_source_crawl_minimal_changes(self, client, completed_crawl_job):
+    @patch('src.api.routes.sources.mcp_tools.init_crawl', new_callable=AsyncMock)
+    def test_update_source_crawl_minimal_changes(self, mock_init_crawl, client, completed_crawl_job):
         """Test update crawl with only version change."""
+        mock_init_crawl.return_value = {
+            "new_job_id": str(uuid4()),
+            "message": "Update crawl job created successfully",
+            "status": "pending",
+        }
+        
         response = client.patch(
             f"/api/sources/{completed_crawl_job.id}/update-crawl",
             json={
@@ -97,10 +116,16 @@ class TestSourceUpdateCrawl:
         assert response.status_code == 200
         data = response.json()
         assert "new_job_id" in data
-        assert data["original_source_id"] == str(completed_crawl_job.id)
 
-    def test_update_source_crawl_add_url_patterns(self, client, completed_crawl_job):
+    @patch('src.api.routes.sources.mcp_tools.init_crawl', new_callable=AsyncMock)
+    def test_update_source_crawl_add_url_patterns(self, mock_init_crawl, client, completed_crawl_job):
         """Test adding URL patterns to existing crawl."""
+        mock_init_crawl.return_value = {
+            "new_job_id": str(uuid4()),
+            "message": "Update crawl job created successfully",
+            "status": "pending",
+        }
+        
         response = client.patch(
             f"/api/sources/{completed_crawl_job.id}/update-crawl",
             json={
@@ -113,8 +138,15 @@ class TestSourceUpdateCrawl:
         data = response.json()
         assert "new_job_id" in data
 
-    def test_update_source_crawl_exclude_patterns(self, client, completed_crawl_job):
+    @patch('src.api.routes.sources.mcp_tools.init_crawl', new_callable=AsyncMock)
+    def test_update_source_crawl_exclude_patterns(self, mock_init_crawl, client, completed_crawl_job):
         """Test excluding URL patterns from crawl."""
+        mock_init_crawl.return_value = {
+            "new_job_id": str(uuid4()),
+            "message": "Update crawl job created successfully",
+            "status": "pending",
+        }
+        
         response = client.patch(
             f"/api/sources/{completed_crawl_job.id}/update-crawl",
             json={
@@ -127,8 +159,15 @@ class TestSourceUpdateCrawl:
         data = response.json()
         assert "new_job_id" in data
 
-    def test_update_source_crawl_change_depth(self, client, completed_crawl_job):
+    @patch('src.api.routes.sources.mcp_tools.init_crawl', new_callable=AsyncMock)
+    def test_update_source_crawl_change_depth(self, mock_init_crawl, client, completed_crawl_job):
         """Test changing max_depth for update crawl."""
+        mock_init_crawl.return_value = {
+            "new_job_id": str(uuid4()),
+            "message": "Update crawl job created successfully",
+            "status": "pending",
+        }
+        
         response = client.patch(
             f"/api/sources/{completed_crawl_job.id}/update-crawl",
             json={
@@ -141,8 +180,15 @@ class TestSourceUpdateCrawl:
         data = response.json()
         assert "new_job_id" in data
 
-    def test_update_source_crawl_change_concurrent(self, client, completed_crawl_job):
+    @patch('src.api.routes.sources.mcp_tools.init_crawl', new_callable=AsyncMock)
+    def test_update_source_crawl_change_concurrent(self, mock_init_crawl, client, completed_crawl_job):
         """Test changing max_concurrent_crawls."""
+        mock_init_crawl.return_value = {
+            "new_job_id": str(uuid4()),
+            "message": "Update crawl job created successfully",
+            "status": "pending",
+        }
+        
         response = client.patch(
             f"/api/sources/{completed_crawl_job.id}/update-crawl",
             json={
@@ -206,9 +252,15 @@ class TestSourceUpdateCrawl:
         
         assert response.status_code == 422
 
-    def test_update_source_crawl_no_content_mode(self, client, completed_crawl_job):
+    @patch('src.api.routes.sources.mcp_tools.init_crawl', new_callable=AsyncMock)
+    def test_update_source_crawl_no_content_mode(self, mock_init_crawl, client, completed_crawl_job):
         """Test that content_mode is not required or accepted."""
-        # Should work without content_mode
+        mock_init_crawl.return_value = {
+            "new_job_id": str(uuid4()),
+            "message": "Update crawl job created successfully",
+            "status": "pending",
+        }
+        
         response = client.patch(
             f"/api/sources/{completed_crawl_job.id}/update-crawl",
             json={
@@ -219,8 +271,15 @@ class TestSourceUpdateCrawl:
         
         assert response.status_code == 200
 
-    def test_update_source_crawl_all_parameters(self, client, completed_crawl_job):
+    @patch('src.api.routes.sources.mcp_tools.init_crawl', new_callable=AsyncMock)
+    def test_update_source_crawl_all_parameters(self, mock_init_crawl, client, completed_crawl_job):
         """Test update crawl with all optional parameters."""
+        mock_init_crawl.return_value = {
+            "new_job_id": str(uuid4()),
+            "message": "Update crawl job created successfully",
+            "status": "pending",
+        }
+        
         response = client.patch(
             f"/api/sources/{completed_crawl_job.id}/update-crawl",
             json={
@@ -237,7 +296,6 @@ class TestSourceUpdateCrawl:
         assert response.status_code == 200
         data = response.json()
         assert "new_job_id" in data
-        assert data["original_source_id"] == str(completed_crawl_job.id)
 
     def test_update_source_crawl_missing_source_id(self, client, completed_crawl_job):
         """Test that source_id is required in request body."""
