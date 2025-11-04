@@ -7,7 +7,6 @@ import { SourceOption } from '../lib/api';
 import { useSources } from '../hooks/useSources';
 import {
   DialogHeader,
-  ModeSelector,
   SourceSelector,
   BasicFields,
   UpdateFields,
@@ -190,101 +189,121 @@ useEffect(() => {
 
   return (
     <div className="fixed inset-0 bg-slate-600/50 backdrop-blur-sm flex items-center justify-center z-50">
-      <div className="bg-card border-2 border-border rounded-lg w-full max-w-2xl max-h-[90vh] shadow-2xl animate-slide-up flex flex-col">
+      <div className="bg-card border-2 border-border rounded-lg w-full max-w-2xl h-[85vh] shadow-2xl animate-slide-up flex flex-col">
         <DialogHeader
           title={mode === 'create' ? 'Create New Crawl' : 'Update Existing Source'}
+          mode={mode}
+          onModeChange={handleModeChange}
           onClose={handleClose}
         />
 
-        <ModeSelector mode={mode} onModeChange={handleModeChange} />
-
         <form onSubmit={handleSubmit} className="flex flex-col flex-1 min-h-0">
-          <div className="flex-1 overflow-y-auto px-6 py-4 space-y-4">
+          <div className="flex-1 overflow-y-auto px-6 py-6 space-y-6">
             
             {/* Source Selection for Update Mode */}
             {mode === 'update' && (
-              <SourceSelector
-                sources={sources}
-                selectedSource={selectedSource}
-                onSourceSelect={setSelectedSource}
-                isSubmitting={isSubmitting}
-                isLoading={isLoadingSources}
-              />
+              <div className="space-y-2">
+                <label className="text-sm font-medium text-foreground">
+                  Select Source to Update
+                </label>
+                <SourceSelector
+                  sources={sources}
+                  selectedSource={selectedSource}
+                  onSourceSelect={setSelectedSource}
+                  isSubmitting={isSubmitting}
+                  isLoading={isLoadingSources}
+                />
+              </div>
             )}
 
-            <BasicFields
-              mode={mode}
-              formData={{
-                name: formData.name,
-                version: formData.version,
-                base_url: formData.base_url,
-              }}
-              onChange={(field, value) => setFormData({ ...formData, [field]: value })}
-              onBaseUrlChange={(value) => {
-                setFormData((prev) => {
-                  let domain = prev.domain_filter;
-                  if (mode === 'create' && !prev.domain_filter && value) {
-                    try {
-                      const parsed = new URL(value);
-                      domain = parsed.hostname;
-                    } catch (err) {
-                      // Invalid URL, keep existing domain
+            <div className="space-y-2">
+              <label className="text-sm font-medium text-foreground">
+                Basic Information
+              </label>
+              <BasicFields
+                mode={mode}
+                formData={{
+                  name: formData.name,
+                  version: formData.version,
+                  base_url: formData.base_url,
+                }}
+                onChange={(field, value) => setFormData({ ...formData, [field]: value })}
+                onBaseUrlChange={(value) => {
+                  setFormData((prev) => {
+                    let domain = prev.domain_filter;
+                    if (mode === 'create' && !prev.domain_filter && value) {
+                      try {
+                        const parsed = new URL(value);
+                        domain = parsed.hostname;
+                      } catch (err) {
+                        // Invalid URL, keep existing domain
+                      }
                     }
-                  }
-                  return { ...prev, base_url: value, domain_filter: domain };
-                });
-              }}
-              selectedSource={selectedSource}
-            />
+                    return { ...prev, base_url: value, domain_filter: domain };
+                  });
+                }}
+                selectedSource={selectedSource}
+              />
+            </div>
 
             {/* Update-specific fields */}
             {mode === 'update' && selectedSource && (
-              <UpdateFields
-                addUrlPatterns={formData.add_url_patterns}
-                excludeUrlPatterns={formData.exclude_url_patterns}
-                onChange={(field, value) => setFormData({ ...formData, [field]: value })}
-              />
+              <div className="space-y-2">
+                <label className="text-sm font-medium text-foreground">
+                  URL Pattern Updates
+                </label>
+                <UpdateFields
+                  addUrlPatterns={formData.add_url_patterns}
+                  excludeUrlPatterns={formData.exclude_url_patterns}
+                  onChange={(field, value) => setFormData({ ...formData, [field]: value })}
+                />
+              </div>
             )}
 
-            <CrawlConfigFields
-              mode={mode}
-              formData={{
-                max_depth: formData.max_depth,
-                domain_filter: formData.domain_filter,
-                url_patterns: formData.url_patterns,
-                max_pages: formData.max_pages,
-              }}
-              maxConcurrentInput={maxConcurrentInput}
-              onChange={(field, value) => setFormData({ ...formData, [field]: value })}
-              onMaxConcurrentChange={(value) => {
-                setMaxConcurrentInput(value);
-                
-                if (value === '') {
-                  setFormData({
-                    ...formData,
-                    max_concurrent_crawls: 20,
-                  });
-                  return;
-                }
-                
-                const parsedValue = parseInt(value);
-                if (!isNaN(parsedValue) && parsedValue >= 0 && parsedValue <= 100) {
-                  setFormData({
-                    ...formData,
-                    max_concurrent_crawls: parsedValue,
-                  });
-                } else if (value === '0') {
-                  setFormData({
-                    ...formData,
-                    max_concurrent_crawls: 0,
-                  });
-                }
-              }}
-              onMaxConcurrentBlur={() => {
-                const currentValue = formData.max_concurrent_crawls;
-                setMaxConcurrentInput(currentValue.toString());
-              }}
-            />
+            <div className="space-y-2">
+              <label className="text-sm font-medium text-foreground">
+                Crawl Configuration
+              </label>
+              <CrawlConfigFields
+                mode={mode}
+                formData={{
+                  max_depth: formData.max_depth,
+                  domain_filter: formData.domain_filter,
+                  url_patterns: formData.url_patterns,
+                  max_pages: formData.max_pages,
+                }}
+                maxConcurrentInput={maxConcurrentInput}
+                onChange={(field, value) => setFormData({ ...formData, [field]: value })}
+                onMaxConcurrentChange={(value) => {
+                  setMaxConcurrentInput(value);
+                  
+                  if (value === '') {
+                    setFormData({
+                      ...formData,
+                      max_concurrent_crawls: 20,
+                    });
+                    return;
+                  }
+                  
+                  const parsedValue = parseInt(value);
+                  if (!isNaN(parsedValue) && parsedValue >= 0 && parsedValue <= 100) {
+                    setFormData({
+                      ...formData,
+                      max_concurrent_crawls: parsedValue,
+                    });
+                  } else if (value === '0') {
+                    setFormData({
+                      ...formData,
+                      max_concurrent_crawls: 0,
+                    });
+                  }
+                }}
+                onMaxConcurrentBlur={() => {
+                  const currentValue = formData.max_concurrent_crawls;
+                  setMaxConcurrentInput(currentValue.toString());
+                }}
+              />
+            </div>
           </div>
 
           <DialogActions

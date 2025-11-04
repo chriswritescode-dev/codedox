@@ -9,6 +9,7 @@ services:
     volumes:
       - ./src:/app/src
       - ./logs:/app/logs
+      - ./config.runtime.json:/app/config.runtime.json
     environment:
       - ENVIRONMENT=development
       - DEBUG=true

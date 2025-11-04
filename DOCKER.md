@@ -86,6 +86,9 @@ CODE_LLM_EXTRACTION_MODEL=gpt-4o-mini
 
 - `postgres_data` - PostgreSQL data persistence
 - `logs_data` - Application logs (Docker volume, prevents permission issues)
+- `./config.runtime.json:/app/config.runtime.json` - Runtime settings (allows WebUI configuration to persist)
+
+**Important**: The runtime settings volume mount is required for WebUI settings to work. This allows you to configure LLM settings via the WebUI at http://localhost:5173/settings and have them persist across container restarts.
 
 ## Common Operations
 
