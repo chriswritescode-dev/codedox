@@ -14,6 +14,7 @@ import {
 import { useState, useEffect } from "react";
 import { DocumentSearchModal } from "./DocumentSearchModal";
 import { NewCrawlDialog } from "./NewCrawlDialog";
+import { SourceOption } from "../lib/api";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { api } from "../lib/api";
 import { useToast } from "../hooks/useToast";
@@ -67,15 +68,57 @@ export default function Layout() {
     },
   });
 
+  // Mutation for updating crawl jobs
+  const createUpdateCrawlMutation = useMutation({
+    mutationFn: ({ sourceId, data }: { sourceId: string; data: any }) => api.updateSourceCrawl(sourceId, data),
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ["crawl-jobs"] });
+      queryClient.invalidateQueries({ queryKey: ["sources"] });
+      setCrawlDialogOpen(false);
+      navigate(`/crawl/${(data as { id: string }).id}`);
+      toast.success("Source update started successfully");
+    },
+    onError: (error) => {
+      console.error("Failed to update source:", error);
+      toast.error(
+        "Failed to update source: " +
+          (error instanceof Error ? error.message : "Unknown error")
+      );
+    },
+  });
+
   const handleCrawlSubmit = (formData: {
     name?: string;
+    version?: string;
     base_url: string;
     max_depth: number;
+    max_pages?: number;
     domain_filter?: string;
     url_patterns?: string[];
     max_concurrent_crawls?: number;
-  }) => {
-    createCrawlMutation.mutate(formData);
+    add_url_patterns?: string[];
+    exclude_url_patterns?: string[];
+    content_mode?: 'add_only' | 'update_changed' | 'full_recrawl';
+  }, mode: 'create' | 'update', selectedSource?: SourceOption) => {
+    if (mode === 'update' && selectedSource) {
+      // Handle update mode
+      createUpdateCrawlMutation.mutate({
+        sourceId: selectedSource.id,
+        data: {
+          add_url_patterns: formData.add_url_patterns,
+          exclude_url_patterns: formData.exclude_url_patterns,
+          max_depth: formData.max_depth,
+          max_pages: formData.max_pages,
+          max_concurrent_crawls: formData.max_concurrent_crawls,
+          content_mode: formData.content_mode,
+          version: formData.version,
+          source_id: selectedSource.id,
+        }
+      });
+    } else {
+      // Handle create mode
+      createCrawlMutation.mutate(formData);
+    }
   };
 
   return (
