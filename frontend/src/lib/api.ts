@@ -13,6 +13,27 @@ export interface Source {
   source_type: string
 }
 
+export interface SourceOption {
+  id: string
+  name: string
+  version: string | null
+  display_name: string  // "Source Name (vX.X)" format
+  documents_count: number
+  snippets_count: number
+  created_at: string
+}
+
+export interface UpdateSourceCrawlData {
+  add_url_patterns?: string[]
+  exclude_url_patterns?: string[]
+  max_depth?: number
+  max_pages?: number
+  max_concurrent_crawls?: number
+  content_mode?: 'add_only' | 'update_changed' | 'full_recrawl'
+  version?: string
+  source_id: string  // Required for version-specific updates
+}
+
 export interface CrawlJob {
   id: string;
   name: string;
@@ -423,6 +444,22 @@ class APIClient {
     return this.fetch<CrawlJob>(`/sources/${id}/recrawl`, {
       method: 'POST',
       body: JSON.stringify({ ignore_hash: ignoreHash })
+    })
+  }
+
+  async updateSourceCrawl(id: string, data: {
+    add_url_patterns?: string[]
+    exclude_url_patterns?: string[]
+    max_depth?: number
+    max_pages?: number
+    max_concurrent_crawls?: number
+    content_mode?: 'add_only' | 'update_changed' | 'full_recrawl'
+    version?: string
+    source_id: string
+  }): Promise<CrawlJob> {
+    return this.fetch<CrawlJob>(`/sources/${id}/update-crawl`, {
+      method: 'PATCH',
+      body: JSON.stringify(data)
     })
   }
 

@@ -112,7 +112,7 @@ def _build_upload_source_dict(source: UploadJob, snippet_count: int) -> dict[str
 
 @router.get("/sources")
 async def get_sources(
-    limit: int = Query(20, le=100), offset: int = Query(0, ge=0), db: Session = Depends(get_db)
+    limit: int = Query(20, le=1000), offset: int = Query(0, ge=0), db: Session = Depends(get_db)
 ) -> dict[str, Any]:
     """Get paginated sources (completed crawl jobs and upload jobs)."""
     result = []
@@ -162,7 +162,7 @@ async def search_sources(
     query: str | None = Query(None, description="Search query for fuzzy matching"),
     min_snippets: int | None = Query(None, ge=0, description="Minimum snippet count"),
     max_snippets: int | None = Query(None, ge=0, description="Maximum snippet count"),
-    limit: int = Query(20, le=100),
+    limit: int = Query(20, le=1000),
     offset: int = Query(0, ge=0),
     db: Session = Depends(get_db),
 ) -> dict[str, Any]:
@@ -1074,6 +1074,34 @@ class RecrawlRequest(BaseModel):
     )
 
 
+class UpdateSourceCrawlRequest(BaseModel):
+    """Request model for updating an existing source with new crawl options."""
+
+    add_url_patterns: list[str] | None = Field(
+        default=None, description="Additional URL patterns to add beyond existing ones"
+    )
+    exclude_url_patterns: list[str] | None = Field(
+        default=None, description="URL patterns to exclude from this crawl"
+    )
+    max_depth: int | None = Field(
+        default=None, ge=0, le=3, description="Maximum crawl depth (0-3)"
+    )
+    max_pages: int | None = Field(
+        default=None, ge=1, description="Maximum number of pages to crawl"
+    )
+    max_concurrent_crawls: int | None = Field(
+        default=None, ge=1, le=100, description="Maximum concurrent crawl sessions"
+    )
+    content_mode: str | None = Field(
+        default=None,
+        description="Content update mode: 'add_only', 'update_changed', or 'full_recrawl'"
+    )
+    version: str | None = Field(
+        default=None, max_length=50, description="New version for this crawl"
+    )
+    source_id: str = Field(..., description="Source ID for version-specific updates")
+
+
 class RegenerateDescriptionsRequest(BaseModel):
     """Request model for regenerating LLM descriptions."""
 
@@ -1166,6 +1194,106 @@ async def regenerate_source_descriptions(
         "source_id": source_id,
         "message": "Regeneration started. Progress updates will be sent via WebSocket."
     }
+
+
+@router.patch("/sources/{source_id}/update-crawl")
+async def update_source_crawl(
+    source_id: str, request: UpdateSourceCrawlRequest, db: Session = Depends(get_db)
+) -> dict[str, Any]:
+    """Update an existing source with additional crawl options or modified settings."""
+    # Check if it's an upload job first
+    upload_job = db.query(UploadJob).filter_by(id=source_id).first()
+    if upload_job:
+        raise HTTPException(status_code=400, detail="Update crawl is not available for uploaded sources")
+
+    # Get the original crawl job
+    original_job = db.query(CrawlJob).filter_by(id=source_id).first()
+    if not original_job:
+        raise HTTPException(status_code=404, detail="Source not found")
+
+    if original_job.status != "completed":
+        raise HTTPException(status_code=400, detail="Can only update completed sources")
+
+    # Validate content_mode
+    if request.content_mode and request.content_mode not in ["add_only", "update_changed", "full_recrawl"]:
+        raise HTTPException(
+            status_code=400,
+            detail="content_mode must be one of: 'add_only', 'update_changed', 'full_recrawl'"
+        )
+
+    # Get original configuration
+    original_config = original_job.config or {}
+    original_url_patterns = original_config.get("url_patterns", original_config.get("include_patterns", []))
+    original_max_pages = original_config.get("max_pages")
+    original_max_concurrent = original_config.get(
+        "max_concurrent_crawls", get_settings().crawling.max_concurrent_crawls
+    )
+
+    # Merge URL patterns
+    merged_url_patterns = list(original_url_patterns) if original_url_patterns else []
+    if request.add_url_patterns:
+        merged_url_patterns.extend(request.add_url_patterns)
+        # Remove duplicates while preserving order
+        seen = set()
+        merged_url_patterns = [x for x in merged_url_patterns if not (x in seen or seen.add(x))]
+
+    # Apply exclude patterns (these will be handled in the crawler)
+    exclude_patterns = request.exclude_url_patterns or []
+
+    # Determine new settings (use original if not specified)
+    new_max_depth = request.max_depth if request.max_depth is not None else original_job.max_depth
+    new_max_pages = request.max_pages if request.max_pages is not None else original_max_pages
+    new_max_concurrent = request.max_concurrent_crawls if request.max_concurrent_crawls is not None else original_max_concurrent
+    new_version = request.version if request.version is not None else original_job.version
+
+    # Prepare metadata for the update
+    metadata = {
+        "is_update_crawl": True,
+        "original_source_id": source_id,
+        "original_name": original_job.name,
+        "update_started_at": datetime.utcnow().isoformat(),
+        "content_mode": request.content_mode or "add_only",
+        "changes_summary": {
+            "new_url_patterns": request.add_url_patterns or [],
+            "excluded_patterns": exclude_patterns,
+            "depth_change": {"old": original_job.max_depth, "new": new_max_depth},
+            "pages_change": {"old": original_max_pages, "new": new_max_pages},
+            "concurrent_change": {"old": original_max_concurrent, "new": new_max_concurrent},
+        },
+    }
+
+    try:
+        result = await mcp_tools.init_crawl(
+            name=original_job.name,  # type: ignore[arg-type]
+            start_urls=original_job.start_urls,  # type: ignore[arg-type]
+            max_depth=new_max_depth,  # type: ignore[arg-type]
+            max_pages=new_max_pages,
+            domain_filter=original_job.domain if original_job.domain else None,  # type: ignore[arg-type]
+            url_patterns=merged_url_patterns if merged_url_patterns else None,
+            metadata=metadata,
+            max_concurrent_crawls=new_max_concurrent,
+        )
+
+        if "error" in result:
+            raise HTTPException(status_code=400, detail=result["error"])
+
+        # Update the original source version if specified
+        if request.version and request.version != original_job.version:
+            original_job.version = request.version
+            original_job.updated_at = datetime.utcnow()
+            db.commit()
+
+        # Add response fields for frontend compatibility
+        result["id"] = source_id
+        result["source_id"] = source_id
+        result["is_update_crawl"] = True
+        result["changes_summary"] = metadata["changes_summary"]
+
+        return result
+
+    except Exception as e:
+        logger.error(f"Failed to update source crawl: {e}")
+        raise HTTPException(status_code=400, detail=str(e))
 
 
 @router.post("/sources/{source_id}/recrawl")
