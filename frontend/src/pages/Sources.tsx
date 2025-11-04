@@ -1,9 +1,10 @@
-import React, { useState, useCallback } from "react";
+import React, { useState, useCallback, useEffect, useRef } from "react";
 import { useSearchParams } from "react-router-dom";
 import { api } from "../lib/api";
 import { ConfirmationDialog } from '../components/ConfirmationDialog'
 import { PaginationControls } from '../components/PaginationControls'
 import { useToast } from '../hooks/useToast'
+import { useDebounce } from '../hooks/useDebounce'
 import { SourceGrid } from "../components/sources/SourceGrid";
 import { SearchBar } from "../components/sources/SearchBar";
 import { FilterDropdown } from "../components/sources/FilterDropdown";
@@ -18,7 +19,12 @@ export default function Sources() {
   const snippetFilter = searchParams.get("filter") || "all";
   const currentPage = parseInt(searchParams.get("page") || "1", 10);
   const itemsPerPage = parseInt(searchParams.get("limit") || "20", 10);
-  const searchQuery = searchParams.get("q") || "";
+  
+  const [searchQuery, setSearchQuery] = useState(searchParams.get("q") || "");
+  const debouncedSearchQuery = useDebounce(searchQuery, 300);
+
+  const searchInputRef = useRef<HTMLInputElement>(null);
+  const wasTypingRef = useRef(false);
 
   const [deleteModalOpen, setDeleteModalOpen] = useState(false);
   const [sourceToDelete, setSourceToDelete] = useState<{
@@ -55,6 +61,25 @@ export default function Sources() {
     [setSearchParams],
   );
 
+  useEffect(() => {
+    if (searchQuery !== debouncedSearchQuery) {
+      wasTypingRef.current = true;
+    }
+  }, [searchQuery, debouncedSearchQuery]);
+
+  useEffect(() => {
+    setSearchParams((prev) => {
+      const newParams = new URLSearchParams(prev);
+      if (debouncedSearchQuery) {
+        newParams.set('q', debouncedSearchQuery);
+      } else {
+        newParams.delete('q');
+      }
+      newParams.set('page', '1');
+      return newParams;
+    }, { replace: true });
+  }, [debouncedSearchQuery, setSearchParams]);
+
   const getSnippetBounds = useCallback(() => {
     switch (snippetFilter) {
       case "0":
@@ -73,7 +98,7 @@ export default function Sources() {
   } = useSourcesData({
     currentPage,
     itemsPerPage,
-    debouncedSearchQuery: searchQuery,
+    debouncedSearchQuery,
     snippetFilter,
   });
 
@@ -88,6 +113,19 @@ export default function Sources() {
 
   // Sources are now filtered server-side
   const filteredSources = sources?.sources || [];
+
+  useEffect(() => {
+    if (
+      wasTypingRef.current &&
+      searchInputRef.current &&
+      searchQuery === debouncedSearchQuery
+    ) {
+      if (document.activeElement !== searchInputRef.current) {
+        searchInputRef.current.focus();
+      }
+      wasTypingRef.current = false;
+    }
+  }, [sources, debouncedSearchQuery, searchQuery]);
 
   
 
@@ -117,7 +155,7 @@ export default function Sources() {
         filteredDeleteMutation.mutate({
           min_snippets: bounds.min,
           max_snippets: bounds.max,
-          query: searchQuery || undefined,
+          query: debouncedSearchQuery || undefined,
         });
       } else {
         bulkDeleteMutation.mutate(Array.from(selectedSources));
@@ -141,7 +179,7 @@ export default function Sources() {
     filteredDeleteMutation,
     deleteMutation,
     getSnippetBounds,
-    searchQuery,
+    debouncedSearchQuery,
   ]);
 
   const toggleSelectSource = useCallback((sourceId: string) => {
@@ -157,11 +195,10 @@ export default function Sources() {
   }, []);
 
   const selectAll = useCallback(async () => {
-    // Fetch ALL source IDs matching current filters
     const bounds = getSnippetBounds();
     try {
       const result = await api.getFilteredSourceIds({
-        query: searchQuery || undefined,
+        query: debouncedSearchQuery || undefined,
         min_snippets: bounds.min,
         max_snippets: bounds.max,
       });
@@ -170,7 +207,7 @@ export default function Sources() {
       console.error("Failed to fetch source IDs:", error);
       toast.error("Failed to select sources");
     }
-  }, [getSnippetBounds, toast, searchQuery]);
+  }, [getSnippetBounds, toast, debouncedSearchQuery]);
 
   const deselectAll = useCallback(() => {
     setSelectedSources(new Set());
@@ -205,12 +242,7 @@ export default function Sources() {
     [updateUrlParams],
   );
 
-  const handleSearchChange = useCallback((value: string) => {
-    updateUrlParams({
-      q: value || null,
-      page: "1", // Reset to first page on search
-    });
-  }, [updateUrlParams]);
+
 
   const handleFilterChange = useCallback(
     (value: string) => {
@@ -280,7 +312,7 @@ export default function Sources() {
         </div>
 
         <div className="flex gap-4 items-center">
-          <SearchBar onChange={handleSearchChange} />
+          <SearchBar ref={searchInputRef} value={searchQuery} onChange={setSearchQuery} />
 
           <FilterDropdown value={snippetFilter} onChange={handleFilterChange} />
 
