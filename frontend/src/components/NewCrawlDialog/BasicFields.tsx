@@ -11,6 +11,7 @@ interface BasicFieldsProps {
   };
   onChange: (field: string, value: string) => void;
   onBaseUrlChange: (value: string) => void;
+  selectedSource?: any;
 }
 
 export const BasicFields: React.FC<BasicFieldsProps> = ({
@@ -18,6 +19,7 @@ export const BasicFields: React.FC<BasicFieldsProps> = ({
   formData,
   onChange,
   onBaseUrlChange,
+  selectedSource,
 }) => {
   return (
     <>
@@ -32,7 +34,7 @@ export const BasicFields: React.FC<BasicFieldsProps> = ({
           type="text"
           value={formData.name}
           onChange={(e) => onChange('name', e.target.value)}
-          disabled={mode === 'update'}
+          disabled={mode === 'update' && !!selectedSource}
           className="w-full px-3 py-2 border border-input rounded-md bg-background focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent transition-all disabled:cursor-not-allowed disabled:bg-secondary/50"
           placeholder={mode === 'create' ? "Will be auto-detected from site (e.g., Next.js Documentation)" : "Source name"}
         />
@@ -63,15 +65,14 @@ export const BasicFields: React.FC<BasicFieldsProps> = ({
       <div>
         <label htmlFor="base_url" className="block text-sm font-medium mb-1">
           Base URL <span className="text-destructive">*</span>
-          {mode === 'update' && <span className="text-xs text-muted-foreground ml-2">(cannot be changed)</span>}
+          {mode === 'update' && <span className="text-xs text-muted-foreground ml-2">(can be updated for new crawl)</span>}
         </label>
         <input
           id="base_url"
           type="url"
           value={formData.base_url}
           onChange={(e) => onBaseUrlChange(e.target.value)}
-          disabled={mode === 'update'}
-          className="w-full px-3 py-2 border border-input rounded-md bg-background focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent transition-all disabled:cursor-not-allowed disabled:bg-secondary/50"
+          className="w-full px-3 py-2 border border-input rounded-md bg-background focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent transition-all"
           placeholder="https://nextjs.org/docs"
           required
         />
