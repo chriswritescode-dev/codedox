@@ -73,30 +73,7 @@ class MCPServer:
             ),
             Tool(
                 name="search_libraries",
-                description="Search for available libraries or list all libraries in the system.\n\n"
-                "**Usage:**\n"
-                "- With query: Returns libraries matching the search term\n"
-                "- Without query: Returns all available libraries\n\n"
-                "**When searching with a query:**\n"
-                "1. Analyzes the query to find matching libraries\n"
-                "2. Returns matches based on:\n"
-                "   - Name similarity (exact matches prioritized)\n"
-                "   - Description relevance\n"
-                "   - Documentation coverage (higher snippet counts preferred)\n\n"
-                "**Response includes:**\n"
-                "- Library ID (use this with get_content)\n"
-                "- Library name\n"
-                "- Description\n"
-                "- Snippet count\n"
-                "- Match confidence (when searching)\n\n"
-                "**Pagination:**\n"
-                "- Use `page` parameter to navigate through results\n"
-                "- Use `limit` parameter to control page size (default: 20)\n\n"
-                "**Examples:**\n"
-                "- `query: 'react'` - finds React-related libraries\n"
-                "- `query: ''` or no query - lists all libraries\n"
-                "- `query: 'next'` - finds Next.js and similar libraries\n"
-                "- `page: 2, limit: 30` - get page 2 with 30 results per page",
+                description="Search or list available libraries. Returns library_id (for use with get_content), name, description, and snippet_count. Supports pagination via page/limit params. Empty query lists all.",
                 inputSchema={
                     "type": "object",
                     "properties": {
@@ -123,29 +100,7 @@ class MCPServer:
             ),
             Tool(
                 name="get_content",
-                description="Get code snippets from a library with optional search.\n\n"
-                "**Purpose: Search and retrieve code snippets from documentation**\n"
-                "- Use `library_id` to specify which library to search\n"
-                "- Returns multiple snippets (limited to prevent context overflow)\n"
-                "- Each snippet is truncated to 500 tokens when returning multiple\n"
-                "- For full snippets, use get_snippet() with the snippet ID\n\n"
-                "**IMPORTANT: Each result includes a SOURCE URL - use this with get_page_markdown() for full documentation!**\n\n"
-                "**Search Modes:**\n"
-                "- **'code' (default)**: Direct code search, falls back to markdown if <5 results found\n"
-                "- **'enhanced'**: ALWAYS searches markdown docs to find ALL related snippets\n\n"
-                "**What this searches:**\n"
-                "- Code content, function names, imports\n"
-                "- Code titles and descriptions\n"
-                "- In 'enhanced' mode: Also searches full markdown to discover related code\n\n"
-                "**Library identification:**\n"
-                "- Use library name: 'nextjs', 'react', 'django', etc.\n"
-                "- Or use UUID from search_libraries\n"
-                "- Fuzzy matching helps find the right library\n\n"
-                "**Examples:**\n"
-                "- `library_id: 'react', query: 'useState'` - finds useState code snippets\n"
-                "- `library_id: 'nextjs', query: 'api', search_mode: 'enhanced'` - finds ALL API-related code\n"
-                "- `library_id: 'react', page: 2, limit: 10` - get second page of results\n\n"
-                "Returns formatted code snippets with automatic size limiting to prevent context overflow.",
+                description="Search code snippets in a library. Results include SOURCE URLs for full docs via get_page_markdown(). Modes: 'code' (default, with markdown fallback) or 'enhanced' (always searches markdown). Library can be name or UUID. Snippets truncated to 500 tokens; use get_snippet() for full content.",
                 inputSchema={
                     "type": "object",
                     "properties": {
@@ -182,22 +137,7 @@ class MCPServer:
             ),
             Tool(
                 name="get_snippet",
-                description="Retrieve a specific code snippet by its ID with customizable token limits.\n\n"
-                "**Purpose: Direct access to individual snippets with size control**\n"
-                "- Use snippet_id to get a specific snippet directly\n"
-                "- Control output size with max_tokens parameter\n"
-                "- Supports chunked reading for large snippets\n\n"
-                "**Features:**\n"
-                "- Get full or partial snippet content by ID\n"
-                "- Customize token limit (100-10000 tokens)\n"
-                "- Navigate large snippets with chunk_index\n"
-                "- Automatic truncation with continuation info\n\n"
-                "**Examples:**\n"
-                "- `snippet_id: '24758'` - gets snippet with default 2000 token limit\n"
-                "- `snippet_id: '24758', max_tokens: 500` - gets first 500 tokens\n"
-                "- `snippet_id: '24758', max_tokens: 5000` - gets up to 5000 tokens\n"
-                "- `snippet_id: '24758', chunk_index: 0, max_tokens: 1000` - first 1000-token chunk\n\n"
-                "Returns formatted code snippet with SOURCE URL for documentation.",
+                description="Get a specific code snippet by ID. Control size with max_tokens (100-10000, default 2000). Use chunk_index for large snippets. Returns formatted code with SOURCE URL.",
                 inputSchema={
                     "type": "object",
                     "properties": {
@@ -223,29 +163,7 @@ class MCPServer:
             ),
             Tool(
                 name="get_page_markdown",
-                description="Get full documentation from a page URL or snippet ID.\n\n"
-                "**PRIMARY USE: Get complete documentation context after finding code with get_content()**\n\n"
-                "**Two ways to access:**\n"
-                "1. **By URL**: Use SOURCE URL from get_content results\n"
-                "2. **By snippet_id**: Use snippet ID to automatically get the associated document\n\n"
-                "**Features:**\n"
-                "- Get full documentation page from SOURCE URL or snippet ID\n"
-                "- Search WITHIN a specific page using 'query' parameter\n"
-                "- Limit content size with max_tokens for summaries\n"
-                "- Chunk large documents for manageable reading\n\n"
-                "**Common workflows:**\n"
-                "1. After get_content: Use SOURCE URL here for full docs\n"
-                "2. Direct snippet access: Use snippet_id to get the document containing that snippet\n"
-                "3. Search in page: Add query='search term' to find specific content\n"
-                "4. Get summary: Use max_tokens=500 for brief overview\n"
-                "5. Navigate large docs: Use chunk_index=0,1,2... for pagination\n\n"
-                "**Examples:**\n"
-                "- `url: 'https://react.dev/reference/useState'` - get full page by URL\n"
-                "- `snippet_id: '12345'` - get document containing snippet 12345\n"
-                "- `url: '...', query: 'dependencies'` - search for 'dependencies' in that page\n"
-                "- `snippet_id: '12345', max_tokens: 1000` - get first 1000 tokens from snippet's document\n"
-                "- `url: '...', chunk_index: 0` - get first chunk of large document\n\n"
-                "**Note:** Provide either 'url' OR 'snippet_id', not both. The query parameter searches WITHIN this single document only, not across all docs.",
+                description="Get full documentation markdown by URL (from get_content SOURCE) or snippet_id. Use query to search within the page. Control size with max_tokens or paginate with chunk_index. Provide url OR snippet_id, not both.",
                 inputSchema={
                     "type": "object",
                     "properties": {
