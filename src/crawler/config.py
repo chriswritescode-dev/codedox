@@ -60,7 +60,9 @@ def create_crawler_config(
         "exclude_external_links": True,
         "markdown_generator": DefaultMarkdownGenerator(
             content_source="raw_html",
-            options={"ignore_links": False}
+            options={"ignore_links": True,
+                     "skip_internal_links": True,
+                     "include_sup_sub": True,}
         )
     }
 
