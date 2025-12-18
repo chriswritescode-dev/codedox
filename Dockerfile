@@ -1,129 +1,45 @@
-# Build stage
-FROM python:3.10-slim as builder
+# Unified Docker container for CodeDox (API + Frontend)
+FROM node:18-alpine AS frontend_builder
 
-# Install build dependencies
-RUN apt-get update && apt-get install -y \
-    gcc \
-    g++ \
-    python3-dev \
-    libpq-dev \
-    curl \
-    && rm -rf /var/lib/apt/lists/*
+WORKDIR /app/frontend
+COPY frontend/package*.json ./
+RUN npm ci --legacy-peer-deps
+COPY frontend/ ./
+RUN npm run build
 
-# Install uv
-RUN curl -LsSf https://astral.sh/uv/install.sh | sh
-ENV PATH="/root/.local/bin:${PATH}"
 
-# Set working directory
-WORKDIR /app
-
-# Copy requirements
-COPY requirements.txt .
-
-# Install Python dependencies using uv
-RUN uv pip install --system -r requirements.txt
-
-# Runtime stage
 FROM python:3.10-slim
 
-# Install runtime dependencies including curl for uv
-RUN apt-get update && apt-get install -y \
-    curl \
-    gnupg
-
-# Install runtime dependencies and Playwright requirements
+# Install runtime dependencies
 RUN apt-get update && apt-get install -y \
     libpq5 \
-    wget \
-\
-    # Dependencies for Chromium/Playwright
-    libnss3 \
-    libnspr4 \
-    libatk1.0-0 \
-    libatk-bridge2.0-0 \
-    libcups2 \
-    libdrm2 \
-    libdbus-1-3 \
-    libatspi2.0-0 \
-    libx11-6 \
-    libxcomposite1 \
-    libxdamage1 \
-    libxext6 \
-    libxfixes3 \
-    libxrandr2 \
-    libgbm1 \
-    libxcb1 \
-    libxkbcommon0 \
-    libgtk-3-0 \
-    libasound2 \
     && rm -rf /var/lib/apt/lists/*
 
-# Install uv in runtime stage
-RUN curl -LsSf https://astral.sh/uv/install.sh | sh && \
-    mv /root/.local/bin/uv /usr/local/bin/ && \
-    mv /root/.local/bin/uvx /usr/local/bin/ && \
-    chmod +x /usr/local/bin/uv /usr/local/bin/uvx
-
-# Install sudo for entrypoint script
-RUN apt-get update && apt-get install -y sudo && rm -rf /var/lib/apt/lists/*
-
-# Create non-root user and configure sudo
-RUN useradd -m -u 1000 codedox && \
-    echo "codedox ALL=(ALL) NOPASSWD: /bin/chown, /bin/chmod" >> /etc/sudoers
-
-# Set working directory
 WORKDIR /app
 
-# Copy Python packages from builder
-COPY --from=builder /usr/local/lib/python3.10/site-packages /usr/local/lib/python3.10/site-packages
-COPY --from=builder /usr/local/bin /usr/local/bin
+# Copy Python requirements
+COPY requirements.txt .
 
-# Copy application code
-COPY --chown=codedox:codedox . .
+# Install Python packages
+RUN pip install --no-cache-dir -r requirements.txt
 
-# Create necessary directories
-RUN mkdir -p logs && chown codedox:codedox logs
+# Copy Python source
+COPY src/ ./src/
+COPY migrations/ ./migrations/
+COPY migrate.py cli.py ./
 
-# Copy and set up entrypoint script
-COPY --chown=root:root docker-entrypoint.sh /usr/local/bin/
-RUN chmod +x /usr/local/bin/docker-entrypoint.sh
+# Copy built frontend
+COPY --from=frontend_builder /app/frontend/dist /app/static
 
-# Install Node.js and npm for frontend dependencies
-RUN curl -fsSL https://deb.nodesource.com/setup_18.x | bash - && \
-    apt-get install -y nodejs && \
-    rm -rf /var/lib/apt/lists/*
+# Create logs directory
+RUN mkdir -p logs
 
-# Install frontend dependencies
-WORKDIR /app/frontend
-COPY --chown=codedox:codedox frontend/package*.json ./
-RUN npm install && \
-    chown -R codedox:codedox node_modules
-
-WORKDIR /app
-
-# Install Playwright browsers as root with proper setup
-USER root
-ENV PLAYWRIGHT_BROWSERS_PATH=/opt/playwright-browsers
-# Install Debian font packages before Playwright to avoid Ubuntu package errors
-RUN apt-get update && apt-get install -y \
-    fonts-liberation \
-    fonts-unifont \
-    fonts-dejavu-core \
-    fonts-noto-color-emoji \
-    && rm -rf /var/lib/apt/lists/* && \
-    mkdir -p ${PLAYWRIGHT_BROWSERS_PATH} && \
-    python -m playwright install chromium && \
-    chmod -R 755 ${PLAYWRIGHT_BROWSERS_PATH}
-
-# Set environment for codedox user to find browsers and uv
-USER codedox
-ENV PLAYWRIGHT_BROWSERS_PATH=/opt/playwright-browsers
-
-# Set Python path
+# Environment
 ENV PYTHONPATH=/app
+ENV DB_HOST=localhost
+ENV DB_PORT=5432
+ENV API_HOST=0.0.0.0
+ENV API_PORT=8002
 
-# Set entrypoint
-ENTRYPOINT ["/usr/local/bin/docker-entrypoint.sh"]
-
-# Default command (can be overridden)
-CMD ["python", "-m", "uvicorn", "src.api.main:app", "--host", "0.0.0.0", "--port", "8000"]
+# Run migrations on container creation, then start API which serves static files
+CMD python migrate.py 2>/dev/null || true && python -m uvicorn src.api.main:app --host 0.0.0.0 --port 8002
