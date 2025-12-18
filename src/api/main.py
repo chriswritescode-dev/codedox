@@ -3,9 +3,11 @@
 import logging
 import sys
 from contextlib import asynccontextmanager
+from pathlib import Path
 
 from fastapi import Depends, FastAPI, HTTPException, WebSocket
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
@@ -20,14 +22,13 @@ from .websocket import websocket_endpoint
 # Setup logging
 logging.basicConfig(
     level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-    handlers=[
-        logging.StreamHandler(sys.stdout)
-    ]
+    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+    handlers=[logging.StreamHandler(sys.stdout)],
 )
 logger = logging.getLogger(__name__)
 
 settings = get_settings()
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -39,25 +40,31 @@ async def lifespan(app: FastAPI):
 
     # Test database connection
     from ..database import get_db_manager
+
     db_manager = get_db_manager()
     if not db_manager.test_connection():
-        logger.error("Failed to connect to database. Please ensure PostgreSQL is running and the database exists.")
+        logger.error(
+            "Failed to connect to database. Please ensure PostgreSQL is running and the database exists."
+        )
         logger.error("Run 'python cli.py init' to initialize the database.")
         raise RuntimeError("Database connection failed")
-    
+
     # Auto-apply pending migrations
     try:
         from ..database.migration_check import auto_apply_migrations
+
         auto_apply_migrations()
     except Exception as e:
         logger.warning(f"Could not apply migrations: {e}")
 
     # Start health monitor (skip in test environment)
     import os
+
     if os.getenv("TESTING") != "true":
         import asyncio
 
         from ..crawler.health_monitor import get_health_monitor
+
         health_monitor = get_health_monitor()
         health_task = asyncio.create_task(health_monitor.start())
         logger.info("Started crawl job health monitor")
@@ -81,12 +88,13 @@ async def lifespan(app: FastAPI):
 
     logger.info("CodeDox API shutdown complete")
 
+
 # Create FastAPI app
 app = FastAPI(
     title=f"{__app_name__} API",
     description="API for code documentation extraction and search",
     version=__version__,
-    lifespan=lifespan
+    lifespan=lifespan,
 )
 
 # Configure CORS
@@ -109,28 +117,39 @@ app.include_router(runtime_settings.router, prefix="/api", tags=["settings"])
 app.include_router(mcp_router, tags=["mcp"])
 app.include_router(mcp_streamable_router, tags=["mcp-streamable"])
 
+
 # WebSocket endpoint
 @app.websocket("/ws/{client_id}")
 async def websocket_route(websocket: WebSocket, client_id: str):
     """WebSocket endpoint for real-time updates."""
     await websocket_endpoint(websocket, client_id)
 
-# Root endpoint - return API info
-@app.get("/")
-async def root():
-    """API root endpoint with basic information."""
-    return {
-        "message": f"{__app_name__} API Server",
-        "version": __version__,
-        "environment": settings.environment,
-        "docs": "/docs"
-    }
+
+# Serve static frontend files if available
+static_dir = Path("/app/static")
+if static_dir.exists() and any(static_dir.iterdir()):
+    logger.info(f"Serving frontend from {static_dir}")
+    app.mount("/", StaticFiles(directory=str(static_dir), html=True), name="static")
+else:
+    # Root endpoint - return API info if no frontend
+    @app.get("/")
+    async def root():
+        """API root endpoint with basic information."""
+        return {
+            "message": f"{__app_name__} API Server",
+            "version": __version__,
+            "environment": settings.environment,
+            "docs": "/docs",
+            "note": "Frontend not built - only API available",
+        }
+
 
 # Health check
 @app.get("/api/health")
 async def health_check():
     """Basic health check endpoint."""
     return {"status": "healthy"}
+
 
 @app.get("/api/health/db")
 async def health_check_db(db: Session = Depends(get_db)):
@@ -142,6 +161,7 @@ async def health_check_db(db: Session = Depends(get_db)):
     except Exception as e:
         logger.error(f"Database health check failed: {e}")
         raise HTTPException(status_code=503, detail="Database connection failed")
+
 
 @app.get("/api/health/crawler")
 async def health_check_crawler():
@@ -157,10 +177,9 @@ async def health_check_crawler():
     db_manager = get_db_manager()
 
     # Get active crawl tasks
-    active_tasks = len([
-        task for task in crawl_manager._active_crawl_tasks.values()
-        if not task.done()
-    ])
+    active_tasks = len(
+        [task for task in crawl_manager._active_crawl_tasks.values() if not task.done()]
+    )
 
     # Get thread pool status
     thread_count = threading.active_count()
@@ -185,35 +204,30 @@ async def health_check_crawler():
         "status": "healthy",
         "crawler": {
             "active_crawl_tasks": active_tasks,
-            "total_crawl_tasks": len(crawl_manager._active_crawl_tasks)
+            "total_crawl_tasks": len(crawl_manager._active_crawl_tasks),
         },
         "threads": {
             "active_threads": thread_count,
             "format_pool_threads": len(format_pool_active),
-            "format_pool_queue": format_pool_queue_size
+            "format_pool_queue": format_pool_queue_size,
         },
         "database_pool": {
             "size": pool_size,
             "checked_out": pool_checked_out,
             "overflow": pool_overflow,
-            "total": pool_size + pool_overflow
+            "total": pool_size + pool_overflow,
         },
         "memory": {
             "rss_mb": memory_info.rss / 1024 / 1024,
             "vms_mb": memory_info.vms / 1024 / 1024,
-            "percent": memory_percent
-        }
+            "percent": memory_percent,
+        },
     }
-
 
 
 # Recent snippets endpoint
 @app.get("/api/snippets/recent")
-async def get_recent_snippets(
-    hours: int = 24,
-    limit: int = 10,
-    db: Session = Depends(get_db)
-):
+async def get_recent_snippets(hours: int = 24, limit: int = 10, db: Session = Depends(get_db)):
     """Get recently extracted code snippets."""
     try:
         from datetime import datetime, timedelta
@@ -224,35 +238,31 @@ async def get_recent_snippets(
         time_threshold = datetime.utcnow() - timedelta(hours=hours)
 
         # Query recent snippets with joins for source info
-        snippets = db.query(
-            CodeSnippet,
-            Document.title.label('document_title'),
-            Document.url.label('document_url'),
-            CrawlJob.name.label('source_name')
-        ).join(
-            Document, CodeSnippet.document_id == Document.id
-        ).join(
-            CrawlJob, Document.crawl_job_id == CrawlJob.id
-        ).filter(
-            CodeSnippet.created_at >= time_threshold
-        ).order_by(
-            CodeSnippet.created_at.desc()
-        ).limit(limit).all()
+        snippets = (
+            db.query(
+                CodeSnippet,
+                Document.title.label("document_title"),
+                Document.url.label("document_url"),
+                CrawlJob.name.label("source_name"),
+            )
+            .join(Document, CodeSnippet.document_id == Document.id)
+            .join(CrawlJob, Document.crawl_job_id == CrawlJob.id)
+            .filter(CodeSnippet.created_at >= time_threshold)
+            .order_by(CodeSnippet.created_at.desc())
+            .limit(limit)
+            .all()
+        )
 
         # Format results
         results = []
         for snippet, doc_title, doc_url, source_name in snippets:
             snippet_dict = snippet.to_dict()
-            snippet_dict['document_title'] = doc_title
-            snippet_dict['document_url'] = doc_url
-            snippet_dict['source_name'] = source_name
+            snippet_dict["document_title"] = doc_title
+            snippet_dict["document_url"] = doc_url
+            snippet_dict["source_name"] = source_name
             results.append(snippet_dict)
 
-        return {
-            "snippets": results,
-            "hours": hours,
-            "count": len(results)
-        }
+        return {"snippets": results, "hours": hours, "count": len(results)}
 
     except Exception as e:
         logger.error(f"Failed to get recent snippets: {e}")
@@ -266,9 +276,10 @@ def get_application() -> FastAPI:
 
 if __name__ == "__main__":
     import uvicorn
+
     uvicorn.run(
         "src.api.main:app",
         host=settings.api.host,
         port=settings.api.port,
-        reload=settings.environment == "development"
+        reload=settings.environment == "development",
     )
