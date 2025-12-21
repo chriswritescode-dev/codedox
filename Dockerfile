@@ -61,4 +61,4 @@ ENV API_HOST=0.0.0.0
 ENV API_PORT=8002
 
 # Run migrations on container creation, then start API which serves static files
-CMD python migrate.py || echo "WARNING: Migration failed but continuing..."; python -m uvicorn src.api.main:app --host $API_HOST --port $API_PORT
+CMD python migrate.py 2>/dev/null || true && python -m uvicorn src.api.main:app --host $API_HOST --port $API_PORT
