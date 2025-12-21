@@ -1,19 +1,27 @@
 #!/usr/bin/env python3
 """
 Unified migration script for CodeDox database.
-Reads PostgreSQL connection settings from .env file and applies all migrations.
-Uses psql command-line tool to avoid Python dependencies.
+Reads PostgreSQL connection settings from environment and applies all migrations.
+Uses Python psycopg library for all database operations.
 """
 
 import hashlib
 import logging
 import os
-import subprocess
 import sys
 from pathlib import Path
+from typing import Optional
 
 # Add src to path for config import
 sys.path.insert(0, str(Path(__file__).parent))
+
+# Import psycopg
+try:
+    import psycopg
+    from psycopg import sql
+except ImportError:
+    print("ERROR: psycopg not found. Please install with: pip install psycopg[binary,pool]")
+    sys.exit(1)
 
 
 # Simple .env parser to avoid dependencies
@@ -28,7 +36,8 @@ def load_env():
                     key, value = line.split("=", 1)
                     # Remove quotes if present
                     value = value.strip().strip('"').strip("'")
-                    os.environ[key] = value
+                    if key not in os.environ:  # Don't override existing env vars
+                        os.environ[key] = value
 
 
 # Load .env file
@@ -60,93 +69,93 @@ class MigrationRunner:
     ]
 
     def __init__(self):
-        """Initialize migration runner with settings from .env."""
+        """Initialize migration runner with settings from environment."""
         # Read database config from environment
         self.db_config = {
             "host": os.getenv("DB_HOST", "localhost"),
-            "port": os.getenv("DB_PORT", "5432"),
+            "port": int(os.getenv("DB_PORT", "5432")),
             "database": os.getenv("DB_NAME", "codedox"),
             "user": os.getenv("DB_USER", "postgres"),
             "password": os.getenv("DB_PASSWORD", "postgres"),
         }
 
-    def run_psql(self, sql: str, database: str | None = None) -> tuple[bool, str]:
-        """Run SQL using psql command."""
-        db = database or self.db_config["database"]
+    def get_connection(self, database: Optional[str] = None) -> psycopg.Connection:
+        """Get a database connection."""
+        from urllib.parse import quote_plus
 
-        # Build psql command
-        cmd = [
-            "psql",
-            "-h",
-            self.db_config["host"],
-            "-p",
-            self.db_config["port"],
-            "-U",
-            self.db_config["user"],
-            "-d",
-            db,
-            "-c",
-            sql,
-        ]
+        config = self.db_config.copy()
+        if database:
+            config["database"] = database
 
-        # Set PGPASSWORD environment variable
-        env = os.environ.copy()
-        env["PGPASSWORD"] = self.db_config["password"]
+        # URL-encode the password to handle special characters
+        encoded_password = quote_plus(str(config["password"]))
+        conn_str = f"postgresql://{config['user']}:{encoded_password}@{config['host']}:{config['port']}/{config['database']}"
+        return psycopg.connect(conn_str)
 
+    def run_sql(self, sql: str, database: Optional[str] = None) -> tuple[bool, str]:
+        """Run SQL query and return success status and output."""
         try:
-            result = subprocess.run(cmd, env=env, capture_output=True, text=True)
-            return result.returncode == 0, result.stdout + result.stderr
+            with self.get_connection(database) as conn:
+                with conn.cursor() as cur:
+                    cur.execute(sql)
+                    if cur.description:  # Has result set
+                        result = cur.fetchall()
+                        # Format result like psql output
+                        output = "\n".join(str(row) for row in result)
+                    else:
+                        conn.commit()
+                        output = "Query executed successfully"
+                    return True, output
         except Exception as e:
             return False, str(e)
 
-    def run_psql_file(self, filepath: str, database: str | None = None) -> tuple[bool, str]:
-        """Run SQL file using psql command."""
-        db = database or self.db_config["database"]
-
-        # Build psql command
-        cmd = [
-            "psql",
-            "-h",
-            self.db_config["host"],
-            "-p",
-            self.db_config["port"],
-            "-U",
-            self.db_config["user"],
-            "-d",
-            db,
-            "-f",
-            filepath,
-        ]
-
-        # Set PGPASSWORD environment variable
-        env = os.environ.copy()
-        env["PGPASSWORD"] = self.db_config["password"]
-
+    def run_sql_file(self, filepath: str, database: Optional[str] = None) -> tuple[bool, str]:
+        """Run SQL from a file."""
         try:
-            result = subprocess.run(cmd, env=env, capture_output=True, text=True)
-            return result.returncode == 0, result.stdout + result.stderr
+            if not os.path.exists(filepath):
+                return False, f"File not found: {filepath}"
+
+            with open(filepath, "r") as f:
+                sql_content = f.read()
+
+            # Execute the whole file
+            with self.get_connection(database) as conn:
+                with conn.cursor() as cur:
+                    cur.execute(sql_content)
+                    conn.commit()
+                    return True, "Migration file executed successfully"
         except Exception as e:
             return False, str(e)
 
     def ensure_database_exists(self):
         """Ensure the CodeDox database exists."""
-        # Check if database exists
-        check_sql = f"SELECT 1 FROM pg_database WHERE datname = '{self.db_config['database']}'"
-        success, output = self.run_psql(check_sql, "postgres")
-
-        if success and "1 row" in output:
-            logger.info(f"Database '{self.db_config['database']}' already exists.")
-        else:
-            # Create database
-            logger.info(f"Creating database '{self.db_config['database']}'...")
-            create_sql = f"CREATE DATABASE {self.db_config['database']}"
-            success, output = self.run_psql(create_sql, "postgres")
-
-            if success:
-                logger.info("Database created successfully!")
-            else:
-                logger.error(f"Failed to create database: {output}")
-                raise Exception(f"Database creation failed: {output}")
+        try:
+            with self.get_connection("postgres") as conn:
+                # CREATE DATABASE requires autocommit mode
+                conn.autocommit = True
+                with conn.cursor() as cur:
+                    # Check if database exists
+                    cur.execute(
+                        "SELECT 1 FROM pg_database WHERE datname = %s",
+                        (self.db_config["database"],),
+                    )
+                    if cur.fetchone():
+                        logger.info(f"Database '{self.db_config['database']}' already exists.")
+                    else:
+                        # Create database
+                        logger.info(f"Creating database '{self.db_config['database']}'...")
+                        cur.execute(
+                            sql.SQL("CREATE DATABASE {}").format(
+                                sql.Identifier(self.db_config["database"])
+                            )
+                        )
+                        logger.info("Database created successfully!")
+        except psycopg.OperationalError as e:
+            logger.error(f"Failed to connect to PostgreSQL: {e}")
+            raise Exception(f"Cannot connect to PostgreSQL server: {e}")
+        except Exception as e:
+            logger.error(f"Failed to create database: {e}")
+            raise Exception(f"Database creation failed: {e}")
 
     def ensure_migrations_table(self):
         """Ensure the migrations tracking table exists."""
@@ -161,7 +170,7 @@ class MigrationRunner:
             )
         """
 
-        success, output = self.run_psql(create_table_sql)
+        success, output = self.run_sql(create_table_sql)
         if success:
             logger.info("Migrations table ready.")
         else:
@@ -183,22 +192,23 @@ class MigrationRunner:
         Returns:
             Tuple of (is_applied, has_changed)
         """
-        check_sql = f"SELECT checksum FROM schema_migrations WHERE migration_id = '{migration_id}' AND success = TRUE"
-        success, output = self.run_psql(check_sql)
+        try:
+            with self.get_connection() as conn:
+                with conn.cursor() as cur:
+                    cur.execute(
+                        "SELECT checksum FROM schema_migrations WHERE migration_id = %s AND success = TRUE",
+                        (migration_id,),
+                    )
+                    result = cur.fetchone()
 
-        if not success or "0 rows" in output:
+                    if not result:
+                        return False, False
+
+                    stored_checksum = result[0]
+                    has_changed = stored_checksum != checksum
+                    return True, has_changed
+        except Exception:
             return False, False
-
-        # Extract checksum from output
-        lines = output.strip().split("\n")
-        for line in lines:
-            line = line.strip()
-            if len(line) == 32 and all(c in "0123456789abcdef" for c in line):
-                stored_checksum = line
-                has_changed = stored_checksum != checksum
-                return True, has_changed
-
-        return False, False
 
     def apply_migration(self, migration_id: str, filepath: str) -> bool:
         """Apply a single migration file."""
@@ -227,37 +237,53 @@ class MigrationRunner:
 
         # Apply migration
         logger.info(f"  → Applying migration: {migration_id}")
-        success, output = self.run_psql_file(filepath)
+        success, output = self.run_sql_file(filepath)
 
         if success:
             # Record successful migration
-            record_sql = f"""
-                INSERT INTO schema_migrations (migration_id, checksum, success)
-                VALUES ('{migration_id}', '{checksum}', TRUE)
-                ON CONFLICT (migration_id) 
-                DO UPDATE SET checksum = EXCLUDED.checksum, 
-                             applied_at = NOW(),
-                             success = TRUE,
-                             error_message = NULL
-            """
-            self.run_psql(record_sql)
-            logger.info(f"  ✓ Successfully applied: {migration_id}")
-            return True
+            try:
+                with self.get_connection() as conn:
+                    with conn.cursor() as cur:
+                        cur.execute(
+                            """
+                            INSERT INTO schema_migrations (migration_id, checksum, success)
+                            VALUES (%s, %s, TRUE)
+                            ON CONFLICT (migration_id) 
+                            DO UPDATE SET checksum = EXCLUDED.checksum, 
+                                         applied_at = NOW(),
+                                         success = TRUE,
+                                         error_message = NULL
+                            """,
+                            (migration_id, checksum),
+                        )
+                        conn.commit()
+                logger.info(f"  ✓ Successfully applied: {migration_id}")
+                return True
+            except Exception as e:
+                logger.error(f"  ✗ Failed to record migration: {e}")
+                return False
         else:
             logger.error(f"  ✗ Failed to apply {migration_id}: {output}")
 
             # Record failed migration
-            error_msg = output.replace("'", "''")  # Escape single quotes
-            record_sql = f"""
-                INSERT INTO schema_migrations (migration_id, checksum, success, error_message)
-                VALUES ('{migration_id}', '{checksum}', FALSE, '{error_msg}')
-                ON CONFLICT (migration_id) 
-                DO UPDATE SET checksum = EXCLUDED.checksum,
-                             applied_at = NOW(),
-                             success = FALSE,
-                             error_message = EXCLUDED.error_message
-            """
-            self.run_psql(record_sql)
+            try:
+                with self.get_connection() as conn:
+                    with conn.cursor() as cur:
+                        cur.execute(
+                            """
+                            INSERT INTO schema_migrations (migration_id, checksum, success, error_message)
+                            VALUES (%s, %s, FALSE, %s)
+                            ON CONFLICT (migration_id) 
+                            DO UPDATE SET checksum = EXCLUDED.checksum,
+                                         applied_at = NOW(),
+                                         success = FALSE,
+                                         error_message = EXCLUDED.error_message
+                            """,
+                            (migration_id, checksum, output),
+                        )
+                        conn.commit()
+            except Exception as e:
+                logger.error(f"Failed to record failed migration: {e}")
 
             raise Exception(f"Migration failed: {output}")
 
@@ -307,79 +333,69 @@ class MigrationRunner:
         """Show migration status."""
         logger.info("Checking migration status...")
 
-        # Check if migrations table exists
-        check_table_sql = (
-            "SELECT 1 FROM information_schema.tables WHERE table_name = 'schema_migrations'"
-        )
-        success, output = self.run_psql(check_table_sql)
+        try:
+            with self.get_connection() as conn:
+                with conn.cursor() as cur:
+                    # Check if table exists
+                    cur.execute(
+                        "SELECT 1 FROM information_schema.tables WHERE table_name = 'schema_migrations'"
+                    )
+                    if not cur.fetchone():
+                        logger.info("\nNo migrations have been run yet.")
+                        logger.info(f"Total migrations defined: {len(self.MIGRATIONS)}")
+                        return
 
-        if not success or "0 rows" in output:
-            logger.info("\nNo migrations have been run yet.")
-            logger.info(f"Total migrations defined: {len(self.MIGRATIONS)}")
-            return
+                    # Get applied migrations
+                    cur.execute(
+                        """
+                        SELECT migration_id, checksum, applied_at, success, error_message
+                        FROM schema_migrations
+                        ORDER BY applied_at DESC
+                        """
+                    )
+                    applied_rows = cur.fetchall()
 
-        # Get applied migrations
-        query_sql = """
-            SELECT migration_id, checksum, applied_at, success, error_message
-            FROM schema_migrations
-            ORDER BY applied_at DESC
-        """
-        success, output = self.run_psql(query_sql)
+                    logger.info(
+                        f"\nDatabase: {self.db_config['host']}:{self.db_config['port']}/{self.db_config['database']}"
+                    )
+                    logger.info(f"Total migrations defined: {len(self.MIGRATIONS)}")
+                    logger.info(f"Migrations in database: {len(applied_rows)}\n")
 
-        if not success:
-            logger.error(f"Failed to query migrations: {output}")
-            return
+                    # Check each migration
+                    logger.info("Migration Status:")
+                    logger.info("-" * 80)
 
-        # Parse output
-        applied = []
-        lines = output.strip().split("\n")
-        in_data = False
-        for line in lines:
-            if "---" in line and not in_data:
-                in_data = True
-                continue
-            if in_data and "|" in line:
-                parts = [p.strip() for p in line.split("|")]
-                if len(parts) >= 5:
-                    applied.append(parts)
+                    for migration_id, filepath in self.MIGRATIONS:
+                        if os.path.exists(filepath):
+                            current_checksum = self.get_file_checksum(filepath)
 
-        logger.info(
-            f"\nDatabase: {self.db_config['host']}:{self.db_config['port']}/{self.db_config['database']}"
-        )
-        logger.info(f"Total migrations defined: {len(self.MIGRATIONS)}")
-        logger.info(f"Migrations in database: {len(applied)}\n")
+                            # Find in applied migrations
+                            applied_migration = next(
+                                (m for m in applied_rows if m[0] == migration_id), None
+                            )
 
-        # Check each migration
-        logger.info("Migration Status:")
-        logger.info("-" * 80)
+                            if applied_migration:
+                                _, stored_checksum, applied_at, success, error = applied_migration
 
-        for migration_id, filepath in self.MIGRATIONS:
-            if os.path.exists(filepath):
-                current_checksum = self.get_file_checksum(filepath)
+                                if success:
+                                    if current_checksum == stored_checksum:
+                                        status = "✓ Applied"
+                                    else:
+                                        status = "⚠ Modified"
+                                else:
+                                    status = "✗ Failed"
 
-                # Find in applied migrations
-                applied_migration = next((m for m in applied if m[0] == migration_id), None)
-
-                if applied_migration:
-                    _, stored_checksum, applied_at, success, error = applied_migration
-
-                    if success.lower() == "t":
-                        if current_checksum == stored_checksum:
-                            status = "✓ Applied"
+                                logger.info(f"{migration_id:<30} {status:<12} {applied_at}")
+                                if error:
+                                    logger.info(f"  Error: {error}")
+                            else:
+                                logger.info(f"{migration_id:<30} ○ Pending")
                         else:
-                            status = "⚠ Modified"
-                    else:
-                        status = "✗ Failed"
+                            logger.info(f"{migration_id:<30} ✗ File missing: {filepath}")
 
-                    logger.info(f"{migration_id:<30} {status:<12} {applied_at}")
-                    if error and error != "":
-                        logger.info(f"  Error: {error}")
-                else:
-                    logger.info(f"{migration_id:<30} ○ Pending")
-            else:
-                logger.info(f"{migration_id:<30} ✗ File missing: {filepath}")
-
-        logger.info("-" * 80)
+                    logger.info("-" * 80)
+        except Exception as e:
+            logger.error(f"Failed to check status: {e}")
 
 
 def main():
