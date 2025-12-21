@@ -2,7 +2,7 @@ services:
   codedox:
     build:
       context: .
-      dockerfile: Dockerfile.unified
+      dockerfile: Dockerfile
     container_name: codedox
     ports:
       - "0.0.0.0:8002:8002"
