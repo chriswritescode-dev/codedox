@@ -1,4 +1,4 @@
-
+import { memo } from "react"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 
 interface FilterDropdownProps {
@@ -6,7 +6,7 @@ interface FilterDropdownProps {
   onChange: (value: string) => void
 }
 
-export const FilterDropdown = ({ value, onChange }: FilterDropdownProps) => {
+export const FilterDropdown = memo(({ value, onChange }: FilterDropdownProps) => {
   return (
     <div className="flex items-center gap-2">
       <Select value={value} onValueChange={onChange}>
@@ -21,4 +21,6 @@ export const FilterDropdown = ({ value, onChange }: FilterDropdownProps) => {
       </Select>
     </div>
   )
-}
+})
+
+FilterDropdown.displayName = "FilterDropdown"

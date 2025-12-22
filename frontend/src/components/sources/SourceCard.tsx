@@ -1,4 +1,4 @@
-import React, { memo } from 'react'
+import React, { memo, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { FileText, Code, Check } from 'lucide-react'
 import { EditableSourceName } from '../EditableSourceName'
@@ -10,9 +10,9 @@ interface SourceCardProps {
   source: Source
   isSelected: boolean
   onToggleSelect: (id: string) => void
-  onRecrawl: (options?: { ignoreHash?: boolean }) => void
-  onRegenerate: () => void
-  onDelete: () => void
+  onRecrawl: (id: string, options?: { ignoreHash?: boolean }) => void
+  onRegenerate: (id: string) => void
+  onDelete: (id: string) => void
   onUpdateName: (id: string, name: string) => Promise<void>
   isPendingRecrawl: boolean
   isPendingRegenerate: boolean
@@ -40,6 +40,18 @@ export const SourceCard = memo(({
       navigate(`/sources/${source.id}`)
     }
   }
+
+  const handleRecrawl = useCallback((options?: { ignoreHash?: boolean }) => {
+    onRecrawl(source.id, options)
+  }, [onRecrawl, source.id])
+
+  const handleRegenerate = useCallback(() => {
+    onRegenerate(source.id)
+  }, [onRegenerate, source.id])
+
+  const handleDelete = useCallback(() => {
+    onDelete(source.id)
+  }, [onDelete, source.id])
 
   return (
     <div
@@ -70,9 +82,9 @@ export const SourceCard = memo(({
       <div className="flex items-start justify-end mb-4">
         <SourceActionsMenu
           source={source}
-          onRecrawl={onRecrawl}
-          onRegenerate={onRegenerate}
-          onDelete={onDelete}
+          onRecrawl={handleRecrawl}
+          onRegenerate={handleRegenerate}
+          onDelete={handleDelete}
           isRecrawling={isPendingRecrawl}
           isRegenerating={isPendingRegenerate}
           isDeleting={isPendingDelete}

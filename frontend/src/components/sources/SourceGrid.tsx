@@ -35,9 +35,9 @@ export const SourceGrid = memo(({
           source={source}
           isSelected={selectedSources.has(source.id)}
           onToggleSelect={onToggleSelect}
-          onDelete={() => onDelete(source.id)}
-          onRecrawl={(options) => onRecrawl(source.id, options)}
-          onRegenerate={() => onRegenerate(source.id)}
+          onDelete={onDelete}
+          onRecrawl={onRecrawl}
+          onRegenerate={onRegenerate}
           onUpdateName={onUpdateName}
           isPendingRecrawl={isPendingRecrawl}
           isPendingRegenerate={isPendingRegenerate}

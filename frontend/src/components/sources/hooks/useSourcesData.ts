@@ -1,5 +1,6 @@
-import { useQuery } from '@tanstack/react-query'
+import { useQuery, keepPreviousData } from '@tanstack/react-query'
 import { api } from '../../../lib/api'
+import { getSnippetBounds } from '../utils'
 
 interface UseSourcesDataProps {
   currentPage: number
@@ -14,19 +15,11 @@ export const useSourcesData = ({
   debouncedSearchQuery,
   snippetFilter
 }: UseSourcesDataProps) => {
-  const getSnippetBounds = () => {
-    switch(snippetFilter) {
-      case '0': return { min: 0, max: 0 }
-      case 'has-snippets': return { min: 1, max: undefined }
-      default: return { min: undefined, max: undefined }
-    }
-  }
-
   return useQuery({
     queryKey: ["sources", currentPage, itemsPerPage, debouncedSearchQuery, snippetFilter],
     queryFn: () => {
       const offset = (currentPage - 1) * itemsPerPage
-      const bounds = getSnippetBounds()
+      const bounds = getSnippetBounds(snippetFilter)
       
       if (debouncedSearchQuery || snippetFilter !== 'all') {
         return api.searchSources({
@@ -40,5 +33,6 @@ export const useSourcesData = ({
       
       return api.getSources({ limit: itemsPerPage, offset })
     },
+    placeholderData: keepPreviousData,
   })
 }

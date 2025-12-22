@@ -1,4 +1,4 @@
-import React from 'react'
+import { memo } from 'react'
 import { Check } from 'lucide-react'
 
 interface SelectionControlsProps {
@@ -9,13 +9,13 @@ interface SelectionControlsProps {
   onBulkDelete: () => void
 }
 
-export const SelectionControls: React.FC<SelectionControlsProps> = ({
+export const SelectionControls = memo(({
   selectedCount,
   totalCount,
   onSelectAll,
   onDeselectAll,
   onBulkDelete
-}) => {
+}: SelectionControlsProps) => {
   const allSelected = selectedCount === totalCount && totalCount > 0
   const someSelected = selectedCount > 0 && selectedCount < totalCount
 
@@ -78,4 +78,6 @@ export const SelectionControls: React.FC<SelectionControlsProps> = ({
       </button>
     </div>
   )
-}
+})
+
+SelectionControls.displayName = "SelectionControls"
