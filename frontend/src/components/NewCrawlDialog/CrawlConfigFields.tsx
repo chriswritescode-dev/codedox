@@ -36,7 +36,9 @@ export const CrawlConfigFields: React.FC<CrawlConfigFieldsProps> = ({
           onChange={(e) => {
             const newDepth = parseInt(e.target.value);
             onChange('max_depth', newDepth);
-            onChange('url_patterns', newDepth === 0 ? '' : formData.url_patterns);
+            if (mode === 'create' && newDepth === 0) {
+              onChange('url_patterns', '');
+            }
           }}
           className="w-full px-3 py-2 border border-input rounded-md bg-background focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent transition-all"
         >

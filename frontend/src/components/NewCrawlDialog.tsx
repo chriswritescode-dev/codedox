@@ -255,7 +255,7 @@ useEffect(() => {
                 <UpdateFields
                   addUrlPatterns={formData.add_url_patterns}
                   excludeUrlPatterns={formData.exclude_url_patterns}
-                  onChange={(field, value) => setFormData({ ...formData, [field]: value })}
+onChange={(field, value) => setFormData(prev => ({ ...prev, [field]: value }))}
                 />
               </div>
             )}
