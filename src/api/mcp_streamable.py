@@ -9,10 +9,6 @@ from fastapi import APIRouter, Header, HTTPException, Request, Response
 from fastapi.responses import JSONResponse, StreamingResponse
 from mcp.server import Server
 from mcp.shared.exceptions import McpError
-from mcp.types import ErrorData
-
-# Use FastAPI's StreamingResponse for SSE instead of MCP's EventSourceResponse
-# to avoid the asyncio event loop issues in tests
 from pydantic import BaseModel
 
 from ..constants import __mcp_server_name__, __version__
@@ -229,7 +225,16 @@ class StreamableTransport:
                     result = await mcp_server.execute_tool(tool_name, tool_args)
                 except ValueError as e:
                     logger.error(f"Tool execution failed for '{tool_name}': {e}")
-                    raise McpError(ErrorData(code=-32601, message=f"Unknown tool: {tool_name}"))
+                    if not is_notification:
+                        return {
+                            "jsonrpc": "2.0",
+                            "id": msg_id,
+                            "error": {
+                                "code": -32601,
+                                "message": str(e),
+                            },
+                        }
+                    return None
 
                 # Format result as text content
                 if isinstance(result, str):

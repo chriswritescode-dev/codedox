@@ -84,13 +84,11 @@ async def execute_tool(tool_name: str, request: Request) -> dict[str, Any]:
             return {"result": result}
 
     except ValueError as e:
-        # Handle unknown tool errors from execute_tool
         raise HTTPException(status_code=404, detail=str(e))
     except HTTPException:
-        # Re-raise HTTP exceptions
         raise
     except Exception as e:
-        logger.error(f"Error executing tool {tool_name}: {e}")
+        logger.error(f"Error executing tool {tool_name}: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -104,18 +102,18 @@ async def execute_tool_stream(tool_name: str, request: Request) -> StreamingResp
         except Exception as e:
             raise HTTPException(status_code=422, detail=f"Invalid JSON: {str(e)}")
 
-        # Get tool definitions to validate
+        # Get tool definitions to validate required parameters
         tool_defs = {tool["name"]: tool for tool in mcp_server.get_tool_definitions()}
 
         if tool_name not in tool_defs:
-            raise ValueError(f"Unknown tool: {tool_name}")
+            raise HTTPException(status_code=404, detail=f"Unknown tool: {tool_name}")
 
         # Validate required parameters
         tool_def = tool_defs[tool_name]
         required_params = tool_def["input_schema"].get("required", [])
         for param in required_params:
             if param not in params:
-                raise ValueError(f"Missing required parameter: {param}")
+                raise HTTPException(status_code=422, detail=f"Missing required parameter: {param}")
 
         # Execute the tool
         result = await mcp_server.execute_tool(tool_name, params)
@@ -131,8 +129,10 @@ async def execute_tool_stream(tool_name: str, request: Request) -> StreamingResp
             }
         )
 
+    except HTTPException:
+        raise
     except Exception as e:
-        logger.error(f"Error executing tool {tool_name}: {e}")
+        logger.error(f"Error executing tool {tool_name}: {e}", exc_info=True)
         error_response = {"error": str(e), "tool": tool_name}
         return StreamingResponse(
             stream_response(error_response),

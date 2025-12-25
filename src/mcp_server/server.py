@@ -3,7 +3,6 @@
 import asyncio
 import json
 import logging
-from datetime import datetime
 from typing import Any
 
 from mcp.server import Server
@@ -32,6 +31,7 @@ class MCPServer:
         return [
             Tool(
                 name="init_crawl",
+                title="Initialize Documentation Crawl",
                 description="Initialize a new web crawl job for documentation",
                 inputSchema={
                     "type": "object",
@@ -73,6 +73,7 @@ class MCPServer:
             ),
             Tool(
                 name="search_libraries",
+                title="Search Libraries",
                 description="Search or list available libraries. Returns library_id (for use with get_content), name, description, and snippet_count. Supports pagination via page/limit params. Empty query lists all.",
                 inputSchema={
                     "type": "object",
@@ -100,7 +101,8 @@ class MCPServer:
             ),
             Tool(
                 name="get_content",
-                description="Search code snippets in a library. Results include SOURCE URLs for full docs via get_page_markdown(). Modes: 'code' (default, with markdown fallback) or 'enhanced' (always searches markdown). Library can be name or UUID. Snippets truncated to 500 tokens; use get_snippet() for full content.",
+                title="Get Library Content",
+                description="Search code snippets in a library. Results include SOURCE URLs for full docs via get_page_markdown tool. Modes: 'code' (default, with markdown fallback) or 'enhanced' (always searches markdown). Library can be name or UUID. Snippets truncated to 500 tokens; use get_snippet tool for full content.",
                 inputSchema={
                     "type": "object",
                     "properties": {
@@ -137,6 +139,7 @@ class MCPServer:
             ),
             Tool(
                 name="get_snippet",
+                title="Get Code Snippet",
                 description="Get a specific code snippet by ID. Control size with max_tokens (100-10000, default 2000). Use chunk_index for large snippets. Returns formatted code with SOURCE URL.",
                 inputSchema={
                     "type": "object",
@@ -163,6 +166,7 @@ class MCPServer:
             ),
             Tool(
                 name="get_page_markdown",
+                title="Get Page Markdown",
                 description="Get full documentation markdown by URL (from get_content SOURCE) or snippet_id. Use query to search within the page. Control size with max_tokens or paginate with chunk_index. Provide url OR snippet_id, not both.",
                 inputSchema={
                     "type": "object",
@@ -206,8 +210,9 @@ class MCPServer:
     async def execute_tool(self, name: str, arguments: dict[str, Any]) -> Any:
         """Execute a tool by name with given arguments."""
         logger.debug(f"MCPServer.execute_tool called with name='{name}', arguments={arguments}")
+        tool_name = name
 
-        if name == "init_crawl":
+        if tool_name == "init_crawl":
             return await self.tools.init_crawl(
                 name=arguments.get("name"),
                 start_urls=arguments.get("start_urls"),
@@ -216,13 +221,13 @@ class MCPServer:
                 metadata=arguments.get("metadata", {}),
                 max_concurrent_crawls=arguments.get("max_concurrent_crawls"),
             )
-        elif name == "search_libraries":
+        elif tool_name == "search_libraries":
             return await self.tools.search_libraries(
                 query=arguments.get("query", ""),
                 limit=arguments.get("limit", 20),
                 page=arguments.get("page", 1),
             )
-        elif name == "get_content":
+        elif tool_name == "get_content":
             return await self.tools.get_content(
                 library_id=arguments.get("library_id"),
                 query=arguments.get("query"),
@@ -230,13 +235,13 @@ class MCPServer:
                 page=arguments.get("page", 1),
                 search_mode=arguments.get("search_mode", "code"),
             )
-        elif name == "get_snippet":
+        elif tool_name == "get_snippet":
             return await self.tools.get_snippet(
                 snippet_id=arguments.get("snippet_id"),
                 max_tokens=arguments.get("max_tokens"),
                 chunk_index=arguments.get("chunk_index"),
             )
-        elif name == "get_page_markdown":
+        elif tool_name == "get_page_markdown":
             return await self.tools.get_page_markdown(
                 url=arguments.get("url"),
                 snippet_id=arguments.get("snippet_id"),
@@ -262,25 +267,12 @@ class MCPServer:
         @self.server.call_tool()
         async def call_tool(name: str, arguments: dict[str, Any]) -> list[TextContent]:
             """Execute a tool and return results."""
-            try:
-                result = await self.execute_tool(name, arguments)
+            result = await self.execute_tool(name, arguments)
 
-                # Format result based on tool
-                if name == "get_content" and isinstance(result, str):
-                    # Already formatted search results
-                    return [TextContent(type="text", text=result)]
-                else:
-                    # JSON results
-                    return [TextContent(type="text", text=json.dumps(result, indent=2))]
-
-            except Exception as e:
-                logger.error(f"Error executing tool {name}: {e}")
-                error_result = {
-                    "error": str(e),
-                    "tool": name,
-                    "timestamp": datetime.utcnow().isoformat(),
-                }
-                return [TextContent(type="text", text=json.dumps(error_result, indent=2))]
+            if name == "get_content" and isinstance(result, str):
+                return [TextContent(type="text", text=result)]
+            else:
+                return [TextContent(type="text", text=json.dumps(result, indent=2))]
 
     async def start(self) -> None:
         """Start the MCP server with stdio transport."""

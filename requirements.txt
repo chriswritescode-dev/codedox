@@ -14,7 +14,7 @@ crawl4ai>=0.7.7
 httpx==0.28.1  # Still needed for LLM client
 
 # MCP Server
-mcp>=1.22.0
+mcp>=1.25.0
 
 # Utilities
 python-dotenv==1.0.1

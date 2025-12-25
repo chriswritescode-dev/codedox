@@ -376,7 +376,7 @@ def test_mcp_streamable_session_handling(client):
 
 
 def test_mcp_streamable_prefixed_tool_name(client):
-    """Test handling of prefixed tool names (e.g., vszd2c_search_libraries)."""
+    """Test that prefixed tool names return an error (prefix matching not supported)."""
     # First initialize
     init_request = {
         "jsonrpc": "2.0",
@@ -399,13 +399,13 @@ def test_mcp_streamable_prefixed_tool_name(client):
     )
     assert response.status_code == 200
 
-    # Now test prefixed tool call
+    # Prefixed tool names should return an error
     tool_request = {
         "jsonrpc": "2.0",
         "id": "2",
         "method": "tools/call",
         "params": {
-            "name": "vszd2c_search_libraries",  # Prefixed tool name
+            "name": "vszd2c_search_libraries",
             "arguments": {
                 "query": "react",
                 "max_results": 5
@@ -426,11 +426,5 @@ def test_mcp_streamable_prefixed_tool_name(client):
     result = response.json()
     assert result["jsonrpc"] == "2.0"
     assert result["id"] == "2"
-
-    # Should have result (tool extracted correctly) or error with details
-    assert "result" in result or "error" in result
-
-    # If error, it should have meaningful details
-    if "error" in result:
-        assert "message" in result["error"]
-        assert result["error"]["message"] != "{}"  # Should not be empty
+    assert "error" in result
+    assert "Unknown tool" in result["error"]["message"]
