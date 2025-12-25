@@ -382,114 +382,164 @@ class CodeSearcher:
         return [r[0] for r in results]
 
     def search_libraries(
-        self, query: str, limit: int = 10, offset: int = 0
+        self, query: str = "", limit: int = 10, offset: int = 0
     ) -> tuple[list[dict[str, Any]], int]:
         """Search for libraries by name using fuzzy matching.
 
         Args:
-            query: Search query for library names
+            query: Search query for library names (empty returns all libraries)
             limit: Maximum results to return
             offset: Pagination offset
 
         Returns:
             Tuple of (list of library information dictionaries, total count)
         """
-        # Use PostgreSQL's similarity function for fuzzy matching
-        # Union query to get both crawl and upload jobs
-        sql_query = """
-        WITH all_sources AS (
-            SELECT
-                cj.id,
-                cj.name,
-                cj.version,
-                cj.domain,
-                'crawl' as source_type,
-                COALESCE(cj.config->>'description', '') as description,
-                cj.config->>'versions' as versions_json,
-                COUNT(DISTINCT cs.id) as snippet_count,
-                similarity(LOWER(cj.name), LOWER(:query)) as name_similarity,
+        if not query or not query.strip():
+            sql_query = """
+            WITH all_sources AS (
+                SELECT
+                    cj.id,
+                    cj.name,
+                    cj.version,
+                    cj.domain,
+                    'crawl' as source_type,
+                    COALESCE(cj.config->>'description', '') as description,
+                    cj.config->>'versions' as versions_json,
+                    COUNT(DISTINCT cs.id) as snippet_count,
+                    1.0 as name_similarity,
+                    0 as domain_similarity
+                FROM crawl_jobs cj
+                LEFT JOIN documents d ON d.crawl_job_id = cj.id
+                LEFT JOIN code_snippets cs ON cs.document_id = d.id
+                GROUP BY cj.id, cj.name, cj.version, cj.domain, cj.config
+                
+                UNION ALL
+                
+                SELECT
+                    uj.id,
+                    uj.name,
+                    uj.version,
+                    NULL as domain,
+                    'upload' as source_type,
+                    COALESCE(uj.config->>'description', '') as description,
+                    NULL as versions_json,
+                    COUNT(DISTINCT cs.id) as snippet_count,
+                    1.0 as name_similarity,
+                    0 as domain_similarity
+                FROM upload_jobs uj
+                LEFT JOIN documents d ON d.upload_job_id = uj.id
+                LEFT JOIN code_snippets cs ON cs.document_id = d.id
+                GROUP BY uj.id, uj.name, uj.version, uj.config
+            )
+            SELECT * FROM all_sources
+            ORDER BY snippet_count DESC, name ASC
+            LIMIT :limit OFFSET :offset
+            """
+
+            count_query = """
+            SELECT COUNT(*) FROM (
+                SELECT cj.id FROM crawl_jobs cj
+                UNION ALL
+                SELECT uj.id FROM upload_jobs uj
+            ) AS all_sources
+            """
+
+            params = {"limit": limit, "offset": offset}
+            total_count = self.session.execute(text(count_query)).scalar() or 0
+        else:
+            sql_query = """
+            WITH all_sources AS (
+                SELECT
+                    cj.id,
+                    cj.name,
+                    cj.version,
+                    cj.domain,
+                    'crawl' as source_type,
+                    COALESCE(cj.config->>'description', '') as description,
+                    cj.config->>'versions' as versions_json,
+                    COUNT(DISTINCT cs.id) as snippet_count,
+                    similarity(LOWER(cj.name), LOWER(:query)) as name_similarity,
+                    CASE
+                        WHEN cj.domain IS NOT NULL
+                        THEN similarity(LOWER(SPLIT_PART(cj.domain, '.', 1)), LOWER(:query))
+                        ELSE 0
+                    END as domain_similarity
+                FROM crawl_jobs cj
+                LEFT JOIN documents d ON d.crawl_job_id = cj.id
+                LEFT JOIN code_snippets cs ON cs.document_id = d.id
+                WHERE (
+                    LOWER(cj.name) LIKE LOWER(:pattern)
+                    OR (cj.domain IS NOT NULL AND LOWER(SPLIT_PART(cj.domain, '.', 1)) LIKE LOWER(:pattern))
+                    OR similarity(LOWER(cj.name), LOWER(:query)) > 0.1
+                    OR (cj.domain IS NOT NULL AND similarity(LOWER(SPLIT_PART(cj.domain, '.', 1)), LOWER(:query)) > 0.1)
+                )
+                GROUP BY cj.id, cj.name, cj.version, cj.domain, cj.config
+                
+                UNION ALL
+                
+                SELECT
+                    uj.id,
+                    uj.name,
+                    uj.version,
+                    NULL as domain,
+                    'upload' as source_type,
+                    COALESCE(uj.config->>'description', '') as description,
+                    NULL as versions_json,
+                    COUNT(DISTINCT cs.id) as snippet_count,
+                    similarity(LOWER(uj.name), LOWER(:query)) as name_similarity,
+                    0 as domain_similarity
+                FROM upload_jobs uj
+                LEFT JOIN documents d ON d.upload_job_id = uj.id
+                LEFT JOIN code_snippets cs ON cs.document_id = d.id
+                WHERE (
+                    LOWER(uj.name) LIKE LOWER(:pattern)
+                    OR similarity(LOWER(uj.name), LOWER(:query)) > 0.1
+                )
+                GROUP BY uj.id, uj.name, uj.version, uj.config
+            )
+            SELECT * FROM all_sources
+            ORDER BY
                 CASE
-                    WHEN cj.domain IS NOT NULL
-                    THEN similarity(LOWER(SPLIT_PART(cj.domain, '.', 1)), LOWER(:query))
-                    ELSE 0
-                END as domain_similarity
-            FROM crawl_jobs cj
-            LEFT JOIN documents d ON d.crawl_job_id = cj.id
-            LEFT JOIN code_snippets cs ON cs.document_id = d.id
-            WHERE (
-                LOWER(cj.name) LIKE LOWER(:pattern)
-                OR (cj.domain IS NOT NULL AND LOWER(SPLIT_PART(cj.domain, '.', 1)) LIKE LOWER(:pattern))
-                OR similarity(LOWER(cj.name), LOWER(:query)) > 0.1
-                OR (cj.domain IS NOT NULL AND similarity(LOWER(SPLIT_PART(cj.domain, '.', 1)), LOWER(:query)) > 0.1)
-            )
-            GROUP BY cj.id, cj.name, cj.version, cj.domain, cj.config
-            
-            UNION ALL
-            
-            SELECT
-                uj.id,
-                uj.name,
-                uj.version,
-                NULL as domain,
-                'upload' as source_type,
-                COALESCE(uj.config->>'description', '') as description,
-                NULL as versions_json,
-                COUNT(DISTINCT cs.id) as snippet_count,
-                similarity(LOWER(uj.name), LOWER(:query)) as name_similarity,
-                0 as domain_similarity
-            FROM upload_jobs uj
-            LEFT JOIN documents d ON d.upload_job_id = uj.id
-            LEFT JOIN code_snippets cs ON cs.document_id = d.id
-            WHERE (
-                LOWER(uj.name) LIKE LOWER(:pattern)
-                OR similarity(LOWER(uj.name), LOWER(:query)) > 0.1
-            )
-            GROUP BY uj.id, uj.name, uj.version, uj.config
-        )
-        SELECT * FROM all_sources
-        ORDER BY
-            CASE
-                WHEN LOWER(name) = LOWER(:query) THEN 0
-                WHEN domain IS NOT NULL AND LOWER(SPLIT_PART(domain, '.', 1)) = LOWER(:query) THEN 0
-                ELSE 1
-            END,
-            GREATEST(name_similarity, COALESCE(domain_similarity, 0)) DESC,
-            snippet_count DESC
-        LIMIT :limit OFFSET :offset
-        """
+                    WHEN LOWER(name) = LOWER(:query) THEN 0
+                    WHEN domain IS NOT NULL AND LOWER(SPLIT_PART(domain, '.', 1)) = LOWER(:query) THEN 0
+                    ELSE 1
+                END,
+                GREATEST(name_similarity, COALESCE(domain_similarity, 0)) DESC,
+                snippet_count DESC
+            LIMIT :limit OFFSET :offset
+            """
 
-        # First get total count
-        count_query = """
-        SELECT COUNT(*) FROM (
-            SELECT cj.id
-            FROM crawl_jobs cj
-            WHERE (
-                LOWER(cj.name) LIKE LOWER(:pattern)
-                OR (cj.domain IS NOT NULL AND LOWER(SPLIT_PART(cj.domain, '.', 1)) LIKE LOWER(:pattern))
-                OR similarity(LOWER(cj.name), LOWER(:query)) > 0.1
-                OR (cj.domain IS NOT NULL AND similarity(LOWER(SPLIT_PART(cj.domain, '.', 1)), LOWER(:query)) > 0.1)
-            )
-            
-            UNION ALL
-            
-            SELECT uj.id
-            FROM upload_jobs uj
-            WHERE (
-                LOWER(uj.name) LIKE LOWER(:pattern)
-                OR similarity(LOWER(uj.name), LOWER(:query)) > 0.1
-            )
-        ) AS all_sources
-        """
+            count_query = """
+            SELECT COUNT(*) FROM (
+                SELECT cj.id
+                FROM crawl_jobs cj
+                WHERE (
+                    LOWER(cj.name) LIKE LOWER(:pattern)
+                    OR (cj.domain IS NOT NULL AND LOWER(SPLIT_PART(cj.domain, '.', 1)) LIKE LOWER(:pattern))
+                    OR similarity(LOWER(cj.name), LOWER(:query)) > 0.1
+                    OR (cj.domain IS NOT NULL AND similarity(LOWER(SPLIT_PART(cj.domain, '.', 1)), LOWER(:query)) > 0.1)
+                )
+                
+                UNION ALL
+                
+                SELECT uj.id
+                FROM upload_jobs uj
+                WHERE (
+                    LOWER(uj.name) LIKE LOWER(:pattern)
+                    OR similarity(LOWER(uj.name), LOWER(:query)) > 0.1
+                )
+            ) AS all_sources
+            """
 
-        safe_query = query.replace("%", r"\%").replace("_", r"\_")
-        params = {"query": query, "pattern": f"%{safe_query}%", "limit": limit, "offset": offset}
+            safe_query = query.replace("%", r"\%").replace("_", r"\_")
+            params = {"query": query, "pattern": f"%{safe_query}%", "limit": limit, "offset": offset}
 
-        total_count = (
-            self.session.execute(
-                text(count_query), {"query": query, "pattern": f"%{safe_query}%"}
-            ).scalar()
-            or 0
-        )
+            total_count = (
+                self.session.execute(
+                    text(count_query), {"query": query, "pattern": f"%{safe_query}%"}
+                ).scalar()
+                or 0
+            )
 
         # Get paginated results
         result = self.session.execute(text(sql_query), params)
